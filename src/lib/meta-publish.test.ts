@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MetaApiError } from "./meta-errors";
+import { classifyMetaError, MetaApiError } from "./meta-errors";
 import {
   bucPauseSeconds,
   createContainer,
@@ -11,7 +11,10 @@ import {
 
 const BASE = "https://graph.instagram.com/v26.0";
 
-function fakeFetch(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
+function fakeFetch(
+  body: unknown,
+  init: { status?: number; headers?: Record<string, string>; raw?: string } = {},
+) {
   const calls: Array<{ url: string; method: string; body?: BodyInit | null; auth?: string | null }> = [];
   const fetchFn = async (input: RequestInfo | URL, reqInit?: RequestInit) => {
     calls.push({
@@ -20,7 +23,8 @@ function fakeFetch(body: unknown, init: { status?: number; headers?: Record<stri
       body: reqInit?.body,
       auth: new Headers(reqInit?.headers).get("Authorization"),
     });
-    return new Response(JSON.stringify(body), { status: init.status ?? 200, headers: init.headers });
+    const text = init.raw ?? JSON.stringify(body);
+    return new Response(text, { status: init.status ?? 200, headers: init.headers });
   };
   return { fetchFn: fetchFn as typeof fetch, calls };
 }
@@ -52,6 +56,40 @@ describe("createContainer", () => {
     await expect(
       createContainer({ igUserId: "1", token: "t", videoUrl: "u", caption: "", shareToFeed: true, fetchFn }),
     ).rejects.toMatchObject({ code: 100, status: 400 });
+  });
+
+  it("treats a 502 with an HTML body as a retryable server error, not a permanent failure", async () => {
+    const { fetchFn } = fakeFetch(null, { status: 502, raw: "<html>Bad Gateway</html>" });
+    const err = await createContainer({
+      igUserId: "1",
+      token: "t",
+      videoUrl: "u",
+      caption: "",
+      shareToFeed: true,
+      fetchFn,
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(MetaApiError);
+    expect((err as MetaApiError).status).toBe(502);
+    expect(classifyMetaError(err)).toBe("retry");
+  });
+
+  it("reports a rate-limit pause to the caller in seconds", async () => {
+    const usage = JSON.stringify({
+      "17841": [{ call_count: 85, total_time: 10, total_cputime: 5, estimated_time_to_regain_access: 15 }],
+    });
+    const { fetchFn } = fakeFetch({ id: "container-1" }, { headers: { "X-Business-Use-Case-Usage": usage } });
+    const pauses: number[] = [];
+    await createContainer({
+      igUserId: "17841",
+      token: "t",
+      videoUrl: "u",
+      caption: "",
+      shareToFeed: true,
+      fetchFn,
+      onBucPause: (seconds) => pauses.push(seconds),
+    });
+    expect(pauses).toEqual([15 * 60]);
   });
 });
 
@@ -102,12 +140,16 @@ describe("getPublishingLimit", () => {
 
 describe("bucPauseSeconds", () => {
   it("returns 0 when every usage percentage is under 80", () => {
-    const header = JSON.stringify({ "17841": [{ call_count: 40, total_time: 10, total_cputime: 5, estimated_time_to_regain_access: 0 }] });
+    const header = JSON.stringify({
+      "17841": [{ call_count: 40, total_time: 10, total_cputime: 5, estimated_time_to_regain_access: 0 }],
+    });
     expect(bucPauseSeconds(header)).toBe(0);
   });
 
-  it("returns the regain time when any percentage reaches 80", () => {
-    const header = JSON.stringify({ "17841": [{ call_count: 85, total_time: 10, total_cputime: 5, estimated_time_to_regain_access: 900 }] });
+  it("returns the regain time, converted from minutes to seconds, when any percentage reaches 80", () => {
+    const header = JSON.stringify({
+      "17841": [{ call_count: 85, total_time: 10, total_cputime: 5, estimated_time_to_regain_access: 15 }],
+    });
     expect(bucPauseSeconds(header)).toBe(900);
   });
 

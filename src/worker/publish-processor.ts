@@ -9,7 +9,7 @@ import { decryptToken, loadTokenKey } from "@/lib/token-crypto";
 
 const DOWNLOAD_LIFETIME_SECONDS = 7200;
 
-async function accessTokenFor(accountId: string): Promise<string> {
+export async function accessTokenFor(accountId: string): Promise<string> {
   const row = await prisma.igToken.findUnique({ where: { accountId } });
   if (!row) throw new Error(`no token stored for account ${accountId}`);
   return decryptToken(
@@ -22,24 +22,35 @@ export function createPublishProcessor(redis: Redis) {
   const lock = createAccountLock(redis);
 
   return async (job: Job<{ postId: string }>, token?: string) => {
-    const post = await prisma.post.findUnique({ where: { id: job.data.postId } });
-    if (!post) throw new Error(`post ${job.data.postId} not found`);
-
-    // Section 7 step 5: wait until the publish time with a delayed re-enqueue, not a sleep.
-    if (post.scheduledAt.getTime() > Date.now()) {
-      await job.moveToDelayed(post.scheduledAt.getTime(), token);
-      throw new DelayedError();
+    try {
+      await publishPost({
+        db: prisma,
+        postId: job.data.postId,
+        now: new Date(),
+        meta: metaPublish,
+        getReelUrl: (key) => presignDownload(key, DOWNLOAD_LIFETIME_SECONDS),
+        getToken: accessTokenFor,
+        lock,
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        // Section 7 step 5: run again at the given time with a delayed re-enqueue, not a sleep.
+        deferUntil: async (at) => {
+          await job.moveToDelayed(at.getTime(), token);
+          throw new DelayedError();
+        },
+      });
+    } catch (err) {
+      if (err instanceof DelayedError) throw err;
+      // BullMQ retries until the last attempt. After that, record the failure so the post does not sit in a
+      // non-terminal state with no explanation.
+      const lastAttempt = job.attemptsStarted >= (job.opts.attempts ?? 1);
+      if (lastAttempt) {
+        const message = err instanceof Error ? err.message : String(err);
+        await prisma.post.updateMany({
+          where: { id: job.data.postId, status: { in: ["scheduled", "container_created"] } },
+          data: { status: "failed", lastError: message, attempts: { increment: 1 } },
+        });
+      }
+      throw err;
     }
-
-    await publishPost({
-      db: prisma,
-      postId: job.data.postId,
-      now: new Date(),
-      meta: metaPublish,
-      getReelUrl: (key) => presignDownload(key, DOWNLOAD_LIFETIME_SECONDS),
-      getToken: accessTokenFor,
-      lock,
-      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    });
   };
 }
