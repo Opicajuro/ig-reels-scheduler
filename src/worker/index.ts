@@ -3,7 +3,8 @@ import { requireEnv } from "@/lib/env";
 import { refreshDueTokens } from "@/lib/refresh-job";
 import { prisma } from "@/lib/prisma";
 import { loadTokenKey } from "@/lib/token-crypto";
-import { MEDIA_QUEUE, PUBLISH_QUEUE, redisConnection } from "@/lib/queues";
+import { INSIGHTS_QUEUE, MEDIA_QUEUE, PUBLISH_QUEUE, redisConnection } from "@/lib/queues";
+import { processInsightsJob } from "./insights-processor";
 import { processMedia } from "@/lib/media-jobs";
 import { presignDownload, presignUpload } from "@/lib/storage";
 import { createPublishProcessor } from "./publish-processor";
@@ -49,6 +50,7 @@ async function main() {
 
   const lockRedis = new Redis(requireEnv("REDIS_URL"), { maxRetriesPerRequest: null });
   new Worker(PUBLISH_QUEUE, createPublishProcessor(lockRedis), { connection });
+  new Worker(INSIGHTS_QUEUE, processInsightsJob, { connection });
 
   const alertsQueue = new Queue(ALERTS_QUEUE, { connection });
   await alertsQueue.upsertJobScheduler(ALERTS_SCHEDULER_ID, { pattern: DAILY_AT_08_UTC }, { name: "alerts" });

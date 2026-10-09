@@ -6,10 +6,12 @@ import { publishPost } from "@/lib/publish-job";
 import * as metaPublish from "@/lib/meta-publish";
 import { presignDownload } from "@/lib/storage";
 import { decryptToken, loadTokenKey } from "@/lib/token-crypto";
+import { getInsightsQueue } from "@/lib/queues";
+import { scheduleInsightPulls } from "@/lib/insights";
 
 const DOWNLOAD_LIFETIME_SECONDS = 7200;
 
-async function accessTokenFor(accountId: string): Promise<string> {
+export async function accessTokenFor(accountId: string): Promise<string> {
   const row = await prisma.igToken.findUnique({ where: { accountId } });
   if (!row) throw new Error(`no token stored for account ${accountId}`);
   return decryptToken(
@@ -31,15 +33,21 @@ export function createPublishProcessor(redis: Redis) {
       throw new DelayedError();
     }
 
+    const now = new Date();
     await publishPost({
       db: prisma,
       postId: job.data.postId,
-      now: new Date(),
+      now,
       meta: metaPublish,
       getReelUrl: (key) => presignDownload(key, DOWNLOAD_LIFETIME_SECONDS),
       getToken: accessTokenFor,
       lock,
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     });
+
+    const published = await prisma.post.findUnique({ where: { id: job.data.postId } });
+    if (published?.status === "published") {
+      await scheduleInsightPulls(getInsightsQueue(), { postId: published.id, publishedAt: now, now });
+    }
   };
 }

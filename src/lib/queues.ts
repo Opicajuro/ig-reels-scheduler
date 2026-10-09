@@ -9,9 +9,19 @@ export function redisConnection() {
 }
 
 export const PUBLISH_QUEUE = "publish";
+export const INSIGHTS_QUEUE = "insights";
 
 let mediaQueue: Queue | undefined;
 let publishQueue: Queue | undefined;
+let insightsQueue: Queue | undefined;
+
+export function getInsightsQueue(): Queue {
+  insightsQueue ??= new Queue(INSIGHTS_QUEUE, {
+    connection: redisConnection(),
+    defaultJobOptions: { attempts: 3, backoff: { type: "exponential", delay: 60_000 } },
+  });
+  return insightsQueue;
+}
 
 export function enqueueMediaProcess(mediaId: string) {
   mediaQueue ??= new Queue(MEDIA_QUEUE, { connection: redisConnection() });
