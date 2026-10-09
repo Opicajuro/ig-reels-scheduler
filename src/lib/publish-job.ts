@@ -3,6 +3,10 @@ import { classifyMetaError, MetaApiError } from "./meta-errors";
 
 const MAX_CONTAINER_CHECKS = 5;
 const CONTAINER_CHECK_INTERVAL_MS = 60_000;
+const LOCK_RETRY_MS = 60_000;
+const QUOTA_RETRY_MS = 60 * 60 * 1000;
+
+export type BucPauseHandler = (seconds: number) => void;
 
 export type PublishMeta = {
   createContainer(args: {
@@ -11,11 +15,21 @@ export type PublishMeta = {
     videoUrl: string;
     caption: string;
     shareToFeed: boolean;
+    onBucPause?: BucPauseHandler;
   }): Promise<string>;
-  getContainerStatus(args: { containerId: string; token: string }): Promise<string>;
-  publishContainer(args: { igUserId: string; containerId: string; token: string }): Promise<string>;
-  getPermalink(args: { igMediaId: string; token: string }): Promise<string>;
-  getPublishingLimit(args: { igUserId: string; token: string }): Promise<{ quotaUsage: number; quotaTotal: number }>;
+  getContainerStatus(args: { containerId: string; token: string; onBucPause?: BucPauseHandler }): Promise<string>;
+  publishContainer(args: {
+    igUserId: string;
+    containerId: string;
+    token: string;
+    onBucPause?: BucPauseHandler;
+  }): Promise<string>;
+  getPermalink(args: { igMediaId: string; token: string; onBucPause?: BucPauseHandler }): Promise<string>;
+  getPublishingLimit(args: {
+    igUserId: string;
+    token: string;
+    onBucPause?: BucPauseHandler;
+  }): Promise<{ quotaUsage: number; quotaTotal: number }>;
 };
 
 export type PublishLock = {
@@ -32,18 +46,27 @@ export type PublishDeps = {
   getToken: (accountId: string) => Promise<string>;
   lock: PublishLock;
   sleep: (ms: number) => Promise<void>;
+  // Ends this run and asks for the job to run again at the given time. The processor implements it with a delayed re-enqueue.
+  deferUntil: (at: Date) => Promise<never>;
 };
+
+// Thrown by the test double for deferUntil, so tests can tell a deferral from a failure.
+export class Deferred extends Error {}
 
 type Post = {
   id: string;
   accountId: string;
+  status: string;
   caption: string;
   shareToFeed: boolean;
+  scheduledAt: Date;
   containerId: string | null;
   igMediaId: string | null;
   account: { igUserId: string; status: string; pausedUntil: Date | null };
   media: { reelKey: string | null };
 };
+
+type Step = "create" | "poll" | "publish" | "quota";
 
 // Thrown after a post has been marked failed, so the job stops without retrying.
 class PostFailed extends Error {}
@@ -52,14 +75,7 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-async function record(
-  deps: PublishDeps,
-  post: Post,
-  step: "create" | "poll" | "publish" | "quota",
-  httpStatus: number | null,
-  errorCode: number | null,
-  response: object,
-) {
+async function record(deps: PublishDeps, post: Post, step: Step, httpStatus: number | null, errorCode: number | null, response: object) {
   await deps.db.publishAttempt.create({
     data: { postId: post.id, step, httpStatus, errorCode, response },
   });
@@ -73,18 +89,30 @@ async function failAndStop(deps: PublishDeps, post: Post, message: string): Prom
   throw new PostFailed(message);
 }
 
+// Stores a Business Use Case pause on the account so later steps of this run and later runs wait.
+async function applyPause(deps: PublishDeps, post: Post, seconds: number) {
+  if (seconds <= 0) return;
+  const pausedUntil = new Date(deps.now.getTime() + seconds * 1000);
+  post.account.pausedUntil = pausedUntil;
+  await deps.db.igAccount.update({ where: { id: post.accountId }, data: { pausedUntil } });
+}
+
 // Runs one Meta call with the retry rules from section 7. The call is logged when a step name is given.
 async function callMeta<T>(
   deps: PublishDeps,
   post: Post,
-  step: "create" | "poll" | "publish" | "quota" | null,
-  fn: () => Promise<T>,
+  step: Step | null,
+  fn: (onBucPause: BucPauseHandler) => Promise<T>,
 ): Promise<T> {
+  let pauseSeconds = 0;
+  const onBucPause: BucPauseHandler = (seconds) => {
+    pauseSeconds = Math.max(pauseSeconds, seconds);
+  };
+  let result: T;
   try {
-    const result = await fn();
-    if (step) await record(deps, post, step, 200, null, {});
-    return result;
+    result = await fn(onBucPause);
   } catch (err) {
+    await applyPause(deps, post, pauseSeconds);
     if (step) {
       const status = err instanceof MetaApiError ? err.status : null;
       const code = err instanceof MetaApiError ? (err.code ?? null) : null;
@@ -97,13 +125,24 @@ async function callMeta<T>(
     }
     return failAndStop(deps, post, messageOf(err));
   }
+  if (step) await record(deps, post, step, 200, null, {});
+  await applyPause(deps, post, pauseSeconds);
+  return result;
+}
+
+// Ends the run while the account is paused by Meta's rate limit.
+async function guardPause(deps: PublishDeps, post: Post) {
+  const pausedUntil = post.account.pausedUntil;
+  if (pausedUntil && pausedUntil.getTime() > deps.now.getTime()) await deps.deferUntil(pausedUntil);
 }
 
 type ContainerState = "ready" | "error" | "expired" | "published";
 
 async function awaitContainer(deps: PublishDeps, post: Post, containerId: string, token: string): Promise<ContainerState> {
   for (let check = 1; check <= MAX_CONTAINER_CHECKS; check++) {
-    const status = await callMeta(deps, post, null, () => deps.meta.getContainerStatus({ containerId, token }));
+    const status = await callMeta(deps, post, null, (onBucPause) =>
+      deps.meta.getContainerStatus({ containerId, token, onBucPause }),
+    );
     if (status === "FINISHED") return "ready";
     if (status === "ERROR") return "error";
     if (status === "EXPIRED") return "expired";
@@ -116,13 +155,14 @@ async function awaitContainer(deps: PublishDeps, post: Post, containerId: string
 async function createContainer(deps: PublishDeps, post: Post, token: string): Promise<string> {
   if (!post.media.reelKey) return failAndStop(deps, post, "media has no reel");
   const videoUrl = await deps.getReelUrl(post.media.reelKey);
-  const containerId = await callMeta(deps, post, "create", () =>
+  const containerId = await callMeta(deps, post, "create", (onBucPause) =>
     deps.meta.createContainer({
       igUserId: post.account.igUserId,
       token,
       videoUrl,
       caption: post.caption,
       shareToFeed: post.shareToFeed,
+      onBucPause,
     }),
   );
   await deps.db.post.update({ where: { id: post.id }, data: { containerId, status: "container_created" } });
@@ -134,10 +174,14 @@ async function publishLocked(deps: PublishDeps, post: Post) {
   const igUserId = post.account.igUserId;
 
   let state: ContainerState | "missing" = "missing";
-  if (post.containerId) state = await awaitContainer(deps, post, post.containerId, token);
+  if (post.containerId) {
+    await guardPause(deps, post);
+    state = await awaitContainer(deps, post, post.containerId, token);
+  }
 
   let containerId = post.containerId;
   if (state === "missing" || state === "expired") {
+    await guardPause(deps, post);
     if (containerId) await deps.db.post.update({ where: { id: post.id }, data: { containerId: null } });
     containerId = await createContainer(deps, post, token);
     state = await awaitContainer(deps, post, containerId, token);
@@ -146,18 +190,29 @@ async function publishLocked(deps: PublishDeps, post: Post) {
   if (state !== "ready") return failAndStop(deps, post, `container ${state}`);
   await record(deps, post, "poll", 200, null, {});
 
-  const limit = await callMeta(deps, post, "quota", () => deps.meta.getPublishingLimit({ igUserId, token }));
-  if (limit.quotaUsage >= limit.quotaTotal) throw new Error("publishing quota is used up; retry later");
+  // Section 7 step 5: wait for the publish time, then check the quota.
+  if (post.scheduledAt.getTime() > deps.now.getTime()) await deps.deferUntil(post.scheduledAt);
 
-  const igMediaId = await callMeta(deps, post, "publish", () =>
-    deps.meta.publishContainer({ igUserId, containerId: containerId as string, token }),
+  await guardPause(deps, post);
+  const limit = await callMeta(deps, post, "quota", (onBucPause) =>
+    deps.meta.getPublishingLimit({ igUserId, token, onBucPause }),
   );
-  const permalink = await callMeta(deps, post, null, () => deps.meta.getPermalink({ igMediaId, token }));
+  if (limit.quotaUsage >= limit.quotaTotal) await deps.deferUntil(new Date(deps.now.getTime() + QUOTA_RETRY_MS));
 
-  await deps.db.post.update({
-    where: { id: post.id },
-    data: { igMediaId, permalink, status: "published" },
-  });
+  await guardPause(deps, post);
+  const igMediaId = await callMeta(deps, post, "publish", (onBucPause) =>
+    deps.meta.publishContainer({ igUserId, containerId: containerId as string, token, onBucPause }),
+  );
+  // Save the media id before anything else can fail, so a retry never publishes the Reel twice.
+  await deps.db.post.update({ where: { id: post.id }, data: { igMediaId, status: "published" } });
+
+  // The permalink is only for display. The Reel is already live, so a failed lookup must not fail the post.
+  try {
+    const permalink = await deps.meta.getPermalink({ igMediaId, token });
+    await deps.db.post.update({ where: { id: post.id }, data: { permalink } });
+  } catch (err) {
+    console.warn(`permalink lookup failed for post ${post.id}: ${messageOf(err)}`);
+  }
 }
 
 export async function publishPost(deps: PublishDeps) {
@@ -166,13 +221,11 @@ export async function publishPost(deps: PublishDeps) {
     include: { account: true, media: true },
   })) as Post | null;
   if (!post) throw new Error(`post ${deps.postId} not found`);
-  if (post.igMediaId) return;
+  if (post.igMediaId || post.status === "canceled" || post.status === "published") return;
 
   if (post.account.status !== "active") throw new Error("account is not active");
-  if (post.account.pausedUntil && post.account.pausedUntil.getTime() > deps.now.getTime()) {
-    throw new Error("account is paused");
-  }
-  if (!(await deps.lock.acquire(post.accountId))) throw new Error("account is busy");
+  await guardPause(deps, post);
+  if (!(await deps.lock.acquire(post.accountId))) await deps.deferUntil(new Date(deps.now.getTime() + LOCK_RETRY_MS));
 
   try {
     await publishLocked(deps, post);

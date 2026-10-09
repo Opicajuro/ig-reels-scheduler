@@ -24,30 +24,41 @@ export function createPublishProcessor(redis: Redis) {
   const lock = createAccountLock(redis);
 
   return async (job: Job<{ postId: string }>, token?: string) => {
-    const post = await prisma.post.findUnique({ where: { id: job.data.postId } });
-    if (!post) throw new Error(`post ${job.data.postId} not found`);
+    try {
+      const now = new Date();
+      await publishPost({
+        db: prisma,
+        postId: job.data.postId,
+        now,
+        meta: metaPublish,
+        getReelUrl: (key) => presignDownload(key, DOWNLOAD_LIFETIME_SECONDS),
+        getToken: accessTokenFor,
+        lock,
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        // Section 7 step 5: run again at the given time with a delayed re-enqueue, not a sleep.
+        deferUntil: async (at) => {
+          await job.moveToDelayed(at.getTime(), token);
+          throw new DelayedError();
+        },
+      });
 
-    // Section 7 step 5: wait until the publish time with a delayed re-enqueue, not a sleep.
-    if (post.scheduledAt.getTime() > Date.now()) {
-      await job.moveToDelayed(post.scheduledAt.getTime(), token);
-      throw new DelayedError();
-    }
-
-    const now = new Date();
-    await publishPost({
-      db: prisma,
-      postId: job.data.postId,
-      now,
-      meta: metaPublish,
-      getReelUrl: (key) => presignDownload(key, DOWNLOAD_LIFETIME_SECONDS),
-      getToken: accessTokenFor,
-      lock,
-      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    });
-
-    const published = await prisma.post.findUnique({ where: { id: job.data.postId } });
-    if (published?.status === "published") {
-      await scheduleInsightPulls(getInsightsQueue(), { postId: published.id, publishedAt: now, now });
+      const published = await prisma.post.findUnique({ where: { id: job.data.postId } });
+      if (published?.status === "published") {
+        await scheduleInsightPulls(getInsightsQueue(), { postId: published.id, publishedAt: now, now });
+      }
+    } catch (err) {
+      if (err instanceof DelayedError) throw err;
+      // BullMQ retries until the last attempt. After that, record the failure so the post does not sit in a
+      // non-terminal state with no explanation.
+      const lastAttempt = job.attemptsStarted >= (job.opts.attempts ?? 1);
+      if (lastAttempt) {
+        const message = err instanceof Error ? err.message : String(err);
+        await prisma.post.updateMany({
+          where: { id: job.data.postId, status: { in: ["scheduled", "container_created"] } },
+          data: { status: "failed", lastError: message, attempts: { increment: 1 } },
+        });
+      }
+      throw err;
     }
   };
 }
