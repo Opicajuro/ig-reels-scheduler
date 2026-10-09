@@ -1,12 +1,11 @@
-import { DelayedError, type Job } from "bullmq";
-import type Redis from "ioredis";
+import type { Job } from "pg-boss";
 import { createAccountLock } from "@/lib/account-lock";
 import { prisma } from "@/lib/prisma";
 import { publishPost } from "@/lib/publish-job";
 import * as metaPublish from "@/lib/meta-publish";
 import { presignDownload } from "@/lib/storage";
 import { decryptToken, loadTokenKey } from "@/lib/token-crypto";
-import { getInsightsQueue } from "@/lib/queues";
+import { getInsightsQueue, getPublishQueue, PUBLISH_RETRY_LIMIT } from "@/lib/queues";
 import { scheduleInsightPulls } from "@/lib/insights";
 
 const DOWNLOAD_LIFETIME_SECONDS = 7200;
@@ -20,10 +19,14 @@ export async function accessTokenFor(accountId: string): Promise<string> {
   );
 }
 
-export function createPublishProcessor(redis: Redis) {
-  const lock = createAccountLock(redis);
+// Ends this run without failing the job. The run that comes next is already queued.
+class RunDeferred extends Error {}
 
-  return async (job: Job<{ postId: string }>, token?: string) => {
+export function createPublishProcessor() {
+  const lock = createAccountLock(prisma);
+  const queue = getPublishQueue();
+
+  return async ([job]: Job<{ postId: string }>[]) => {
     try {
       const now = new Date();
       await publishPost({
@@ -35,10 +38,11 @@ export function createPublishProcessor(redis: Redis) {
         getToken: accessTokenFor,
         lock,
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-        // Section 7 step 5: run again at the given time with a delayed re-enqueue, not a sleep.
+        // Section 7 step 5: run again at the given time by queueing a new job, not by sleeping.
         deferUntil: async (at) => {
-          await job.moveToDelayed(at.getTime(), token);
-          throw new DelayedError();
+          const queueJobId = await queue.send(job.data.postId, at);
+          await prisma.post.update({ where: { id: job.data.postId }, data: { queueJobId } });
+          throw new RunDeferred();
         },
       });
 
@@ -47,10 +51,10 @@ export function createPublishProcessor(redis: Redis) {
         await scheduleInsightPulls(getInsightsQueue(), { postId: published.id, publishedAt: now, now });
       }
     } catch (err) {
-      if (err instanceof DelayedError) throw err;
-      // BullMQ retries until the last attempt. After that, record the failure so the post does not sit in a
+      if (err instanceof RunDeferred) return;
+      // pg-boss retries until the last attempt. After that, record the failure so the post does not sit in a
       // non-terminal state with no explanation.
-      const lastAttempt = job.attemptsStarted >= (job.opts.attempts ?? 1);
+      const lastAttempt = job.retryCount >= PUBLISH_RETRY_LIMIT;
       if (lastAttempt) {
         const message = err instanceof Error ? err.message : String(err);
         await prisma.post.updateMany({

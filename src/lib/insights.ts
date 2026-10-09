@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import { META_API_VERSION } from "./meta";
 import { MetaApiError } from "./meta-errors";
-import type { PublishQueue } from "./scheduling";
+import type { InsightQueue } from "./queues";
 
 const METRICS = ["views", "reach", "likes", "comments", "shares", "saved", "total_interactions"];
 const PULLS = [
@@ -27,12 +27,12 @@ export function parseInsights(body: unknown): Metric[] {
 }
 
 export async function scheduleInsightPulls(
-  queue: PublishQueue,
+  queue: InsightQueue,
   { postId, publishedAt, now }: { postId: string; publishedAt: Date; now: Date },
 ) {
   for (const pull of PULLS) {
-    const delay = Math.max(0, publishedAt.getTime() + pull.offsetMs - now.getTime());
-    await queue.add("pull", { postId }, { jobId: `${postId}:${pull.label}`, delay });
+    const runAt = new Date(Math.max(now.getTime(), publishedAt.getTime() + pull.offsetMs));
+    await queue.send(postId, pull.label, runAt);
   }
 }
 

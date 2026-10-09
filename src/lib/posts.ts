@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import { validateCaption } from "./caption";
-import { cancelPost, schedulePost, type PublishQueue } from "./scheduling";
+import type { PublishQueue } from "./queues";
+import { schedulePost } from "./scheduling";
 
 export type PostInput = {
   accountId: string;
@@ -43,7 +44,7 @@ export async function createScheduledPost({
       scheduledAt,
     },
   });
-  await schedulePost(queue, { id: post.id, scheduledAt }, now);
+  await schedulePost(db, queue, { id: post.id, scheduledAt }, now);
   return post;
 }
 
@@ -64,5 +65,5 @@ export async function cancelScheduledPost({
   if (!post) throw new Error("post is not scheduled");
 
   await db.post.update({ where: { id: postId }, data: { status: "canceled" } });
-  await cancelPost(queue, postId);
+  if (post.queueJobId) await queue.cancel(post.queueJobId);
 }

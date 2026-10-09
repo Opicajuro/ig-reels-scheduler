@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@/generated/prisma/client";
-import { schedulePost, type PublishQueue } from "./scheduling";
+import type { PublishQueue } from "./queues";
+import { schedulePost } from "./scheduling";
 
 export async function retryFailedPost({
   db,
@@ -23,5 +24,5 @@ export async function retryFailedPost({
     where: { id: postId },
     data: { status: "scheduled", lastError: null, containerId: null },
   });
-  await schedulePost(queue, { id: postId, scheduledAt: post.scheduledAt }, now);
+  await schedulePost(db, queue, { id: postId, scheduledAt: post.scheduledAt }, now);
 }

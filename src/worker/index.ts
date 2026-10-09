@@ -1,66 +1,51 @@
-import { Queue, Worker } from "bullmq";
-import { requireEnv } from "@/lib/env";
+import type { Job } from "pg-boss";
 import { refreshDueTokens } from "@/lib/refresh-job";
 import { prisma } from "@/lib/prisma";
 import { loadTokenKey } from "@/lib/token-crypto";
-import { INSIGHTS_QUEUE, MEDIA_QUEUE, PUBLISH_QUEUE, redisConnection } from "@/lib/queues";
+import {
+  getBoss,
+  INSIGHTS_QUEUE,
+  MEDIA_QUEUE,
+  OWNER_ALERTS_QUEUE,
+  PUBLISH_QUEUE,
+  TOKEN_REFRESH_QUEUE,
+} from "@/lib/queues";
 import { processInsightsJob } from "./insights-processor";
 import { processMedia } from "@/lib/media-jobs";
 import { presignDownload, presignUpload } from "@/lib/storage";
 import { createPublishProcessor } from "./publish-processor";
 import { sendOwnerAlerts } from "@/lib/alert-job";
 import { sendEmail } from "@/lib/alerts";
-import Redis from "ioredis";
 
-const QUEUE_NAME = "token-refresh";
-const SCHEDULER_ID = "daily-token-refresh";
 const DAILY_AT_03_UTC = "0 3 * * *";
-const ALERTS_QUEUE = "owner-alerts";
-const ALERTS_SCHEDULER_ID = "daily-owner-alerts";
 const DAILY_AT_08_UTC = "0 8 * * *";
 const DOWNLOAD_LIFETIME_SECONDS = 7200;
 
 async function main() {
-  const connection = redisConnection();
+  const boss = await getBoss();
 
-  const queue = new Queue(QUEUE_NAME, { connection });
-  await queue.upsertJobScheduler(SCHEDULER_ID, { pattern: DAILY_AT_03_UTC }, { name: "refresh" });
+  await boss.schedule(TOKEN_REFRESH_QUEUE, DAILY_AT_03_UTC, {}, { tz: "UTC" });
+  await boss.work(TOKEN_REFRESH_QUEUE, async () => {
+    await refreshDueTokens(prisma, { now: new Date(), key: loadTokenKey() });
+  });
 
-  new Worker(
-    QUEUE_NAME,
-    async () => {
-      await refreshDueTokens(prisma, { now: new Date(), key: loadTokenKey() });
-    },
-    { connection },
-  );
+  await boss.work(MEDIA_QUEUE, async ([job]: Job<{ mediaId: string }>[]) => {
+    await processMedia({
+      db: prisma,
+      mediaId: job.data.mediaId,
+      fetchFn: fetch,
+      getDownloadUrl: (key) => presignDownload(key, DOWNLOAD_LIFETIME_SECONDS),
+      getUploadUrl: (key, contentType) => presignUpload(key, contentType),
+    });
+  });
 
-  new Worker(
-    MEDIA_QUEUE,
-    async (job) => {
-      await processMedia({
-        db: prisma,
-        mediaId: job.data.mediaId as string,
-        fetchFn: fetch,
-        getDownloadUrl: (key) => presignDownload(key, DOWNLOAD_LIFETIME_SECONDS),
-        getUploadUrl: (key, contentType) => presignUpload(key, contentType),
-      });
-    },
-    { connection },
-  );
+  await boss.work(PUBLISH_QUEUE, createPublishProcessor());
+  await boss.work(INSIGHTS_QUEUE, processInsightsJob);
 
-  const lockRedis = new Redis(requireEnv("REDIS_URL"), { maxRetriesPerRequest: null });
-  new Worker(PUBLISH_QUEUE, createPublishProcessor(lockRedis), { connection });
-  new Worker(INSIGHTS_QUEUE, processInsightsJob, { connection });
-
-  const alertsQueue = new Queue(ALERTS_QUEUE, { connection });
-  await alertsQueue.upsertJobScheduler(ALERTS_SCHEDULER_ID, { pattern: DAILY_AT_08_UTC }, { name: "alerts" });
-  new Worker(
-    ALERTS_QUEUE,
-    async () => {
-      await sendOwnerAlerts({ db: prisma, now: new Date(), send: sendEmail });
-    },
-    { connection },
-  );
+  await boss.schedule(OWNER_ALERTS_QUEUE, DAILY_AT_08_UTC, {}, { tz: "UTC" });
+  await boss.work(OWNER_ALERTS_QUEUE, async () => {
+    await sendOwnerAlerts({ db: prisma, now: new Date(), send: sendEmail });
+  });
 
   console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media and publishing enabled`);
 }

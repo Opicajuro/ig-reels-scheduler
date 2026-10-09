@@ -70,6 +70,7 @@ model IgAccount {
   timezone    String        @default("UTC")
   status      AccountStatus @default(active)
   pausedUntil DateTime?
+  lockedUntil DateTime?
   createdAt   DateTime      @default(now())
   token       IgToken?
   media       Media[]
@@ -127,6 +128,7 @@ model Post {
   scheduledAt DateTime
   status      PostStatus    @default(scheduled)
   containerId String?
+  queueJobId  String?
   igMediaId   String?
   permalink   String?
   attempts    Int           @default(0)

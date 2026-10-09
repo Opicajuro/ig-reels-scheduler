@@ -40,14 +40,14 @@ The previous session made these choices. Don't re-litigate them; just build.
 | Language | TypeScript (strict) everywhere |
 | Web + API | Next.js (App Router), route handlers for the API |
 | DB | Postgres + Prisma |
-| Queue | Redis + BullMQ (delayed jobs), one separate worker process |
+| Queue | pg-boss on the same Postgres (delayed jobs), one separate worker process |
 | Storage | S3-compatible bucket (Cloudflare R2 or AWS S3), with `raw/` and `reels/` prefixes |
 | Transcode | ffmpeg in the worker container |
 | Video delivery to Meta | `video_url` = presigned GET URL valid ≥ 2 h. **Don't use resumable upload**: the docs say it may require Facebook Login. |
 | Auth for operators | Auth.js (email magic link) |
 | Token encryption | AES-256-GCM. The key comes from the `TOKEN_ENC_KEY` env var (32 bytes, base64). |
 | Tests | Vitest for unit tests. Mock the Meta HTTP calls in unit tests and use a real test account for the e2e check. |
-| Local dev | `docker compose` with postgres, redis, and minio (S3-compatible) |
+| Local dev | `docker compose` with postgres and minio (S3-compatible) |
 
 ## 4. Meta API reference (verified 2026-10-09, Graph API v26.0)
 
@@ -158,13 +158,13 @@ Browser (Next.js UI) ──OAuth──► instagram.com ──code──► /api
    ▼                                                      ▼
 bucket raw/ ──► [worker: transcode job] ──► bucket reels/   Postgres
                                                           ▲
-[BullMQ delayed jobs on Redis] ──► [worker: publish job] ─┘──► graph.instagram.com
+[pg-boss delayed jobs in Postgres] ──► [worker: publish job] ─┘──► graph.instagram.com
 [repeatable jobs: token-refresh daily, insights hourly]
 ```
 
 Processes:
 - `web`: Next.js
-- `worker`: a single Node process running BullMQ workers for the queues `transcode`, `publish`, `refresh`, `insights`
+- `worker`: a single Node process running pg-boss workers for the queues `transcode`, `publish`, `refresh`, `insights`
 
 ## 6. Data model (Prisma)
 
@@ -185,7 +185,7 @@ AuditLog    id, actorId?, action, targetType, targetId, data Json, at
 
 ## 7. Publish job: exact behavior
 
-Each post gets one BullMQ job: `jobId = post.id`, `delay = scheduledAt - now - 45min`. If that is negative, run it now.
+Each post gets one pg-boss job, set to start at `scheduledAt - 45min` (or now, if that has passed). Its id is stored in `Post.queueJobId`, so a cancel can remove the job.
 
 1. Load the post and its account. Throw if the account is not `active`, or if `pausedUntil` is in the future.
 2. **Idempotency.** If `post.igMediaId` is set, stop: the post is already published.
@@ -204,7 +204,7 @@ Each post gets one BullMQ job: `jobId = post.id`, `delay = scheduledAt - now - 4
 - Retryable: 5xx responses, network errors, and rate-limit codes 4, 17, 32 and 613. Retry these with exponential backoff and jitter, up to 5 attempts.
 - Everything else, other 4xx responses and code 190 included, fails immediately and sends an alert.
 
-**Concurrency.** Each account publishes at most one post at a time. Enforce this with a Redis lock keyed by `accountId`.
+**Concurrency.** Each account publishes at most one post at a time. Enforce this with a lease on the account row (`IgAccount.lockedUntil`, 15 minutes).
 
 ## 8. Milestones (the loop works through these in order)
 
@@ -214,7 +214,7 @@ Each milestone ends with:
 - one commit, with a message of the form `feat(mN): ...`.
 
 - [ ] **M1 Scaffold.**
-  - Set up Next.js + TS strict, Prisma, docker-compose (postgres, redis, minio), Vitest, ESLint, and `.env.example`.
+  - Set up Next.js + TS strict, Prisma, docker-compose (postgres, minio), Vitest, ESLint, and `.env.example`.
   - *Accept:* `docker compose up` works, `pnpm dev` serves `/`, `pnpm test` runs one passing test.
 - [ ] **M2 Operator auth + schema.**
   - Add Auth.js email login and the full Prisma schema (§6) with a migration.

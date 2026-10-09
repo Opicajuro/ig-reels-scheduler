@@ -1,32 +1,49 @@
-import { afterAll, describe, expect, it } from "vitest";
-import Redis from "ioredis";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createAccountLock } from "./account-lock";
+import { prisma } from "./prisma";
 
-const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", { lazyConnect: false, maxRetriesPerRequest: 1 });
+const suffix = `${process.pid}-${Date.now()}`;
+let ownerId: string;
+let accountId: string;
+
+beforeAll(async () => {
+  const owner = await prisma.user.create({ data: { email: `lock-${suffix}@example.test` } });
+  ownerId = owner.id;
+  const account = await prisma.igAccount.create({
+    data: { ownerId, igUserId: `lock-${suffix}`, username: "lock-test", accountType: "BUSINESS" },
+  });
+  accountId = account.id;
+});
 
 afterAll(async () => {
-  await redis.quit();
+  await prisma.user.delete({ where: { id: ownerId } });
 });
 
 describe("createAccountLock", () => {
   it("lets one holder in at a time and admits the next holder after release", async () => {
-    const lock = createAccountLock(redis);
-    const key = `test-lock-${Date.now()}`;
+    const lock = createAccountLock(prisma);
 
-    expect(await lock.acquire(key)).toBe(true);
-    expect(await lock.acquire(key)).toBe(false);
+    expect(await lock.acquire(accountId)).toBe(true);
+    expect(await lock.acquire(accountId)).toBe(false);
 
-    await lock.release(key);
-    expect(await lock.acquire(key)).toBe(true);
-    await lock.release(key);
+    await lock.release(accountId);
+    expect(await lock.acquire(accountId)).toBe(true);
+    await lock.release(accountId);
   });
 
-  it("expires a lock whose holder never released it", async () => {
-    const lock = createAccountLock(redis);
-    const key = `test-lock-expiry-${Date.now()}`;
-    await redis.set(`account-lock:${key}`, "stale", "PX", 50);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(await lock.acquire(key)).toBe(true);
-    await lock.release(key);
+  it("keeps a lease that has not run out", async () => {
+    const lock = createAccountLock(prisma);
+    await prisma.igAccount.update({ where: { id: accountId }, data: { lockedUntil: new Date(Date.now() + 60_000) } });
+
+    expect(await lock.acquire(accountId)).toBe(false);
+    await lock.release(accountId);
+  });
+
+  it("takes over a lease whose time has passed", async () => {
+    const lock = createAccountLock(prisma);
+    await prisma.igAccount.update({ where: { id: accountId }, data: { lockedUntil: new Date(Date.now() - 1000) } });
+
+    expect(await lock.acquire(accountId)).toBe(true);
+    await lock.release(accountId);
   });
 });

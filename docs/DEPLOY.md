@@ -6,8 +6,7 @@ This guide deploys the scheduler to Render. It needs four services:
 | --- | --- | --- |
 | Web | Next.js app (`pnpm start`) | Serves the operator UI and the Meta callbacks. |
 | Worker | Background jobs (`pnpm worker`) | Needs ffmpeg, so deploy it from `Dockerfile.worker`. |
-| Postgres | Database | Managed Postgres 16. |
-| Redis | Queues and account locks | Managed Redis 7. |
+| Postgres | Database and job queue | Managed Postgres 16. The job queue (pg-boss) runs in the same database. |
 
 Storage is Cloudflare R2, which speaks the S3 API. Create one bucket, for example `ig-reels`.
 
@@ -22,10 +21,10 @@ Storage is Cloudflare R2, which speaks the S3 API. Create one bucket, for exampl
 
 Keep `TOKEN_ENC_KEY` safe. If it is lost, every stored Instagram token becomes unreadable.
 
-## 2. Create the database and Redis
+## 2. Create the database
 
 1. Create a Postgres 16 instance. Copy its internal connection string into `DATABASE_URL`.
-2. Create a Redis 7 instance. Copy its internal URL into `REDIS_URL`.
+2. The job queue creates its own tables (schema `pgboss`) on first start, so the database user needs permission to create a schema.
 
 ## 3. Set the environment variables
 
@@ -34,7 +33,6 @@ Set these on both the web and the worker service, unless noted.
 | Variable | Value |
 | --- | --- |
 | `DATABASE_URL` | Postgres connection string |
-| `REDIS_URL` | Redis URL |
 | `S3_ENDPOINT` | `https://<account-id>.r2.cloudflarestorage.com` |
 | `S3_BUCKET` | `ig-reels` (or your bucket name) |
 | `S3_ACCESS_KEY` | R2 access key ID |
@@ -92,7 +90,7 @@ Run these in order and fix anything that fails before you move on.
 1. Sign in with your email from the sign-in link.
 2. Connect a test Business or Creator account on the Accounts page.
 3. Upload a short video and wait for "ready" on the Dashboard.
-4. Schedule the video for about 50 minutes ahead. Check that its job appears in Redis and runs at the scheduled time.
+4. Schedule the video for about 50 minutes ahead. Check that its job is in the `pgboss.job` table with a start time 45 minutes before publish time.
 5. After publishing, open the post page and check the permalink. Wait for the 1-hour insights.
 
 ## 8. Operations

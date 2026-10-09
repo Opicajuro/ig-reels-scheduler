@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { getInsights, parseInsights, pullInsights, scheduleInsightPulls } from "./insights";
-import type { PublishQueue } from "./scheduling";
+import type { InsightQueue } from "./queues";
 
 const HOUR = 60 * 60 * 1000;
 const NOW = new Date("2026-10-12T12:00:00Z");
@@ -24,21 +24,21 @@ describe("parseInsights", () => {
 
 describe("scheduleInsightPulls", () => {
   it("queues pulls at 1 hour, 24 hours, and 7 days after publishing", async () => {
-    const added: Array<{ name: string; jobId: string; delay: number }> = [];
-    const queue: PublishQueue = {
-      add: async (name, _data, opts) => {
-        added.push({ name, jobId: opts.jobId, delay: opts.delay });
+    const sent: Array<{ postId: string; label: string; runAt: Date }> = [];
+    const queue: InsightQueue = {
+      send: async (postId, label, runAt) => {
+        sent.push({ postId, label, runAt });
+        return null;
       },
-      remove: async () => 1,
     };
     const publishedAt = new Date(NOW.getTime() - 2 * HOUR);
 
     await scheduleInsightPulls(queue, { postId: "post-1", publishedAt, now: NOW });
 
-    expect(added).toEqual([
-      { name: "pull", jobId: "post-1:1h", delay: 0 },
-      { name: "pull", jobId: "post-1:24h", delay: 22 * HOUR },
-      { name: "pull", jobId: "post-1:7d", delay: 6 * 24 * HOUR + 22 * HOUR },
+    expect(sent).toEqual([
+      { postId: "post-1", label: "1h", runAt: NOW },
+      { postId: "post-1", label: "24h", runAt: new Date(NOW.getTime() + 22 * HOUR) },
+      { postId: "post-1", label: "7d", runAt: new Date(NOW.getTime() + 166 * HOUR) },
     ]);
   });
 });

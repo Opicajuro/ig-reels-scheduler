@@ -1,18 +1,21 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { cancelScheduledPost, createScheduledPost } from "./posts";
-import type { PublishQueue } from "./scheduling";
+import type { PublishQueue } from "./queues";
 
 const NOW = new Date("2026-10-10T12:00:00Z");
 const FUTURE = new Date(NOW.getTime() + 3 * 60 * 60 * 1000).toISOString();
 
-function fakeDeps(options: { media?: { status: string } | null; post?: { status: string } | null } = {}) {
+function fakeDeps(
+  options: { media?: { status: string } | null; post?: { status: string; queueJobId: string | null } | null } = {},
+) {
   const created: Array<Record<string, unknown>> = [];
   const updated: Array<Record<string, unknown>> = [];
   const queued: string[] = [];
   const removed: string[] = [];
   const media = options.media === undefined ? { status: "ready" } : options.media;
-  const post = options.post === undefined ? { id: "post-1", status: "scheduled" } : options.post;
+  const post =
+    options.post === undefined ? { id: "post-1", status: "scheduled", queueJobId: "job-post-1" } : options.post;
   const db = {
     media: { findFirst: async () => media },
     post: {
@@ -28,12 +31,12 @@ function fakeDeps(options: { media?: { status: string } | null; post?: { status:
     },
   };
   const queue: PublishQueue = {
-    add: async (_name, data) => {
-      queued.push(data.postId);
+    send: async (postId) => {
+      queued.push(postId);
+      return `job-${postId}`;
     },
-    remove: async (jobId) => {
+    cancel: async (jobId) => {
       removed.push(jobId);
-      return 1;
     },
   };
   return { db: db as unknown as PrismaClient, queue, created, updated, queued, removed };
@@ -49,6 +52,7 @@ describe("createScheduledPost", () => {
     expect(post.id).toBe("post-1");
     expect(deps.created[0]).toMatchObject({ accountId: "acc-1", mediaId: "media-1", caption: "Big win!" });
     expect(deps.queued).toEqual(["post-1"]);
+    expect(deps.updated).toEqual([{ queueJobId: "job-post-1" }]);
   });
 
   it("rejects a caption that breaks the Instagram limits", async () => {
@@ -75,12 +79,20 @@ describe("createScheduledPost", () => {
 });
 
 describe("cancelScheduledPost", () => {
-  it("marks a scheduled post canceled and removes its job", async () => {
+  it("marks a scheduled post canceled and removes the job stored on it", async () => {
     const deps = fakeDeps();
     await cancelScheduledPost({ db: deps.db, queue: deps.queue, ownerId: "user-1", postId: "post-1" });
 
     expect(deps.updated).toEqual([{ status: "canceled" }]);
-    expect(deps.removed).toEqual(["post-1"]);
+    expect(deps.removed).toEqual(["job-post-1"]);
+  });
+
+  it("marks the post canceled without touching the queue when it has no job", async () => {
+    const deps = fakeDeps({ post: { status: "scheduled", queueJobId: null } });
+    await cancelScheduledPost({ db: deps.db, queue: deps.queue, ownerId: "user-1", postId: "post-1" });
+
+    expect(deps.updated).toEqual([{ status: "canceled" }]);
+    expect(deps.removed).toEqual([]);
   });
 
   it("refuses to cancel a post that is not scheduled", async () => {
