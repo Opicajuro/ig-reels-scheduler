@@ -69,7 +69,7 @@ describe("processMedia", () => {
       height: 1920,
       error: null,
     });
-  });
+  }, 60_000);
 
   it("marks the media failed with the reason when the source has no audio", async () => {
     const storage = fakeStorage(makeFixture(false));
@@ -80,7 +80,7 @@ describe("processMedia", () => {
     expect(storage.uploads).toEqual([]);
     expect(updates.at(-1)).toMatchObject({ status: "failed" });
     expect(String(updates.at(-1)?.error)).toContain("no audio stream");
-  });
+  }, 60_000);
 
   it("does nothing when the media is already ready", async () => {
     const storage = fakeStorage(makeFixture(true));

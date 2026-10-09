@@ -8,9 +8,17 @@ export function redisConnection() {
   return { host: url.hostname, port: Number(url.port || 6379) };
 }
 
+export const PUBLISH_QUEUE = "publish";
+
 let mediaQueue: Queue | undefined;
+let publishQueue: Queue | undefined;
 
 export function enqueueMediaProcess(mediaId: string) {
   mediaQueue ??= new Queue(MEDIA_QUEUE, { connection: redisConnection() });
   return mediaQueue.add("process", { mediaId }, { jobId: mediaId });
+}
+
+export function getPublishQueue(): Queue {
+  publishQueue ??= new Queue(PUBLISH_QUEUE, { connection: redisConnection() });
+  return publishQueue;
 }
