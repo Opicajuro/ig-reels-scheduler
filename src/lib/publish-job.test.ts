@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { MetaApiError } from "./meta-errors";
-import { publishPost, type PublishMeta } from "./publish-job";
+import { Deferred, publishPost, type PublishMeta } from "./publish-job";
 
 const NOW = new Date("2026-10-12T18:00:00Z");
+const HOUR = 60 * 60 * 1000;
 
 type PostRow = {
   id: string;
@@ -101,6 +102,17 @@ function fakeMeta(overrides: Partial<PublishMeta> = {}): PublishMeta & { calls: 
 const lockOk = { acquire: async () => true, release: async () => {} };
 const noSleep = async () => {};
 
+// Records every deferral so tests can check when the job asked to run again.
+let deferrals: Date[] = [];
+const deferUntil = async (at: Date): Promise<never> => {
+  deferrals.push(at);
+  throw new Deferred("deferred");
+};
+
+beforeEach(() => {
+  deferrals = [];
+});
+
 function run(db: PrismaClient, meta: PublishMeta, extra: Partial<Parameters<typeof publishPost>[0]> = {}) {
   return publishPost({
     db,
@@ -111,6 +123,7 @@ function run(db: PrismaClient, meta: PublishMeta, extra: Partial<Parameters<type
     getToken: async () => "tok",
     lock: lockOk,
     sleep: noSleep,
+    deferUntil,
     ...extra,
   });
 }
@@ -123,16 +136,35 @@ describe("publishPost (spec section 7)", () => {
     expect(meta.calls).toEqual([]);
   });
 
+  it("skips a canceled post without calling Meta", async () => {
+    const { db } = fakeDb(makePost({ status: "canceled" }));
+    const meta = fakeMeta();
+    await run(db, meta);
+    expect(meta.calls).toEqual([]);
+  });
+
   it("throws when the account is not active", async () => {
     const { db } = fakeDb(makePost({ account: { igUserId: "1", status: "revoked", pausedUntil: null } }));
     await expect(run(db, fakeMeta())).rejects.toThrow("account is not active");
   });
 
-  it("throws when the account is paused into the future", async () => {
-    const { db } = fakeDb(
-      makePost({ account: { igUserId: "1", status: "active", pausedUntil: new Date(NOW.getTime() + 60_000) } }),
-    );
-    await expect(run(db, fakeMeta())).rejects.toThrow("account is paused");
+  it("defers until the pause ends when the account is paused", async () => {
+    const pausedUntil = new Date(NOW.getTime() + 60_000);
+    const { db } = fakeDb(makePost({ account: { igUserId: "1", status: "active", pausedUntil } }));
+    const meta = fakeMeta();
+    await expect(run(db, meta)).rejects.toBeInstanceOf(Deferred);
+    expect(deferrals).toEqual([pausedUntil]);
+    expect(meta.calls).toEqual([]);
+  });
+
+  it("defers for a minute when another job holds this account's lock", async () => {
+    const { db } = fakeDb(makePost());
+    const meta = fakeMeta();
+    await expect(
+      run(db, meta, { lock: { acquire: async () => false, release: async () => {} } }),
+    ).rejects.toBeInstanceOf(Deferred);
+    expect(deferrals).toEqual([new Date(NOW.getTime() + 60_000)]);
+    expect(meta.calls).toEqual([]);
   });
 
   it("creates the container, waits for it, checks quota, publishes, and stores the permalink", async () => {
@@ -143,12 +175,35 @@ describe("publishPost (spec section 7)", () => {
 
     expect(meta.calls).toEqual(["create", "status", "quota", "publish", "permalink"]);
     expect(updates).toContainEqual({ containerId: "container-1", status: "container_created" });
-    expect(updates.at(-1)).toEqual({
-      igMediaId: "media-9",
-      permalink: "https://instagram.com/reel/abc",
-      status: "published",
-    });
+    expect(updates).toContainEqual({ igMediaId: "media-9", status: "published" });
+    expect(updates.at(-1)).toEqual({ permalink: "https://instagram.com/reel/abc" });
     expect(attempts.map((a) => a.step)).toEqual(["create", "poll", "quota", "publish"]);
+  });
+
+  it("keeps the post published when the permalink lookup fails, because the Reel is already live", async () => {
+    const { db, updates } = fakeDb(makePost());
+    const meta = fakeMeta({
+      getPermalink: async () => {
+        throw new MetaApiError(500, undefined, "unavailable");
+      },
+    });
+
+    await run(db, meta);
+
+    expect(updates).toContainEqual({ igMediaId: "media-9", status: "published" });
+    expect(updates.some((u) => u.status === "failed")).toBe(false);
+  });
+
+  it("waits for the scheduled time after the container is ready, before quota and publish", async () => {
+    const scheduledAt = new Date(NOW.getTime() + HOUR);
+    const { db, updates } = fakeDb(makePost({ scheduledAt }));
+    const meta = fakeMeta();
+
+    await expect(run(db, meta)).rejects.toBeInstanceOf(Deferred);
+
+    expect(meta.calls).toEqual(["create", "status"]);
+    expect(updates).toContainEqual({ containerId: "container-1", status: "container_created" });
+    expect(deferrals).toEqual([scheduledAt]);
   });
 
   it("reuses an existing container that is already FINISHED", async () => {
@@ -186,10 +241,11 @@ describe("publishPost (spec section 7)", () => {
     expect(meta.calls.filter((c) => c === "status")).toHaveLength(5);
   });
 
-  it("throws (so the job retries later) when the daily quota is used up", async () => {
+  it("defers to the next hour when the daily quota is used up, and does not publish", async () => {
     const { db } = fakeDb(makePost());
     const meta = fakeMeta({ getPublishingLimit: async () => ({ quotaUsage: 50, quotaTotal: 50 }) });
-    await expect(run(db, meta)).rejects.toThrow("publishing quota is used up");
+    await expect(run(db, meta)).rejects.toBeInstanceOf(Deferred);
+    expect(deferrals).toEqual([new Date(NOW.getTime() + HOUR)]);
     expect(meta.calls).not.toContain("publish");
   });
 
@@ -215,10 +271,21 @@ describe("publishPost (spec section 7)", () => {
     await expect(run(db, meta)).rejects.toThrow("unavailable");
   });
 
-  it("throws when another job already holds this account's lock", async () => {
-    const { db } = fakeDb(makePost());
-    await expect(run(db, fakeMeta(), { lock: { acquire: async () => false, release: async () => {} } })).rejects.toThrow(
-      "account is busy",
-    );
+  it("pauses the account for the time Meta reports when BUC usage is high, and defers", async () => {
+    const { db, accountUpdates } = fakeDb(makePost());
+    const meta = fakeMeta({
+      createContainer: async (args) => {
+        meta.calls.push("create");
+        args.onBucPause?.(900);
+        return "container-1";
+      },
+    });
+
+    await expect(run(db, meta)).rejects.toBeInstanceOf(Deferred);
+
+    const pausedUntil = new Date(NOW.getTime() + 900_000);
+    expect(accountUpdates).toEqual([{ pausedUntil }]);
+    expect(deferrals).toEqual([pausedUntil]);
+    expect(meta.calls).not.toContain("publish");
   });
 });
