@@ -7,11 +7,16 @@ import { MEDIA_QUEUE, PUBLISH_QUEUE, redisConnection } from "@/lib/queues";
 import { processMedia } from "@/lib/media-jobs";
 import { presignDownload, presignUpload } from "@/lib/storage";
 import { createPublishProcessor } from "./publish-processor";
+import { sendOwnerAlerts } from "@/lib/alert-job";
+import { sendEmail } from "@/lib/alerts";
 import Redis from "ioredis";
 
 const QUEUE_NAME = "token-refresh";
 const SCHEDULER_ID = "daily-token-refresh";
 const DAILY_AT_03_UTC = "0 3 * * *";
+const ALERTS_QUEUE = "owner-alerts";
+const ALERTS_SCHEDULER_ID = "daily-owner-alerts";
+const DAILY_AT_08_UTC = "0 8 * * *";
 const DOWNLOAD_LIFETIME_SECONDS = 7200;
 
 async function main() {
@@ -44,6 +49,16 @@ async function main() {
 
   const lockRedis = new Redis(requireEnv("REDIS_URL"), { maxRetriesPerRequest: null });
   new Worker(PUBLISH_QUEUE, createPublishProcessor(lockRedis), { connection });
+
+  const alertsQueue = new Queue(ALERTS_QUEUE, { connection });
+  await alertsQueue.upsertJobScheduler(ALERTS_SCHEDULER_ID, { pattern: DAILY_AT_08_UTC }, { name: "alerts" });
+  new Worker(
+    ALERTS_QUEUE,
+    async () => {
+      await sendOwnerAlerts({ db: prisma, now: new Date(), send: sendEmail });
+    },
+    { connection },
+  );
 
   console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media and publishing enabled`);
 }
