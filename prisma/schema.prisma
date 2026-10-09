@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String      @id @default(cuid())
+  email     String      @unique
+  createdAt DateTime    @default(now())
+  accounts  IgAccount[]
+  auditLogs AuditLog[]
+}
+
+enum AccountStatus {
+  active
+  reauth_required
+  revoked
+}
+
+model IgAccount {
+  id          String        @id @default(cuid())
+  ownerId     String
+  owner       User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  igUserId    String        @unique
+  username    String
+  accountType String
+  timezone    String        @default("UTC")
+  status      AccountStatus @default(active)
+  pausedUntil DateTime?
+  createdAt   DateTime      @default(now())
+  token       IgToken?
+  media       Media[]
+  posts       Post[]
+}
+
+model IgToken {
+  accountId       String    @id
+  account         IgAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  ciphertext      Bytes
+  iv              Bytes
+  authTag         Bytes
+  expiresAt       DateTime
+  lastRefreshedAt DateTime?
+}
+
+enum MediaStatus {
+  uploaded
+  transcoding
+  ready
+  failed
+}
+
+model Media {
+  id         String      @id @default(cuid())
+  accountId  String
+  account    IgAccount   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  rawKey     String
+  reelKey    String?
+  coverKey   String?
+  durationMs Int?
+  width      Int?
+  height     Int?
+  status     MediaStatus @default(uploaded)
+  error      String?
+  posts      Post[]
+}
+
+enum PostStatus {
+  scheduled
+  container_created
+  published
+  failed
+  canceled
+}
+
+model Post {
+  id          String        @id @default(cuid())
+  accountId   String
+  account     IgAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  mediaId     String
+  media       Media         @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  caption     String
+  shareToFeed Boolean       @default(true)
+  scheduledAt DateTime
+  status      PostStatus    @default(scheduled)
+  containerId String?
+  igMediaId   String?
+  permalink   String?
+  attempts    Int           @default(0)
+  lastError   String?
+  attemptLogs PublishAttempt[]
+  insights    Insight[]
+}
+
+enum AttemptStep {
+  create
+  poll
+  publish
+  quota
+}
+
+model PublishAttempt {
+  id        String      @id @default(cuid())
+  postId    String
+  post      Post        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  step      AttemptStep
+  httpStatus Int?
+  errorCode Int?
+  response  Json
+  at        DateTime    @default(now())
+}
+
+model Insight {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  metric    String
+  value     Float
+  fetchedAt DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action     String
+  targetType String
+  targetId   String
+  data       Json
+  at         DateTime @default(now())
+}
