@@ -19,6 +19,9 @@ export function enqueueMediaProcess(mediaId: string) {
 }
 
 export function getPublishQueue(): Queue {
-  publishQueue ??= new Queue(PUBLISH_QUEUE, { connection: redisConnection() });
+  publishQueue ??= new Queue(PUBLISH_QUEUE, {
+    connection: redisConnection(),
+    defaultJobOptions: { attempts: 5, backoff: { type: "exponential", delay: 60_000 } },
+  });
   return publishQueue;
 }

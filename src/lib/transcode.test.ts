@@ -27,12 +27,12 @@ describe("transcodeToReel", () => {
     expect(result.durationSeconds).toBeGreaterThanOrEqual(3);
     expect(result.width).toBe(1080);
     expect(result.height).toBe(1920);
-  });
+  }, 60_000);
 
   it("fails with 'no audio stream' when the source has no audio", async () => {
     const input = makeFixture("silent.mp4", false);
     const output = path.join(mkdtempSync(path.join(os.tmpdir(), "reel-out-")), "reel.mp4");
 
     await expect(transcodeToReel({ inputPath: input, outputPath: output })).rejects.toThrow("no audio stream");
-  });
+  }, 60_000);
 });

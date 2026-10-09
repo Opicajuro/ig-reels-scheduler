@@ -27,7 +27,7 @@ importers:
         specifier: 6.3.12
         version: 6.3.12(ioredis@5.11.1)(pg@8.23.1)
       ioredis:
-        specifier: ^5.11.1
+        specifier: '5'
         version: 5.11.1
       next:
         specifier: 16.4.0

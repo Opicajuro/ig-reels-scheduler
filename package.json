@@ -18,7 +18,7 @@
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "bullmq": "6.3.12",
-    "ioredis": "^5.11.1",
+    "ioredis": "5",
     "next": "16.4.0",
     "next-auth": "5.0.0-beta.32",
     "pg": "^8.23.1",

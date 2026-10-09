@@ -3,9 +3,11 @@ import { requireEnv } from "@/lib/env";
 import { refreshDueTokens } from "@/lib/refresh-job";
 import { prisma } from "@/lib/prisma";
 import { loadTokenKey } from "@/lib/token-crypto";
-import { MEDIA_QUEUE, redisConnection } from "@/lib/queues";
+import { MEDIA_QUEUE, PUBLISH_QUEUE, redisConnection } from "@/lib/queues";
 import { processMedia } from "@/lib/media-jobs";
 import { presignDownload, presignUpload } from "@/lib/storage";
+import { createPublishProcessor } from "./publish-processor";
+import Redis from "ioredis";
 
 const QUEUE_NAME = "token-refresh";
 const SCHEDULER_ID = "daily-token-refresh";
@@ -40,7 +42,10 @@ async function main() {
     { connection },
   );
 
-  console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media processing enabled`);
+  const lockRedis = new Redis(requireEnv("REDIS_URL"), { maxRetriesPerRequest: null });
+  new Worker(PUBLISH_QUEUE, createPublishProcessor(lockRedis), { connection });
+
+  console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media and publishing enabled`);
 }
 
 main().catch((err) => {
