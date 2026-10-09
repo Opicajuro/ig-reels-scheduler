@@ -43,3 +43,6 @@ next-env.d.ts
 # generated Prisma client
 /src/generated/
 !.env.example
+
+# Redis snapshot written by a local redis-server
+dump.rdb
