@@ -29,9 +29,15 @@ export function enqueueMediaProcess(mediaId: string) {
 }
 
 export function getPublishQueue(): Queue {
+  // Finished jobs are removed so a manual retry can queue the same post id again.
   publishQueue ??= new Queue(PUBLISH_QUEUE, {
     connection: redisConnection(),
-    defaultJobOptions: { attempts: 5, backoff: { type: "exponential", delay: 60_000 } },
+    defaultJobOptions: {
+      attempts: 5,
+      backoff: { type: "exponential", delay: 60_000 },
+      removeOnComplete: true,
+      removeOnFail: true,
+    },
   });
   return publishQueue;
 }
