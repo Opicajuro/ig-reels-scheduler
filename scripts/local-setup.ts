@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
-import { fillGeneratedSecrets, parseEnv, renderEnv, type EnvValues } from "./wizard-env";
+import { assertPlainValue, fillGeneratedSecrets, parseEnv, renderEnv, type EnvValues } from "./wizard-env";
 import { ensureBucket, storageClient } from "./wizard-storage";
 
 // Settings for a Windows install where Postgres and file storage (SeaweedFS) run on this PC, with no Docker.
@@ -75,6 +75,7 @@ async function main() {
   };
   const generate = () => randomBytes(32).toString("base64");
   const values = buildLocalValues(install, generate);
+  for (const [key, value] of Object.entries(values)) assertPlainValue(key, value);
 
   const template = await readFile(".env.example", "utf8");
   const existing = await readFile(".env", "utf8").then(parseEnv).catch(() => ({} as EnvValues));
