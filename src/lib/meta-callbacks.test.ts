@@ -48,7 +48,10 @@ describe("revokeAccount", () => {
       {
         model: "post",
         method: "findMany",
-        args: { where: { account: { igUserId: "17841" }, status: "scheduled" }, select: { id: true, queueJobId: true } },
+        args: {
+          where: { account: { igUserId: "17841" }, status: { in: ["scheduled", "container_created"] } },
+          select: { id: true, queueJobId: true },
+        },
       },
       {
         model: "post",

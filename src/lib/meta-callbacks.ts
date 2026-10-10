@@ -4,7 +4,7 @@ import type { PublishQueue } from "./queues";
 // Cancels the account's scheduled posts and removes their publish jobs, so nothing is left queued for a revoked account.
 async function cancelScheduledPosts(db: PrismaClient, queue: PublishQueue, igUserId: string) {
   const scheduled = await db.post.findMany({
-    where: { account: { igUserId }, status: "scheduled" },
+    where: { account: { igUserId }, status: { in: ["scheduled", "container_created"] } },
     select: { id: true, queueJobId: true },
   });
   await db.post.updateMany({

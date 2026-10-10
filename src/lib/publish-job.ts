@@ -165,7 +165,11 @@ async function createContainer(deps: PublishDeps, post: Post, token: string): Pr
       onBucPause,
     }),
   );
-  await deps.db.post.update({ where: { id: post.id }, data: { containerId, status: "container_created" } });
+  // Conditional, so a cancel that lands while the container is created is not overwritten.
+  await deps.db.post.updateMany({
+    where: { id: post.id, status: { in: ["scheduled", "container_created"] } },
+    data: { containerId, status: "container_created" },
+  });
   return containerId;
 }
 
@@ -186,7 +190,15 @@ async function publishLocked(deps: PublishDeps, post: Post) {
     containerId = await createContainer(deps, post, token);
     state = await awaitContainer(deps, post, containerId, token);
   }
-  if (state === "published") return failAndStop(deps, post, "container already published; media id unknown");
+  // The Reel is already live (an earlier publish call succeeded but its response was lost). Marking the post failed
+  // would let Retry post it a second time, so it is recorded as published.
+  if (state === "published") {
+    await deps.db.post.update({
+      where: { id: post.id },
+      data: { status: "published", lastError: "published; Meta did not return the media id" },
+    });
+    return;
+  }
   if (state !== "ready") return failAndStop(deps, post, `container ${state}`);
   await record(deps, post, "poll", 200, null, {});
 
@@ -200,6 +212,8 @@ async function publishLocked(deps: PublishDeps, post: Post) {
   if (limit.quotaUsage >= limit.quotaTotal) await deps.deferUntil(new Date(deps.now.getTime() + QUOTA_RETRY_MS));
 
   await guardPause(deps, post);
+  const current = await deps.db.post.findUnique({ where: { id: post.id }, select: { status: true } });
+  if (current?.status === "canceled") return;
   const igMediaId = await callMeta(deps, post, "publish", (onBucPause) =>
     deps.meta.publishContainer({ igUserId, containerId: containerId as string, token, onBucPause }),
   );

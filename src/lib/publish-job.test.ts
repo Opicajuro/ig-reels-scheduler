@@ -43,16 +43,22 @@ function makePost(overrides: Partial<PostRow> = {}): PostRow {
   };
 }
 
-function fakeDb(post: PostRow | null) {
+// statusBeforePublish is what the job reads when it re-checks the post just before media_publish.
+function fakeDb(post: PostRow | null, statusBeforePublish?: string) {
   const updates: Array<Record<string, unknown>> = [];
   const accountUpdates: Array<Record<string, unknown>> = [];
   const attempts: Array<Record<string, unknown>> = [];
   const db = {
     post: {
-      findUnique: async () => post,
+      findUnique: async (args: { select?: unknown }) =>
+        args.select && post ? { status: statusBeforePublish ?? post.status } : post,
       update: async ({ data }: { data: Record<string, unknown> }) => {
         updates.push(data);
         return {};
+      },
+      updateMany: async ({ data }: { data: Record<string, unknown> }) => {
+        updates.push(data);
+        return { count: 1 };
       },
     },
     igAccount: {
@@ -226,6 +232,22 @@ describe("publishPost (spec section 7)", () => {
     const meta = fakeMeta({ getContainerStatus: async () => "ERROR" });
     await run(db, meta);
     expect(updates.at(-1)).toMatchObject({ status: "failed" });
+    expect(meta.calls).not.toContain("publish");
+  });
+
+  it("records the post as published, not failed, when the container is already PUBLISHED, so Retry cannot post it twice", async () => {
+    const { db, updates } = fakeDb(makePost({ containerId: "container-old" }));
+    const meta = fakeMeta({ getContainerStatus: async () => "PUBLISHED" });
+    await run(db, meta);
+    expect(updates.at(-1)).toMatchObject({ status: "published" });
+    expect(meta.calls).not.toContain("publish");
+    expect(meta.calls).not.toContain("create");
+  });
+
+  it("does not publish when the post was canceled while its container was being prepared", async () => {
+    const { db } = fakeDb(makePost(), "canceled");
+    const meta = fakeMeta();
+    await run(db, meta);
     expect(meta.calls).not.toContain("publish");
   });
 

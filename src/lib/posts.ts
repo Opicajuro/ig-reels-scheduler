@@ -60,10 +60,11 @@ export async function cancelScheduledPost({
   postId: string;
 }) {
   const post = await db.post.findFirst({
-    where: { id: postId, status: "scheduled", account: { ownerId } },
+    where: { id: postId, status: { in: ["scheduled", "container_created"] }, account: { ownerId } },
   });
   if (!post) throw new Error("post is not scheduled");
 
+  // container_created covers the 45 minutes before publish; the publish job checks for canceled before publishing.
   await db.post.update({ where: { id: postId }, data: { status: "canceled" } });
   if (post.queueJobId) await queue.cancel(post.queueJobId);
 }
