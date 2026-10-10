@@ -41,6 +41,23 @@ try {
     }
   }
 
+  # Resend only sends from onboarding@resend.dev or from a domain verified in the Resend account. Free mail
+  # domains such as gmail.com can never be verified there, and a sender on one makes every sign-in fail.
+  $testSender = "Localirs <onboarding@resend.dev>"
+  function Test-SenderAddress([string]$value) {
+    if (-not (Test-PlainValue $value)) { return $false }
+    return $value -notmatch "@(gmail|googlemail|outlook|hotmail|live|msn|yahoo|icloud|me|aol|gmx|proton|protonmail|seznam|azet|centrum|zoznam|post)\.[a-z.]+>?\s*$"
+  }
+
+  function Read-SenderAddress {
+    while ($true) {
+      $answer = (Read-Host "Sender address. Press Enter to use $testSender, which only sends to your Resend account's email; or type an address on a domain you verified in Resend").Trim()
+      if ($answer -eq "") { return $testSender }
+      if (Test-SenderAddress $answer) { return $answer }
+      Write-Host "Resend cannot send from that address (gmail.com, outlook.com and similar can't be verified). Press Enter for the test sender." -ForegroundColor Yellow
+    }
+  }
+
   $secretsPath = Join-Path $data "secrets.json"
   if (Test-Path $secretsPath) {
     $secrets = Get-Content $secretsPath -Raw | ConvertFrom-Json
@@ -55,10 +72,12 @@ try {
     }
   }
   # Asked on the first run, and again on a later run if a saved answer is missing or unusable.
-  if (-not (Test-PlainValue $secrets.resendApiKey) -or -not (Test-PlainValue $secrets.emailFrom)) {
+  if (-not (Test-PlainValue $secrets.resendApiKey) -or -not (Test-SenderAddress $secrets.emailFrom)) {
     Write-Host "Localirs setup. You need a Resend account for sign-in emails (https://resend.com)."
-    $secrets.resendApiKey = Read-PlainValue "Resend API key (starts with re_)"
-    $secrets.emailFrom = Read-PlainValue "Sender address on a domain you verified in Resend (to test, use Localirs <onboarding@resend.dev>, which only sends to your Resend account's email)"
+    if (-not (Test-PlainValue $secrets.resendApiKey)) {
+      $secrets.resendApiKey = Read-PlainValue "Resend API key (starts with re_)"
+    }
+    $secrets.emailFrom = Read-SenderAddress
   }
   $secrets | ConvertTo-Json | Set-Content -Path $secretsPath
 
