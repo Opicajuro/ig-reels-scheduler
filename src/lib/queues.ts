@@ -6,6 +6,7 @@ export const PUBLISH_QUEUE = "publish";
 export const INSIGHTS_QUEUE = "insights";
 export const TOKEN_REFRESH_QUEUE = "token-refresh";
 export const OWNER_ALERTS_QUEUE = "owner-alerts";
+export const CLIP_QUEUE = "clip-project";
 
 // A publish job runs up to 5 times: the first try, then 4 retries 60 seconds apart, doubling each time.
 export const PUBLISH_RETRY_LIMIT = 4;
@@ -15,6 +16,10 @@ const INSIGHT_JOB_OPTIONS = { retryLimit: 2, retryDelay: 60, retryBackoff: true 
 export type PublishQueue = {
   send(postId: string, runAt: Date): Promise<string>;
   cancel(jobId: string): Promise<void>;
+};
+
+export type ClipQueue = {
+  send(projectId: string): Promise<string>;
 };
 
 export type InsightQueue = {
@@ -42,7 +47,7 @@ async function startBoss(): Promise<PgBoss> {
   const keyed = { policy: "short" as const };
   await instance.createQueue(MEDIA_QUEUE, keyed);
   await instance.createQueue(INSIGHTS_QUEUE, keyed);
-  for (const name of [PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE]) {
+  for (const name of [PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE]) {
     await instance.createQueue(name);
   }
   return instance;
@@ -57,6 +62,18 @@ export function getPublishQueue(): PublishQueue {
     },
     async cancel(jobId) {
       await (await getBoss()).cancel(PUBLISH_QUEUE, jobId);
+    },
+  };
+}
+
+// Rendering a long video can take hours, and pg-boss expires a job after 15 minutes by default. A render gets 6 hours.
+// It is not retried: a failed render is recorded on the project, and the person starts it again.
+export function getClipQueue(): ClipQueue {
+  return {
+    async send(projectId) {
+      const jobId = await (await getBoss()).send(CLIP_QUEUE, { projectId }, { retryLimit: 0, expireInSeconds: 6 * 60 * 60 });
+      if (jobId === null) throw new Error(`clip job for project ${projectId} was not queued`);
+      return jobId;
     },
   };
 }

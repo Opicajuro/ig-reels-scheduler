@@ -1,0 +1,24 @@
+import { test } from "vitest";
+import assert from "node:assert/strict";
+import { CAPTION_PRESET_NAMES, captionPreset } from "./remotion/caption-presets.js";
+import { HttpError, parseCaptionPreset } from "./helpers.js";
+
+test("there are three caption presets, and each one has a text color", () => {
+  assert.deepEqual(CAPTION_PRESET_NAMES, ["classic", "yellow", "box"]);
+  for (const name of CAPTION_PRESET_NAMES) {
+    assert.ok(captionPreset(name).color, `${name} needs a color`);
+  }
+});
+
+test("captionPreset rejects a name that is not a preset", () => {
+  assert.throws(() => captionPreset("neon"), /Unknown caption preset "neon"/);
+  assert.throws(() => captionPreset("constructor"), /Unknown caption preset "constructor"/);
+});
+
+test("parseCaptionPreset accepts a preset name and rejects anything else with a 400", () => {
+  assert.equal(parseCaptionPreset("yellow"), "yellow");
+  assert.throws(
+    () => parseCaptionPreset("neon"),
+    (err) => err instanceof HttpError && err.status === 400,
+  );
+});

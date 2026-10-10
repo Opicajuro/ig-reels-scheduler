@@ -18,6 +18,7 @@ model User {
   auditLogs     AuditLog[]
   authAccounts  Account[]
   sessions      Session[]
+  clipProjects  ClipProject[]
 }
 
 model Account {
@@ -173,4 +174,43 @@ model AuditLog {
   targetId   String
   data       Json
   at         DateTime @default(now())
+}
+
+enum ClipProjectStatus {
+  awaiting_source
+  ready
+  rendering
+  done
+  failed
+}
+
+model ClipProject {
+  id              String            @id @default(cuid())
+  ownerId         String
+  owner           User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name            String
+  sourceUrl       String?
+  sourceKey       String?
+  status          ClipProjectStatus @default(awaiting_source)
+  error           String?
+  durationSeconds Int?
+  clipSeconds     Int               @default(30)
+  clipCount       Int               @default(3)
+  withCaptions    Boolean           @default(false)
+  captionPreset   String?
+  createdAt       DateTime          @default(now())
+  clips           Clip[]
+}
+
+model Clip {
+  id          String      @id @default(cuid())
+  projectId   String
+  project     ClipProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  start       Int
+  length      Int
+  storageKey  String
+  title       String?
+  description String?
+  createdAt   DateTime    @default(now())
 }

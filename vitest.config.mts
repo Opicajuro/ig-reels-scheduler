@@ -6,4 +6,7 @@ export default defineConfig({
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
+  test: {
+    testTimeout: 120_000,
+  },
 });

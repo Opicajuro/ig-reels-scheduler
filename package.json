@@ -18,12 +18,16 @@
     "@aws-sdk/s3-request-presigner": "3.1148.0",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
+    "@remotion/bundler": "^4.0.534",
+    "@remotion/captions": "^4.0.534",
+    "@remotion/renderer": "^4.0.534",
     "next": "16.4.0",
     "next-auth": "5.0.0-beta.32",
     "pg": "^8.23.1",
     "pg-boss": "^12.37.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "remotion": "^4.0.534"
   },
   "devDependencies": {
     "@types/node": "^20",

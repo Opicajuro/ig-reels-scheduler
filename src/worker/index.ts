@@ -1,8 +1,14 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { Job } from "pg-boss";
 import { refreshDueTokens } from "@/lib/refresh-job";
+import { renderClipProject } from "@/lib/clip-render";
+import { s3ClipStore } from "@/lib/clip-store";
 import { prisma } from "@/lib/prisma";
 import { loadTokenKey } from "@/lib/token-crypto";
 import {
+  CLIP_QUEUE,
   getBoss,
   INSIGHTS_QUEUE,
   MEDIA_QUEUE,
@@ -39,6 +45,15 @@ async function main() {
     });
   });
 
+  await boss.work(CLIP_QUEUE, async ([job]: Job<{ projectId: string }>[]) => {
+    const workDir = await mkdtemp(path.join(os.tmpdir(), "clip-project-"));
+    try {
+      await renderClipProject({ db: prisma, store: s3ClipStore, projectId: job.data.projectId, workDir });
+    } finally {
+      await rm(workDir, { recursive: true, force: true });
+    }
+  });
+
   await boss.work(PUBLISH_QUEUE, createPublishProcessor());
   await boss.work(INSIGHTS_QUEUE, processInsightsJob);
 
@@ -47,7 +62,7 @@ async function main() {
     await sendOwnerAlerts({ db: prisma, now: new Date(), send: sendEmail });
   });
 
-  console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media and publishing enabled`);
+  console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media, clips and publishing enabled`);
 }
 
 main().catch((err) => {
