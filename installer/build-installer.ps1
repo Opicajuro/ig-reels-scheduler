@@ -78,12 +78,20 @@ Remove-Item -Recurse -Force (Join-Path $tools "postgres-unzip")
 $app = Join-Path $payload "app"
 if (Test-Path $app) { Remove-Item -Recurse -Force $app }
 New-Item -ItemType Directory -Force -Path $app | Out-Null
-git -C $root archive HEAD | tar -x -C $app
+# The archive goes to a file first: piping git's binary tar output through PowerShell corrupts it.
+$appTar = Join-Path $payload "app.tar"
+git -C $root archive --format=tar --output=$appTar HEAD
+if ($LASTEXITCODE -ne 0) { throw "git archive failed" }
+tar -xf $appTar -C $app
+if ($LASTEXITCODE -ne 0) { throw "extracting the app archive failed" }
+Remove-Item $appTar
 Push-Location $app
 $env:PATH = "$(Join-Path $tools 'node');$env:PATH"
 corepack enable
 pnpm install --frozen-lockfile
+if ($LASTEXITCODE -ne 0) { throw "pnpm install failed" }
 pnpm exec prisma generate
+if ($LASTEXITCODE -ne 0) { throw "prisma generate failed" }
 # next build reads the app's settings when it loads, so give it placeholders here. The real values are
 # written on the user's PC by setup-localirs.ps1.
 $placeholders = @{
@@ -95,7 +103,9 @@ $placeholders = @{
 }
 foreach ($key in $placeholders.Keys) { Set-Item -Path "Env:$key" -Value $placeholders[$key] }
 pnpm build
+if ($LASTEXITCODE -ne 0) { throw "pnpm build failed" }
 Pop-Location
 
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" (Join-Path $PSScriptRoot "localirs.iss")
+if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 Write-Host "Built installer\Output\Localirs-Setup.exe"
