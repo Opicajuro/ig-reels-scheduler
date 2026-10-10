@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { auth } from "@/auth";
 import { mockConnectEnabled } from "@/lib/mock-accounts";
+import { ConfirmForm } from "../clips/confirm-form";
+import { disconnectAccountAction, pauseAccountAction, resumeAccountAction } from "./actions";
 import { prisma } from "@/lib/prisma";
 
 async function AccountList() {
@@ -14,6 +16,7 @@ async function AccountList() {
     where: { ownerId: session.user.id },
     orderBy: { createdAt: "asc" },
   });
+  const now = new Date();
 
   return (
     <main>
@@ -25,6 +28,31 @@ async function AccountList() {
           {accounts.map((account) => (
             <li key={account.id}>
               @{account.username} · {account.accountType} · {account.status}
+              {account.pausedUntil && account.pausedUntil > now ? (
+                <>
+                  {" "}
+                  · paused until {account.pausedUntil.toISOString().slice(0, 16).replace("T", " ")} UTC
+                  <form action={resumeAccountAction}>
+                    <input type="hidden" name="accountId" value={account.id} />
+                    <button type="submit">Resume</button>
+                  </form>
+                </>
+              ) : (
+                <form action={pauseAccountAction}>
+                  <input type="hidden" name="accountId" value={account.id} />
+                  <input type="hidden" name="minutes" value="60" />
+                  <button type="submit">Pause 1h</button>
+                </form>
+              )}
+              {account.status === "active" ? (
+                <ConfirmForm
+                  action={disconnectAccountAction}
+                  message={`Disconnect @${account.username}? Its scheduled posts will be canceled.`}
+                  fields={{ accountId: account.id }}
+                >
+                  Disconnect
+                </ConfirmForm>
+              ) : null}
             </li>
           ))}
         </ul>
