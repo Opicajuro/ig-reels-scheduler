@@ -86,7 +86,16 @@ async function main() {
   await prepareDatabase(requireInstallValue("LOCALIRS_POSTGRES_ADMIN_URL"), install.postgresPassword);
 
   const s3 = storageClient(values.S3_ENDPOINT, values.S3_ACCESS_KEY, values.S3_SECRET_KEY);
-  await ensureBucket((command) => s3.send(command), values.S3_BUCKET);
+  // The storage port opens a moment before SeaweedFS answers S3 requests, so the first tries may fail.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await ensureBucket((command) => s3.send(command), values.S3_BUCKET);
+      break;
+    } catch (err) {
+      if (attempt === 10) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  }
 
   // Runs Prisma through Node, so the install needs no pnpm on the PC.
   execFileSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], { stdio: "inherit" });

@@ -10,6 +10,7 @@ try {
   $data = Join-Path $install "data"
   $node = Join-Path $tools "node\node.exe"
   $pgBin = Join-Path $tools "postgres\bin"
+  . (Join-Path $install "services.ps1")
   New-Item -ItemType Directory -Force -Path $data | Out-Null
 
   function New-Secret([int]$length) {
@@ -22,21 +23,39 @@ try {
     [Convert]::ToBase64String($bytes)
   }
 
+  # .env values cannot be empty or hold quotes or line breaks, so the answer is checked here, before it is saved.
+  function Test-PlainValue([string]$value) {
+    return $value.Trim() -ne "" -and $value -notmatch "[`"'\r\n]"
+  }
+
+  function Read-PlainValue([string]$prompt) {
+    while ($true) {
+      $answer = (Read-Host $prompt).Trim()
+      if (Test-PlainValue $answer) { return $answer }
+      Write-Host "Please type a value without quotes." -ForegroundColor Yellow
+    }
+  }
+
   $secretsPath = Join-Path $data "secrets.json"
   if (Test-Path $secretsPath) {
     $secrets = Get-Content $secretsPath -Raw | ConvertFrom-Json
   } else {
-    Write-Host "Localirs setup. You need a Resend account for sign-in emails (https://resend.com)."
     $secrets = [pscustomobject]@{
-      resendApiKey = Read-Host "Resend API key (starts with re_)"
-      emailFrom = Read-Host "Sender address on a domain you verified in Resend (to test, use Localirs <onboarding@resend.dev>, which only sends to your Resend account's email)"
+      resendApiKey = ""
+      emailFrom = ""
       postgresSuperPassword = New-Secret 24
       postgresAppPassword = New-Secret 24
       storageSecret = New-Secret 24
       storageSigningKey = New-SigningKey
     }
-    $secrets | ConvertTo-Json | Set-Content -Path $secretsPath
   }
+  # Asked on the first run, and again on a later run if a saved answer is missing or unusable.
+  if (-not (Test-PlainValue $secrets.resendApiKey) -or -not (Test-PlainValue $secrets.emailFrom)) {
+    Write-Host "Localirs setup. You need a Resend account for sign-in emails (https://resend.com)."
+    $secrets.resendApiKey = Read-PlainValue "Resend API key (starts with re_)"
+    $secrets.emailFrom = Read-PlainValue "Sender address on a domain you verified in Resend (to test, use Localirs <onboarding@resend.dev>, which only sends to your Resend account's email)"
+  }
+  $secrets | ConvertTo-Json | Set-Content -Path $secretsPath
 
   # File storage (SeaweedFS) reads these two files: one identity for the app, and the key it signs temporary tokens with.
   $storageData = Join-Path $data "seaweedfs"
@@ -50,30 +69,16 @@ try {
   if (-not (Test-Path $pgData)) {
     $pwFile = Join-Path $data "pgpass.tmp"
     Set-Content -NoNewline -Path $pwFile -Value $secrets.postgresSuperPassword
-    & (Join-Path $pgBin "initdb.exe") -D $pgData -U postgres --pwfile=$pwFile -E UTF8 -A scram-sha-256
-    $initdbExit = $LASTEXITCODE
-    Remove-Item $pwFile
-    if ($initdbExit -ne 0) { throw "Creating the database failed (initdb)." }
+    try {
+      & (Join-Path $pgBin "initdb.exe") -D $pgData -U postgres --pwfile=$pwFile -E UTF8 -A scram-sha-256
+      if ($LASTEXITCODE -ne 0) { throw "Creating the database failed (initdb)." }
+    } finally {
+      # The file holds the database superuser password, so it never stays on disk.
+      Remove-Item -Force $pwFile -ErrorAction SilentlyContinue
+    }
   }
-  & (Join-Path $pgBin "pg_ctl.exe") -D $pgData status | Out-Null
-  if ($LASTEXITCODE -ne 0) {
-    # No pipe here: pg_ctl's child keeps a pipe open for as long as the server runs, which would hang this script.
-    & (Join-Path $pgBin "pg_ctl.exe") -D $pgData -l (Join-Path $data "postgres.log") -o "-p 5432" -w start
-    if ($LASTEXITCODE -ne 0) { throw "The database did not start. See data\postgres.log" }
-  }
-
-  if (-not (Test-NetConnection -ComputerName 127.0.0.1 -Port 9000 -InformationLevel Quiet)) {
-    Start-Process -WindowStyle Hidden -FilePath (Join-Path $tools "weed.exe") -ArgumentList @(
-      "server", "-dir=`"$storageData`"", "-s3", "-s3.port=9000", "-s3.config=`"$storageConfig`"", "-s3.iam.config=`"$storageIam`"",
-      "-ip=127.0.0.1", "-ip.bind=127.0.0.1"
-    ) -RedirectStandardOutput (Join-Path $data "storage.log") -RedirectStandardError (Join-Path $data "storage.err.log")
-  }
-  $storageReady = $false
-  for ($attempt = 0; $attempt -lt 30 -and -not $storageReady; $attempt++) {
-    $storageReady = Test-NetConnection -ComputerName 127.0.0.1 -Port 9000 -InformationLevel Quiet
-    if (-not $storageReady) { Start-Sleep -Seconds 1 }
-  }
-  if (-not $storageReady) { throw "File storage did not start. See data\storage.err.log" }
+  Start-Database $pgBin $data
+  Start-Storage $tools $data
 
   $env:LOCALIRS_DB_PASSWORD = $secrets.postgresAppPassword
   $env:LOCALIRS_POSTGRES_ADMIN_URL = "postgresql://postgres:$($secrets.postgresSuperPassword)@127.0.0.1:5432/postgres"

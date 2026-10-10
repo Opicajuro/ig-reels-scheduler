@@ -1,0 +1,53 @@
+# Starts the database and file storage on this PC. Dot-sourced by setup-localirs.ps1 and start-localirs.ps1, so both
+# start them the same way. Each function throws when its service cannot be started.
+
+# A plain TCP connect with a short timeout; Test-NetConnection falls back to ping and DNS and takes many seconds.
+function Test-LocalPort([int]$port) {
+  $client = New-Object System.Net.Sockets.TcpClient
+  try {
+    return $client.ConnectAsync("127.0.0.1", $port).Wait(500)
+  } catch {
+    return $false
+  } finally {
+    $client.Dispose()
+  }
+}
+
+# The Server header of whatever answers on the port, so another program on 9000 is not mistaken for SeaweedFS.
+function Get-ServerHeader([int]$port) {
+  $request = [System.Net.HttpWebRequest]::Create("http://127.0.0.1:$port/")
+  $request.Timeout = 2000
+  try {
+    $response = $request.GetResponse()
+  } catch [System.Net.WebException] {
+    $response = $_.Exception.Response
+  }
+  if ($null -eq $response) { return "" }
+  try { return [string]$response.Headers["Server"] } finally { $response.Close() }
+}
+
+function Start-Database([string]$pgBin, [string]$data) {
+  $pgData = Join-Path $data "postgres"
+  & (Join-Path $pgBin "pg_ctl.exe") -D $pgData status | Out-Null
+  if ($LASTEXITCODE -eq 0) { return }
+  # No pipe here: pg_ctl's child keeps a pipe open for as long as the server runs, which would hang the script.
+  & (Join-Path $pgBin "pg_ctl.exe") -D $pgData -l (Join-Path $data "postgres.log") -o "-p 5432" -w start
+  if ($LASTEXITCODE -ne 0) { throw "The database did not start. See data\postgres.log" }
+}
+
+function Start-Storage([string]$tools, [string]$data) {
+  if (Test-LocalPort 9000) {
+    if ((Get-ServerHeader 9000) -like "SeaweedFS*") { return }
+    throw "Port 9000 is used by another program. Close it, then try again."
+  }
+  Start-Process -WindowStyle Hidden -FilePath (Join-Path $tools "weed.exe") -ArgumentList @(
+    "server", "-dir=`"$(Join-Path $data "seaweedfs")`"", "-s3", "-s3.port=9000",
+    "-s3.config=`"$(Join-Path $data "s3.json")`"", "-s3.iam.config=`"$(Join-Path $data "iam.json")`"",
+    "-ip=127.0.0.1", "-ip.bind=127.0.0.1"
+  ) -RedirectStandardOutput (Join-Path $data "storage.log") -RedirectStandardError (Join-Path $data "storage.err.log")
+  for ($attempt = 0; $attempt -lt 60; $attempt++) {
+    if (Test-LocalPort 9000) { return }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "File storage did not start. See data\storage.err.log"
+}

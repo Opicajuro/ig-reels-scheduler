@@ -19,6 +19,7 @@ Source: "payload\app\*"; DestDir: "{app}\app"; Flags: recursesubdirs createallsu
 Source: "payload\tools\*"; DestDir: "{app}\tools"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "start-localirs.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "setup-localirs.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "services.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Set up Localirs"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\setup-localirs.ps1"""; WorkingDir: "{app}"
