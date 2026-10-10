@@ -70,7 +70,9 @@ try {
     $pwFile = Join-Path $data "pgpass.tmp"
     Set-Content -NoNewline -Path $pwFile -Value $secrets.postgresSuperPassword
     try {
-      & (Join-Path $pgBin "initdb.exe") -D $pgData -U postgres --pwfile=$pwFile -E UTF8 -A scram-sha-256
+      # --locale=C: with a non-English Windows locale (such as Slovak_Slovakia.1250), initdb's translated messages
+      # come out in the Windows code page and the UTF-8 database rejects them ("invalid byte sequence for encoding").
+      & (Join-Path $pgBin "initdb.exe") -D $pgData -U postgres --pwfile=$pwFile -E UTF8 --locale=C -A scram-sha-256
       if ($LASTEXITCODE -ne 0) { throw "Creating the database failed (initdb)." }
     } finally {
       # The file holds the database superuser password, so it never stays on disk.
