@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { buildUploadSheet } from "@/lib/upload-sheet";
 import { copyClipAction, deleteClipAction, renameClipAction, saveClipDetailsAction } from "../actions";
 import { ConfirmForm } from "../confirm-form";
+import { ExportForm } from "./export-form";
 import { ScheduleForm } from "./schedule-form";
 import styles from "../clips.module.css";
 
@@ -27,13 +27,11 @@ function formatTime(seconds: number): string {
 // Clips of one project, with picking for the upload sheet. Every change is a form posting to a server action.
 export function ClipGrid({
   projectId,
-  projectName,
   busy,
   clips,
   accounts,
 }: {
   projectId: string;
-  projectName: string;
   busy: boolean;
   clips: ClipView[];
   accounts: AccountView[];
@@ -50,18 +48,6 @@ export function ClipGrid({
       }
       return next;
     });
-  }
-
-  function downloadSheet() {
-    const chosen = clips.filter((clip) => picked.has(clip.id));
-    const url = URL.createObjectURL(new Blob([buildUploadSheet(projectName, chosen)], { type: "text/plain;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "upload-sheet.txt";
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   return (
@@ -152,9 +138,10 @@ export function ClipGrid({
           <span className={styles.muted}>
             {picked.size} {picked.size === 1 ? "clip" : "clips"} selected
           </span>
-          <button type="button" className={styles.primary} disabled={picked.size === 0} onClick={downloadSheet}>
-            Download upload sheet
-          </button>
+          <ExportForm
+            projectId={projectId}
+            clips={clips.filter((clip) => picked.has(clip.id)).map((clip) => ({ id: clip.id, name: clip.name }))}
+          />
         </div>
       </div>
     </>

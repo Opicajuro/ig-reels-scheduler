@@ -21,6 +21,7 @@
     "@remotion/bundler": "^4.0.534",
     "@remotion/captions": "^4.0.534",
     "@remotion/renderer": "^4.0.534",
+    "archiver": "^7.0.1",
     "next": "16.4.0",
     "next-auth": "5.0.0-beta.32",
     "pg": "^8.23.1",

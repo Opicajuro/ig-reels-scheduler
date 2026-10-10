@@ -436,3 +436,15 @@
 .clipActions form {
   display: contents;
 }
+
+.exportForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.exportForm label {
+  display: grid;
+  gap: 4px;
+}

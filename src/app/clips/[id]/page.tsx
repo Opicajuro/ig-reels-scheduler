@@ -155,7 +155,6 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
             <h2>Clips</h2>
             <ClipGrid
               projectId={project.id}
-              projectName={project.name}
               busy={busy}
               clips={clips}
               accounts={accounts.map((account) => ({ id: account.id, username: account.username }))}
