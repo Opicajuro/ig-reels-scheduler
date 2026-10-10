@@ -30,8 +30,14 @@ describe("renderEnv and parseEnv", () => {
     const text = renderEnv(TEMPLATE, values);
 
     expect(text).toContain("# Settings for the scheduler");
-    expect(text).toContain('DATABASE_URL="postgresql://app:app@localhost:5432/ig_reels"');
+    expect(text).toContain("DATABASE_URL='postgresql://app:app@localhost:5432/ig_reels'");
     expect(parseEnv(text)).toEqual(values);
+  });
+
+  it("keeps Windows paths intact, where double quotes would turn \\n into a line break", () => {
+    const values = { CHROME_PATH: "C:\\Users\\nina\\Localirs\\tools\\chrome.exe" };
+
+    expect(parseEnv(renderEnv("", values))).toEqual(values);
   });
 
   it("appends keys that the template does not have", () => {
@@ -53,6 +59,7 @@ describe("assertPlainValue", () => {
   it("rejects values that would break a .env line", () => {
     expect(() => assertPlainValue("EMAIL_FROM", 'Scheduler "alerts"')).toThrow("EMAIL_FROM");
     expect(() => assertPlainValue("EMAIL_FROM", "line one\nline two")).toThrow("EMAIL_FROM");
+    expect(() => assertPlainValue("EMAIL_FROM", "Nina's alerts <a@example.com>")).toThrow("EMAIL_FROM");
   });
 
   it("accepts an ordinary sender address", () => {

@@ -27,6 +27,9 @@ export function buildLocalValues(install: LocalInstall, generate: () => string):
       S3_ACCESS_KEY: "localirs",
       S3_SECRET_KEY: install.storageSecret,
       APP_URL: "http://localhost:3000",
+      // The installed app runs under `next start`, where Auth.js rejects every sign-in as UntrustedHost unless told
+      // to trust the host. It only listens on this PC.
+      AUTH_TRUST_HOST: "true",
       IG_REDIRECT_URI: "http://localhost:3000/api/ig/callback",
       RESEND_API_KEY: install.resendApiKey,
       EMAIL_FROM: install.emailFrom,

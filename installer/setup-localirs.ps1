@@ -70,7 +70,7 @@ $env:LOCALIRS_STORAGE_SECRET = $secrets.storageSecret
 $env:LOCALIRS_RESEND_API_KEY = $secrets.resendApiKey
 $env:LOCALIRS_EMAIL_FROM = $secrets.emailFrom
 $env:LOCALIRS_CHROME_PATH = Join-Path $tools "chrome\chrome-headless-shell.exe"
-$env:LOCALIRS_WHISPER_BIN = Join-Path $tools "whisper\whisper-cli.exe"
+$env:LOCALIRS_WHISPER_BIN = Join-Path $tools "whisper\Release\whisper-cli.exe"
 $env:LOCALIRS_WHISPER_MODEL = Join-Path $tools "whisper\ggml-base.bin"
 $env:PATH = "$tools;$env:PATH"
 

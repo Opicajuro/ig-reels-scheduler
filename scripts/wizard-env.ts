@@ -26,21 +26,22 @@ export function missingKeys(values: EnvValues, keys: readonly string[]): string[
 }
 
 export function assertPlainValue(key: string, value: string): void {
-  if (/["\r\n]/.test(value)) throw new Error(`${key} cannot contain quotes or line breaks`);
+  if (/["'\r\n]/.test(value)) throw new Error(`${key} cannot contain quotes or line breaks`);
 }
 
 // Keeps the template's comments and order, replaces the lines for the given keys,
-// and appends any key the template does not have.
+// and appends any key the template does not have. Values are single-quoted: dotenv and Node's --env-file turn
+// \n inside double quotes into a line break, which would break Windows paths such as C:\Users\nina.
 export function renderEnv(template: string, values: EnvValues): string {
   const written = new Set<string>();
   const lines = template.split("\n").map((line) => {
     const match = /^([A-Z0-9_]+)=/.exec(line);
     if (!match || !(match[1] in values)) return line;
     written.add(match[1]);
-    return `${match[1]}="${values[match[1]]}"`;
+    return `${match[1]}='${values[match[1]]}'`;
   });
   for (const [key, value] of Object.entries(values)) {
-    if (!written.has(key)) lines.push(`${key}="${value}"`);
+    if (!written.has(key)) lines.push(`${key}='${value}'`);
   }
   return lines.join("\n");
 }

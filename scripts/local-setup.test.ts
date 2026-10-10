@@ -19,6 +19,7 @@ describe("buildLocalValues", () => {
     expect(values.S3_ENDPOINT).toBe("http://127.0.0.1:9000");
     expect(values.S3_BUCKET).toBe("ig-reels");
     expect(values.S3_SECRET_KEY).toBe("storage-secret");
+    expect(values.AUTH_TRUST_HOST).toBe("true");
   });
 
   it("uses the tool paths and generates the two app secrets", () => {
