@@ -1,4 +1,4 @@
-# Builds Localirs-Setup.exe on a Windows PC. Needs: Inno Setup 6 (iscc.exe) and git.
+# Builds Localirs-Setup.exe on a Windows PC. Needs: Inno Setup 6 (iscc.exe), git, and Go (to build SeaweedFS).
 # Downloads the pinned tools into installer\payload\tools, compiles node_modules for Windows,
 # and packs everything with Inno Setup. Downloads are checked against tools.json; a null hash is
 # filled in on the first build and checked on every build after that.
@@ -33,7 +33,7 @@ $whisperZip = Get-Tool "whisper.cpp" $manifest.whisperCpp "whisper.zip"
 $whisperModel = Get-Tool "Whisper model" $manifest.whisperModel "ggml-base.bin"
 $chromeZip = Get-Tool "Chrome headless shell" $manifest.chromeHeadlessShell "chrome-headless-shell.zip"
 $pgZip = Get-Tool "PostgreSQL" $manifest.postgres "postgres.zip"
-$minio = Get-Tool "MinIO" $manifest.minio "minio.exe"
+$seaweedZip = Get-Tool "SeaweedFS source" $manifest.seaweedfs "seaweedfs-src.zip"
 
 Expand-Archive -Force $nodeZip (Join-Path $tools "node-unzip")
 Move-Item -Force (Get-ChildItem (Join-Path $tools "node-unzip") -Directory | Select-Object -First 1).FullName (Join-Path $tools "node")
@@ -45,7 +45,15 @@ Copy-Item -Force (Get-ChildItem (Join-Path $tools "ffmpeg-unzip") -Recurse -Filt
 Remove-Item -Recurse -Force (Join-Path $tools "ffmpeg-unzip")
 
 Copy-Item -Force $ytDlp (Join-Path $tools "yt-dlp.exe")
-Copy-Item -Force $minio (Join-Path $tools "minio.exe")
+
+# SeaweedFS is built from the pinned Go module, because its Windows release downloads are not a stable source.
+Expand-Archive -Force $seaweedZip (Join-Path $tools "seaweedfs-src")
+$seaweedDir = (Get-ChildItem (Join-Path $tools "seaweedfs-src") -Recurse -Filter go.mod | Select-Object -First 1).Directory.FullName
+Push-Location $seaweedDir
+go build -ldflags "-s -w" -o (Join-Path $tools "weed.exe") ./weed
+if ($LASTEXITCODE -ne 0) { throw "go build of SeaweedFS failed" }
+Pop-Location
+Remove-Item -Recurse -Force (Join-Path $tools "seaweedfs-src")
 
 Expand-Archive -Force $whisperZip (Join-Path $tools "whisper")
 Copy-Item -Force $whisperModel (Join-Path $tools "whisper\ggml-base.bin")

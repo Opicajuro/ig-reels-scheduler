@@ -16,8 +16,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.6"
+      - name: Restore downloaded tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            installer/payload/tools/*.zip
+            installer/payload/tools/yt-dlp.exe
+          key: installer-tools-${{ hashFiles('installer/tools.json') }}
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
+      - name: Check the installer scripts parse
+        shell: pwsh
+        run: |
+          foreach ($file in Get-ChildItem installer -Filter *.ps1) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) { $errors | ForEach-Object { Write-Host "$($file.Name): $($_.Message)" }; exit 1 }
+          }
       - name: Build the installer
         run: powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
       - name: Upload the installer

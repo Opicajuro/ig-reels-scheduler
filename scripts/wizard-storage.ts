@@ -8,6 +8,7 @@ export function storageClient(endpoint: string, accessKeyId: string, secretAcces
     endpoint,
     region: "us-east-1",
     forcePathStyle: true,
+    requestChecksumCalculation: "WHEN_REQUIRED",
     credentials: { accessKeyId, secretAccessKey },
   });
 }

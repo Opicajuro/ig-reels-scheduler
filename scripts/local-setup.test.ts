@@ -3,7 +3,7 @@ import { buildLocalValues, type LocalInstall } from "./local-setup";
 
 const install: LocalInstall = {
   postgresPassword: "pg-secret",
-  minioPassword: "minio-secret",
+  storageSecret: "storage-secret",
   resendApiKey: "re_test",
   emailFrom: "Scheduler <alerts@example.test>",
   chromePath: "C:\\Localirs\\tools\\chrome\\chrome.exe",
@@ -12,12 +12,12 @@ const install: LocalInstall = {
 };
 
 describe("buildLocalValues", () => {
-  it("points the app at the Postgres and MinIO that run on this PC", () => {
+  it("points the app at the Postgres and file storage that run on this PC", () => {
     const values = buildLocalValues(install, () => "generated");
     expect(values.DATABASE_URL).toBe("postgresql://localirs:pg-secret@127.0.0.1:5432/localirs");
     expect(values.S3_ENDPOINT).toBe("http://127.0.0.1:9000");
     expect(values.S3_BUCKET).toBe("ig-reels");
-    expect(values.S3_SECRET_KEY).toBe("minio-secret");
+    expect(values.S3_SECRET_KEY).toBe("storage-secret");
   });
 
   it("uses the tool paths and generates the two app secrets", () => {

@@ -1,13 +1,13 @@
 # Localirs Windows installer
 
 One `Localirs-Setup.exe` that installs the app with everything it needs on the same PC: Node, ffmpeg,
-yt-dlp, whisper.cpp with its model, a headless Chrome for captions, PostgreSQL 16 and MinIO. Nothing else
+yt-dlp, whisper.cpp with its model, a headless Chrome for captions, PostgreSQL 16 and SeaweedFS for file storage. Nothing else
 needs installing by hand. The only things you type are a Resend API key and a sender address for sign-in email.
 
 ## Build it (on a Windows PC)
 
 1. Install [Inno Setup 6](https://jrsoftware.org/isdl.php) and [Git for Windows](https://git-scm.com).
-2. Install Node 22 and pnpm 10.28.0 (`corepack enable`) on the build PC.
+2. Install Node 22, pnpm 10.28.0 (`corepack enable`), and Go 1.26.6 on the build PC. Go compiles SeaweedFS.
 3. In PowerShell, from the repository root:
 
        powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
@@ -29,6 +29,8 @@ needs installing by hand. The only things you type are a Resend API key and a se
 
 - Verified here (Linux sandbox): the settings the setup writes, the database role and database creation
   (run twice), the clip pipeline, the upload and render flow in a browser, and scheduling a clip to an account.
+  Against SeaweedFS (the same source the installer builds): bucket creation (run twice), browser uploads with
+  their CORS preflight, copy, download and delete, through the app's own storage functions.
 - Not verified: anything Windows-specific. `build-installer.ps1`, `setup-localirs.ps1`, `start-localirs.ps1`
   and `localirs.iss` have not been run. The download URLs in `tools.json` are not all checked. The whisper.cpp
   zip layout and the `whisper-cli.exe` name in particular need a check on a real build.

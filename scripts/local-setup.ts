@@ -5,11 +5,11 @@ import pg from "pg";
 import { fillGeneratedSecrets, parseEnv, renderEnv, type EnvValues } from "./wizard-env";
 import { ensureBucket, storageClient } from "./wizard-storage";
 
-// Settings for a Windows install where Postgres and MinIO run on this PC, with no Docker.
+// Settings for a Windows install where Postgres and file storage (SeaweedFS) run on this PC, with no Docker.
 // The installer passes in the things only it knows: the tool paths and the passwords it chose.
 export type LocalInstall = {
   postgresPassword: string;
-  minioPassword: string;
+  storageSecret: string;
   resendApiKey: string;
   emailFrom: string;
   chromePath: string;
@@ -24,7 +24,7 @@ export function buildLocalValues(install: LocalInstall, generate: () => string):
       S3_ENDPOINT: "http://127.0.0.1:9000",
       S3_BUCKET: "ig-reels",
       S3_ACCESS_KEY: "localirs",
-      S3_SECRET_KEY: install.minioPassword,
+      S3_SECRET_KEY: install.storageSecret,
       APP_URL: "http://localhost:3000",
       IG_REDIRECT_URI: "http://localhost:3000/api/ig/callback",
       RESEND_API_KEY: install.resendApiKey,
@@ -62,7 +62,7 @@ function requireInstallValue(name: string): string {
 async function main() {
   const install: LocalInstall = {
     postgresPassword: requireInstallValue("LOCALIRS_DB_PASSWORD"),
-    minioPassword: requireInstallValue("LOCALIRS_MINIO_PASSWORD"),
+    storageSecret: requireInstallValue("LOCALIRS_STORAGE_SECRET"),
     resendApiKey: requireInstallValue("LOCALIRS_RESEND_API_KEY"),
     emailFrom: requireInstallValue("LOCALIRS_EMAIL_FROM"),
     chromePath: requireInstallValue("LOCALIRS_CHROME_PATH"),

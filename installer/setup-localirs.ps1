@@ -14,6 +14,12 @@ function New-Secret([int]$length) {
   -join ((48..57 + 65..90 + 97..122) | Get-Random -Count $length | ForEach-Object { [char]$_ })
 }
 
+function New-SigningKey {
+  $bytes = New-Object byte[] 32
+  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+  [Convert]::ToBase64String($bytes)
+}
+
 $secretsPath = Join-Path $data "secrets.json"
 if (Test-Path $secretsPath) {
   $secrets = Get-Content $secretsPath -Raw | ConvertFrom-Json
@@ -24,10 +30,19 @@ if (Test-Path $secretsPath) {
     emailFrom = Read-Host "Sender address, for example Scheduler <alerts@your-domain.com>"
     postgresSuperPassword = New-Secret 24
     postgresAppPassword = New-Secret 24
-    minioPassword = New-Secret 24
+    storageSecret = New-Secret 24
+    storageSigningKey = New-SigningKey
   }
   $secrets | ConvertTo-Json | Set-Content -Path $secretsPath
 }
+
+# File storage (SeaweedFS) reads these two files: one identity for the app, and the key it signs temporary tokens with.
+$storageData = Join-Path $data "seaweedfs"
+New-Item -ItemType Directory -Force -Path $storageData | Out-Null
+$storageConfig = Join-Path $data "s3.json"
+$storageIam = Join-Path $data "iam.json"
+@{ identities = @(@{ name = "localirs"; credentials = @(@{ accessKey = "localirs"; secretKey = $secrets.storageSecret }); actions = @("Admin", "Read", "Write", "List", "Tagging") }) } | ConvertTo-Json -Depth 6 | Set-Content -Path $storageConfig -Encoding ascii
+@{ sts = @{ signingKey = $secrets.storageSigningKey } } | ConvertTo-Json -Depth 4 | Set-Content -Path $storageIam -Encoding ascii
 
 $pgData = Join-Path $data "postgres"
 if (-not (Test-Path $pgData)) {
@@ -38,16 +53,20 @@ if (-not (Test-Path $pgData)) {
 }
 & (Join-Path $pgBin "pg_ctl.exe") -D $pgData -l (Join-Path $data "postgres.log") -o "-p 5432" start | Out-Null
 
-$env:MINIO_ROOT_USER = "localirs"
-$env:MINIO_ROOT_PASSWORD = $secrets.minioPassword
-Start-Process -WindowStyle Hidden -FilePath (Join-Path $tools "minio.exe") -ArgumentList @(
-  "server", (Join-Path $data "minio"), "--address", "127.0.0.1:9000", "--console-address", "127.0.0.1:9001"
-) -RedirectStandardOutput (Join-Path $data "minio.log") -RedirectStandardError (Join-Path $data "minio.err.log")
-Start-Sleep -Seconds 5
+Start-Process -WindowStyle Hidden -FilePath (Join-Path $tools "weed.exe") -ArgumentList @(
+  "server", "-dir=`"$storageData`"", "-s3", "-s3.port=9000", "-s3.config=`"$storageConfig`"", "-s3.iam.config=`"$storageIam`"",
+  "-ip=127.0.0.1", "-ip.bind=127.0.0.1"
+) -RedirectStandardOutput (Join-Path $data "storage.log") -RedirectStandardError (Join-Path $data "storage.err.log")
+$storageReady = $false
+for ($attempt = 0; $attempt -lt 30 -and -not $storageReady; $attempt++) {
+  $storageReady = Test-NetConnection -ComputerName 127.0.0.1 -Port 9000 -InformationLevel Quiet
+  if (-not $storageReady) { Start-Sleep -Seconds 1 }
+}
+if (-not $storageReady) { throw "File storage did not start. See data\storage.err.log" }
 
 $env:LOCALIRS_DB_PASSWORD = $secrets.postgresAppPassword
 $env:LOCALIRS_POSTGRES_ADMIN_URL = "postgresql://postgres:$($secrets.postgresSuperPassword)@127.0.0.1:5432/postgres"
-$env:LOCALIRS_MINIO_PASSWORD = $secrets.minioPassword
+$env:LOCALIRS_STORAGE_SECRET = $secrets.storageSecret
 $env:LOCALIRS_RESEND_API_KEY = $secrets.resendApiKey
 $env:LOCALIRS_EMAIL_FROM = $secrets.emailFrom
 $env:LOCALIRS_CHROME_PATH = Join-Path $tools "chrome\chrome-headless-shell.exe"

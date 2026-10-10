@@ -34,9 +34,9 @@
     "url": "https://get.enterprisedb.com/postgresql/postgresql-16.4-1-windows-x64-binaries.zip",
     "sha256": null
   },
-  "minio": {
-    "version": "latest",
-    "url": "https://dl.min.io/server/minio/release/windows-amd64/minio.exe",
-    "sha256": null
+  "seaweedfs": {
+    "version": "v0.0.0-20261010013411-4d306e127974",
+    "url": "https://proxy.golang.org/github.com/seaweedfs/seaweedfs/@v/v0.0.0-20261010013411-4d306e127974.zip",
+    "sha256": "071ccd5b80a0cd112cc81ab31b36b0d7edb1259855e42709b15f01e214263ab2"
   }
 }

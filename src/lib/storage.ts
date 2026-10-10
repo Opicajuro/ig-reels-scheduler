@@ -19,6 +19,8 @@ function client(): S3Client {
     endpoint: requireEnv("S3_ENDPOINT"),
     region: "us-east-1",
     forcePathStyle: true,
+    // Presigned uploads would otherwise carry a CRC32 of an empty body, which servers that check it reject.
+    requestChecksumCalculation: "WHEN_REQUIRED",
     credentials: {
       accessKeyId: requireEnv("S3_ACCESS_KEY"),
       secretAccessKey: requireEnv("S3_SECRET_KEY"),
