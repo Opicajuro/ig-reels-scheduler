@@ -56,6 +56,8 @@ $seaweedSrc = Join-Path ([System.IO.Path]::GetTempPath()) "localirs-seaweedfs"
 Expand-Archive -Force $seaweedZip $seaweedSrc
 $seaweedDir = (Get-ChildItem $seaweedSrc -Recurse -Filter go.mod | Sort-Object { $_.FullName.Length } | Select-Object -First 1).Directory.FullName
 Push-Location $seaweedDir
+# The FUSE mount in SeaweedFS needs WinFsp headers, which the build machine does not have, so build without cgo.
+$env:CGO_ENABLED = "0"
 go build -ldflags "-s -w" -o (Join-Path $tools "weed.exe") ./weed
 if ($LASTEXITCODE -ne 0) { throw "go build of SeaweedFS failed" }
 Pop-Location
