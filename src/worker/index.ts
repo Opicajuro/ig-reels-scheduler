@@ -18,14 +18,13 @@ import {
 } from "@/lib/queues";
 import { processInsightsJob } from "./insights-processor";
 import { processMedia } from "@/lib/media-jobs";
-import { presignDownload, presignUpload } from "@/lib/storage";
+import { downloadToFile, uploadFromFile } from "@/lib/storage";
 import { createPublishProcessor } from "./publish-processor";
 import { sendOwnerAlerts } from "@/lib/alert-job";
 import { sendEmail } from "@/lib/alerts";
 
 const DAILY_AT_03_UTC = "0 3 * * *";
 const DAILY_AT_08_UTC = "0 8 * * *";
-const DOWNLOAD_LIFETIME_SECONDS = 7200;
 
 async function main() {
   const boss = await getBoss();
@@ -36,13 +35,7 @@ async function main() {
   });
 
   await boss.work(MEDIA_QUEUE, async ([job]: Job<{ mediaId: string }>[]) => {
-    await processMedia({
-      db: prisma,
-      mediaId: job.data.mediaId,
-      fetchFn: fetch,
-      getDownloadUrl: (key) => presignDownload(key, DOWNLOAD_LIFETIME_SECONDS),
-      getUploadUrl: (key, contentType) => presignUpload(key, contentType),
-    });
+    await processMedia({ db: prisma, mediaId: job.data.mediaId, downloadToFile, uploadFromFile });
   });
 
   await boss.work(CLIP_QUEUE, async ([job]: Job<{ projectId: string }>[]) => {

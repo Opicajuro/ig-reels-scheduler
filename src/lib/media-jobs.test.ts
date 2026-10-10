@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -33,19 +33,18 @@ function fakeDb(media: Record<string, unknown>) {
 }
 
 function fakeStorage(raw: Buffer) {
-  const uploads: Array<{ key: string; bytes: number }> = [];
-  const fetchFn = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (!init?.method || init.method === "GET") return new Response(Uint8Array.from(raw));
-    const body = init.body as Blob;
-    uploads.push({ key: url, bytes: body.size });
-    return new Response(null, { status: 200 });
-  };
+  const uploads: Array<{ key: string; bytes: number; contentType: string }> = [];
+  const downloadedTo: string[] = [];
   return {
-    fetchFn: fetchFn as typeof fetch,
     uploads,
-    getDownloadUrl: async (key: string) => `https://storage.test/${key}`,
-    getUploadUrl: async (key: string) => `https://storage.test/put/${key}`,
+    downloadedTo,
+    downloadToFile: async (_key: string, filePath: string) => {
+      downloadedTo.push(filePath);
+      writeFileSync(filePath, raw);
+    },
+    uploadFromFile: async (key: string, filePath: string, contentType: string) => {
+      uploads.push({ key, bytes: statSync(filePath).size, contentType });
+    },
   };
 }
 
@@ -59,8 +58,10 @@ describe("processMedia", () => {
     await processMedia({ db, mediaId: "media-1", ...storage });
 
     expect(storage.uploads).toEqual([
-      expect.objectContaining({ key: "https://storage.test/put/reels/media-1.mp4" }),
+      expect.objectContaining({ key: "reels/media-1.mp4", contentType: "video/mp4" }),
     ]);
+    // The work folder with the raw and transcoded video is removed once the job ends.
+    expect(existsSync(path.dirname(storage.downloadedTo[0]))).toBe(false);
     expect(storage.uploads[0].bytes).toBeGreaterThan(0);
     expect(updates.at(-1)).toMatchObject({
       status: "ready",
@@ -80,6 +81,7 @@ describe("processMedia", () => {
     expect(storage.uploads).toEqual([]);
     expect(updates.at(-1)).toMatchObject({ status: "failed" });
     expect(String(updates.at(-1)?.error)).toContain("no audio stream");
+    expect(existsSync(path.dirname(storage.downloadedTo[0]))).toBe(false);
   }, 60_000);
 
   it("does nothing when the media is already ready", async () => {
