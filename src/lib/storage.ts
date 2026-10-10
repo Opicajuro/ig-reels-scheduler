@@ -1,4 +1,4 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { requireEnv } from "./env";
 
@@ -36,4 +36,8 @@ export async function presignDownload(key: string, expiresInSeconds: number): Pr
   return getSignedUrl(client(), new GetObjectCommand({ Bucket: requireEnv("S3_BUCKET"), Key: key }), {
     expiresIn: expiresInSeconds,
   });
+}
+
+export async function deleteObject(key: string): Promise<void> {
+  await client().send(new DeleteObjectCommand({ Bucket: requireEnv("S3_BUCKET"), Key: key }));
 }

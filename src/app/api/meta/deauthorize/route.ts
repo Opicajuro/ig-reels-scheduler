@@ -1,5 +1,6 @@
 import { revokeAccount } from "@/lib/meta-callbacks";
 import { prisma } from "@/lib/prisma";
+import { getPublishQueue } from "@/lib/queues";
 import { requireEnv } from "@/lib/env";
 import { parseSignedRequest } from "@/lib/signed-request";
 
@@ -13,6 +14,6 @@ export async function POST(request: Request) {
     return new Response(message, { status: 400 });
   }
 
-  await revokeAccount(prisma, String(payload.user_id));
+  await revokeAccount(prisma, getPublishQueue(), String(payload.user_id));
   return new Response(null, { status: 200 });
 }

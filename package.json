@@ -22,7 +22,6 @@
     "next-auth": "5.0.0-beta.32",
     "pg": "^8.23.1",
     "pg-boss": "^12.37.1",
-    "prisma": "7.10.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
@@ -34,9 +33,17 @@
     "dotenv": "^18.0.7",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "prisma": "7.10.0",
     "tsx": "4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.3"
   },
-  "packageManager": "pnpm@10.28.0"
+  "packageManager": "pnpm@10.28.0",
+  "pnpm": {
+    "overrides": {
+      "lodash": ">=4.17.24",
+      "mysql2": ">=3.23.1",
+      "deepmerge-ts": ">=8.0.0"
+    }
+  }
 }

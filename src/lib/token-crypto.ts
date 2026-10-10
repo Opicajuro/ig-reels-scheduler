@@ -4,6 +4,7 @@ import { requireEnv } from "./env";
 const ALGORITHM = "aes-256-gcm";
 const KEY_BYTES = 32;
 const IV_BYTES = 12;
+const AUTH_TAG_BYTES = 16;
 
 export type SealedToken = {
   ciphertext: Buffer;
@@ -27,7 +28,8 @@ export function encryptToken(plaintext: string, key: Buffer): SealedToken {
 }
 
 export function decryptToken({ ciphertext, iv, authTag }: SealedToken, key: Buffer): string {
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
+  // Pin the tag length, so a shortened tag cannot pass the check.
+  const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_BYTES });
   decipher.setAuthTag(authTag);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
 }

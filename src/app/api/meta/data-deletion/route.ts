@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { requireEnv } from "@/lib/env";
 import { purgeUserData } from "@/lib/meta-callbacks";
+import { deleteObject } from "@/lib/storage";
+import { getPublishQueue } from "@/lib/queues";
 import { prisma } from "@/lib/prisma";
 import { parseSignedRequest } from "@/lib/signed-request";
 
@@ -15,7 +17,7 @@ export async function POST(request: Request) {
   }
 
   const confirmationCode = randomUUID();
-  await purgeUserData(prisma, String(payload.user_id));
+  await purgeUserData(prisma, getPublishQueue(), deleteObject, String(payload.user_id));
 
   return Response.json({
     url: `${requireEnv("APP_URL")}/privacy`,

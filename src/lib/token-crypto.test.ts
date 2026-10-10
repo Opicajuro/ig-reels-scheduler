@@ -10,6 +10,11 @@ afterEach(() => {
 });
 
 describe("encryptToken / decryptToken", () => {
+  it("rejects a shortened authentication tag", () => {
+    const sealed = encryptToken(TOKEN, KEY);
+    expect(() => decryptToken({ ...sealed, authTag: sealed.authTag.subarray(0, 8) }, KEY)).toThrow();
+  });
+
   it("round-trips a token", () => {
     const sealed = encryptToken(TOKEN, KEY);
     expect(decryptToken(sealed, KEY)).toBe(TOKEN);
