@@ -1,11 +1,16 @@
 name: Windows installer
 
 # Builds installer\Output\Localirs-Setup.exe on a Windows runner. It runs on every push to claude/combined-app.
-# Download the Localirs-Setup artifact from the run page in the Actions tab.
+# Each successful build is published as a GitHub Release, which downloads from GitHub's fast download servers and can
+# be resumed. The newest one is always at /releases/latest/download/Localirs-Setup.exe.
 on:
   push:
     branches: [claude/combined-app]
   workflow_dispatch:
+
+# Publishing a release needs write access to the repository's contents.
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -44,3 +49,15 @@ jobs:
           name: Localirs-Setup
           path: installer/Output/Localirs-Setup.exe
           if-no-files-found: error
+      - name: Publish the installer as a release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: localirs-build-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Localirs build ${{ github.run_number }}
+          body: |
+            Windows installer built from ${{ github.sha }} on ${{ github.ref_name }}.
+            Download Localirs-Setup.exe below, run it, and follow the setup window.
+          files: installer/Output/Localirs-Setup.exe
+          make_latest: true
+          fail_on_unmatched_files: true
