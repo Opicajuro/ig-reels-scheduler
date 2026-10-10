@@ -9,6 +9,8 @@ export type PostInput = {
   caption: string;
   scheduledAt: string;
   shareToFeed?: boolean;
+  /** the operator confirmed they own or license the video and its audio; no post is created without it */
+  rightsConfirmed: boolean;
 };
 
 export async function createScheduledPost({
@@ -24,6 +26,9 @@ export async function createScheduledPost({
   input: PostInput;
   now: Date;
 }) {
+  if (input.rightsConfirmed !== true) {
+    throw new Error("Please confirm you own or hold a license to this video and its audio before scheduling.");
+  }
   const problems = validateCaption(input.caption);
   if (problems.length > 0) throw new Error(problems.join("; "));
 
@@ -42,6 +47,7 @@ export async function createScheduledPost({
       caption: input.caption,
       shareToFeed: input.shareToFeed ?? true,
       scheduledAt,
+      rightsConfirmedAt: now,
     },
   });
   await schedulePost(db, queue, { id: post.id, scheduledAt }, now);

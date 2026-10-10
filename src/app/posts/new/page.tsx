@@ -35,6 +35,7 @@ async function PostEditor() {
         caption: String(formData.get("caption")),
         scheduledAt: String(formData.get("scheduledAt")),
         shareToFeed: formData.get("shareToFeed") === "on",
+        rightsConfirmed: formData.get("rightsConfirmed") === "on",
       },
       now: new Date(),
     });
@@ -75,6 +76,10 @@ async function PostEditor() {
           <PublishAtInput />
           <label>
             <input name="shareToFeed" type="checkbox" defaultChecked /> Also share to feed
+          </label>
+          <label>
+            <input name="rightsConfirmed" type="checkbox" required /> I own or hold a license to this video and its
+            audio
           </label>
           <button type="submit">Schedule</button>
         </form>

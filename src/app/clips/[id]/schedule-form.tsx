@@ -13,13 +13,17 @@ export function ScheduleForm({
   projectId,
   accounts,
   defaultCaption,
+  alreadyScheduledTo,
 }: {
   clipId: string;
   projectId: string;
   accounts: AccountChoice[];
   defaultCaption: string;
+  /** accounts that already have a live post from this project, such as ["@foo"] */
+  alreadyScheduledTo: string[];
 }) {
   const [when, setWhen] = useState("");
+  const [audioSource, setAudioSource] = useState("unknown");
   const scheduledAt = when ? new Date(when).toISOString() : "";
 
   return (
@@ -44,6 +48,30 @@ export function ScheduleForm({
       <label className={styles.label}>
         Caption
         <textarea name="caption" rows={3} maxLength={2200} defaultValue={defaultCaption} required />
+      </label>
+      <label className={styles.label}>
+        Audio source
+        <select name="audioSource" value={audioSource} onChange={(event) => setAudioSource(event.target.value)}>
+          <option value="unknown">Unknown</option>
+          <option value="original">Original (my voiceover or my own footage)</option>
+          <option value="licensed">Licensed music or track</option>
+          <option value="from_source">From the source video</option>
+        </select>
+      </label>
+      {audioSource === "from_source" ? (
+        <p className={styles.warning}>Audio from the source video can get the Reel claimed if you don&apos;t own that video.</p>
+      ) : null}
+      {alreadyScheduledTo.length > 0 ? (
+        <p className={styles.warning}>
+          Media from this project is already scheduled or published to {alreadyScheduledTo.join(", ")}. Instagram
+          down-ranks duplicate content.
+        </p>
+      ) : null}
+      <label className={styles.label}>
+        <span>
+          <input type="checkbox" name="rightsConfirmed" required /> I own or hold a license to this clip&apos;s video and
+          audio
+        </span>
       </label>
       <button type="submit" disabled={!scheduledAt}>
         Schedule on Instagram

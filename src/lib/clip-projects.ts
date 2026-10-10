@@ -14,6 +14,7 @@ import {
 import type { ClipStore } from "./clip-store";
 import { createScheduledPost } from "./posts";
 import type { ClipQueue, PublishQueue } from "./queues";
+import { checkRights, type AudioSourceValue } from "./rights";
 import { buildClipKey, buildClipSourceKey, buildReelKey } from "./storage";
 
 export const SOURCE_CONTENT_TYPES: Record<string, string> = {
@@ -282,6 +283,8 @@ export async function scheduleClip({
   accountId,
   caption,
   scheduledAt,
+  rightsConfirmed,
+  audioSource,
   now,
 }: {
   db: PrismaClient;
@@ -292,12 +295,19 @@ export async function scheduleClip({
   accountId: string;
   caption: string;
   scheduledAt: string;
+  rightsConfirmed: boolean;
+  audioSource: AudioSourceValue;
   now: Date;
 }) {
   const clip = await ownedClip(db, ownerId, clipId);
   if (clip.project.status === "rendering") throw new Error("clips are rendering for this project");
   const account = await db.igAccount.findFirst({ where: { id: accountId, ownerId, status: "active" } });
   if (!account) throw new Error("account is not connected and active");
+
+  // Safe-clip gate: nothing is copied or created until the operator confirms the clip's rights.
+  const siblingAccountCount = await countOtherAccounts(db, clip.projectId, accountId);
+  const rights = checkRights({ rightsConfirmed, audioSource, siblingAccountCount });
+  if (!rights.canSchedule) throw new Error(rights.warnings[0]);
 
   const mediaId = randomUUID();
   const reelKey = buildReelKey(mediaId);
@@ -312,14 +322,17 @@ export async function scheduleClip({
       durationMs: clip.length * 1000,
       width: 1080,
       height: 1920,
+      audioSource,
+      sourceProjectId: clip.projectId,
     },
   });
+  let post;
   try {
-    return await createScheduledPost({
+    post = await createScheduledPost({
       db,
       queue,
       ownerId,
-      input: { accountId, mediaId, caption, scheduledAt, shareToFeed: true },
+      input: { accountId, mediaId, caption, scheduledAt, shareToFeed: true, rightsConfirmed },
       now,
     });
   } catch (err) {
@@ -327,4 +340,27 @@ export async function scheduleClip({
     await store.remove(reelKey);
     throw err;
   }
+  // Written once the post exists, so the record never points at a post that was rolled back.
+  await db.auditLog.create({
+    data: {
+      actorId: ownerId,
+      action: "rights_confirmed",
+      targetType: "Post",
+      targetId: post.id,
+      data: { mediaId, audioSource, siblingAccountCount, warnings: rights.warnings },
+    },
+  });
+  return post;
+}
+
+// Other accounts that already have a live post (scheduled, in progress, or published) made from this clip project.
+export async function countOtherAccounts(db: PrismaClient, projectId: string, accountId: string): Promise<number> {
+  const posts = await db.post.findMany({
+    where: { media: { sourceProjectId: projectId } },
+    select: { accountId: true, status: true },
+  });
+  const others = posts.filter(
+    (post) => post.accountId !== accountId && ["scheduled", "container_created", "published"].includes(post.status),
+  );
+  return new Set(others.map((post) => post.accountId)).size;
 }

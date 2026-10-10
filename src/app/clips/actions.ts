@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import * as clips from "@/lib/clip-projects";
 import { s3ClipStore } from "@/lib/clip-store";
+import { parseAudioSource } from "@/lib/rights";
 import { prisma } from "@/lib/prisma";
 import { getClipQueue, getPublishQueue } from "@/lib/queues";
 
@@ -119,6 +120,8 @@ export async function scheduleClipAction(formData: FormData) {
     accountId: text(formData, "accountId"),
     caption: text(formData, "caption"),
     scheduledAt: text(formData, "scheduledAt"),
+    rightsConfirmed: formData.get("rightsConfirmed") === "on",
+    audioSource: parseAudioSource(formData.get("audioSource")),
     now: new Date(),
   });
   revalidatePath("/dashboard");

@@ -42,6 +42,15 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
     where: { ownerId, status: "active" },
     orderBy: { createdAt: "asc" },
   });
+  // Accounts that already have a live post made from this project, for the duplicate-content warning.
+  const livePosts = await prisma.post.findMany({
+    where: {
+      media: { sourceProjectId: project.id },
+      status: { in: ["scheduled", "container_created", "published"] },
+    },
+    select: { account: { select: { username: true } } },
+  });
+  const alreadyScheduledTo = [...new Set(livePosts.map((post) => `@${post.account.username}`))];
   const clips = await Promise.all(
     project.clips.map(async (clip) => ({
       id: clip.id,
@@ -158,6 +167,7 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
               busy={busy}
               clips={clips}
               accounts={accounts.map((account) => ({ id: account.id, username: account.username }))}
+              alreadyScheduledTo={alreadyScheduledTo}
             />
           </section>
         </div>

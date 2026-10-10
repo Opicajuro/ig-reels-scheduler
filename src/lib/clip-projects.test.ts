@@ -28,17 +28,20 @@ function fakeDb(
     igAccount: seed.accounts ?? [],
     media: seed.media ?? [],
     post: seed.posts ?? [],
+    auditLog: [],
   };
   const relations: Record<string, Record<string, (row: Row) => Row | undefined>> = {
     clip: { project: (clip) => tables.clipProject.find((project) => project.id === clip.projectId) },
     media: { account: (media) => tables.igAccount.find((account) => account.id === media.accountId) },
+    post: { media: (post) => tables.media.find((media) => media.id === post.mediaId) },
   };
+  const relatedTable: Record<string, string> = { project: "clipProject", account: "igAccount", media: "media" };
   const matches = (table: string, row: Row, where: Record<string, unknown>): boolean =>
     Object.entries(where).every(([key, value]) => {
       const relation = relations[table]?.[key];
       if (relation && value && typeof value === "object") {
         const related = relation(row);
-        return related !== undefined && matches(key === "project" ? "clipProject" : "igAccount", related, value as Record<string, unknown>);
+        return related !== undefined && matches(relatedTable[key], related, value as Record<string, unknown>);
       }
       return row[key] === value;
     });
@@ -80,6 +83,7 @@ function fakeDb(
     igAccount: model("igAccount"),
     media: { ...model("media") },
     post: model("post"),
+    auditLog: model("auditLog"),
   };
   return { db: db as unknown as PrismaClient, tables };
 }
@@ -322,6 +326,8 @@ describe("scheduleClip", () => {
       accountId: "acc-1",
       caption: "Wait for it",
       scheduledAt,
+      rightsConfirmed: true,
+      audioSource: "original",
       now: new Date(),
     });
 
@@ -345,12 +351,68 @@ describe("scheduleClip", () => {
         accountId: "acc-1",
         caption: "x".repeat(2201),
         scheduledAt,
+        rightsConfirmed: true,
+        audioSource: "original",
         now: new Date(),
       }),
     ).rejects.toThrow("caption must be at most 2200 characters");
 
     expect(tables.media).toEqual([]);
     expect(files.removed).toHaveLength(1);
+  });
+
+  it("refuses to schedule without the rights confirmation, and copies or creates nothing", async () => {
+    const { db, tables } = fakeDb({ projects: [project()], clips: [clip()], accounts: [account] });
+    const files = fakeStore();
+    await expect(
+      scheduleClip({
+        db,
+        store: files.store,
+        queue: { send: async () => "x", cancel: async () => {} },
+        ...owned,
+        clipId: "c1",
+        accountId: "acc-1",
+        caption: "Wait for it",
+        scheduledAt,
+        rightsConfirmed: false,
+        audioSource: "original",
+        now: new Date(),
+      }),
+    ).rejects.toThrow(/license/);
+    expect(files.copies).toEqual([]);
+    expect(tables.media).toEqual([]);
+    expect(tables.post).toEqual([]);
+  });
+
+  it("records the audio source and project on the media, and logs the confirmation with a duplicate warning", async () => {
+    const other = { id: "acc-2", ownerId: "user-1", status: "active" };
+    const { db, tables } = fakeDb({
+      projects: [project()],
+      clips: [clip()],
+      accounts: [account, other],
+      media: [{ id: "m-old", accountId: "acc-2", sourceProjectId: "p1" }],
+      posts: [{ id: "post-old", accountId: "acc-2", mediaId: "m-old", status: "published" }],
+    });
+    const post = await scheduleClip({
+      db,
+      store: fakeStore().store,
+      queue: { send: async () => "job-1", cancel: async () => {} },
+      ...owned,
+      clipId: "c1",
+      accountId: "acc-1",
+      caption: "Wait for it",
+      scheduledAt,
+      rightsConfirmed: true,
+      audioSource: "from_source",
+      now: new Date(),
+    });
+
+    expect(tables.media.at(-1)).toMatchObject({ audioSource: "from_source", sourceProjectId: "p1" });
+    expect(tables.auditLog).toHaveLength(1);
+    expect(tables.auditLog[0]).toMatchObject({ action: "rights_confirmed", targetType: "Post", targetId: post.id });
+    const logged = tables.auditLog[0].data as { siblingAccountCount: number; warnings: string[] };
+    expect(logged.siblingAccountCount).toBe(1);
+    expect(logged.warnings).toHaveLength(2);
   });
 
   it("refuses an account that is not active or belongs to someone else", async () => {
@@ -365,6 +427,8 @@ describe("scheduleClip", () => {
         accountId: "acc-1",
         caption: "x",
         scheduledAt,
+        rightsConfirmed: true,
+        audioSource: "original",
         now: new Date(),
       }),
     ).rejects.toThrow("account is not connected and active");

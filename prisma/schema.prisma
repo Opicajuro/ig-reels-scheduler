@@ -95,6 +95,13 @@ enum MediaStatus {
   failed
 }
 
+enum AudioSource {
+  original
+  licensed
+  from_source
+  unknown
+}
+
 model Media {
   id         String      @id @default(cuid())
   accountId  String
@@ -107,6 +114,8 @@ model Media {
   height     Int?
   status     MediaStatus @default(uploaded)
   error      String?
+  audioSource     AudioSource @default(unknown)
+  sourceProjectId String?
   posts      Post[]
 }
 
@@ -134,6 +143,7 @@ model Post {
   permalink   String?
   attempts    Int           @default(0)
   lastError   String?
+  rightsConfirmedAt DateTime?
   attemptLogs PublishAttempt[]
   insights    Insight[]
 }

@@ -8,11 +8,19 @@ export async function POST(request: Request) {
   if (!session?.user?.id) return new Response("sign in required", { status: 401 });
 
   try {
+    const body = (await request.json()) as Partial<PostInput>;
     const post = await createScheduledPost({
       db: prisma,
       queue: getPublishQueue(),
       ownerId: session.user.id,
-      input: (await request.json()) as PostInput,
+      input: {
+        accountId: String(body.accountId ?? ""),
+        mediaId: String(body.mediaId ?? ""),
+        caption: String(body.caption ?? ""),
+        scheduledAt: String(body.scheduledAt ?? ""),
+        shareToFeed: body.shareToFeed,
+        rightsConfirmed: body.rightsConfirmed === true,
+      },
       now: new Date(),
     });
     return Response.json(post, { status: 201 });

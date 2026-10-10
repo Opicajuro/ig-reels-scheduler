@@ -30,11 +30,13 @@ export function ClipGrid({
   busy,
   clips,
   accounts,
+  alreadyScheduledTo,
 }: {
   projectId: string;
   busy: boolean;
   clips: ClipView[];
   accounts: AccountView[];
+  alreadyScheduledTo: string[];
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
@@ -125,6 +127,7 @@ export function ClipGrid({
                     projectId={projectId}
                     accounts={accounts}
                     defaultCaption={clip.description || clip.title || clip.name}
+                    alreadyScheduledTo={alreadyScheduledTo}
                   />
                 )}
               </details>

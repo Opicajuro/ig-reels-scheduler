@@ -42,7 +42,7 @@ function fakeDeps(
   return { db: db as unknown as PrismaClient, queue, created, updated, queued, removed };
 }
 
-const INPUT = { accountId: "acc-1", mediaId: "media-1", caption: "Big win!", scheduledAt: FUTURE };
+const INPUT = { accountId: "acc-1", mediaId: "media-1", caption: "Big win!", scheduledAt: FUTURE, rightsConfirmed: true };
 
 describe("createScheduledPost", () => {
   it("creates the post and enqueues its publish job", async () => {
@@ -50,9 +50,18 @@ describe("createScheduledPost", () => {
     const post = await createScheduledPost({ ...deps, ownerId: "user-1", input: INPUT, now: NOW });
 
     expect(post.id).toBe("post-1");
-    expect(deps.created[0]).toMatchObject({ accountId: "acc-1", mediaId: "media-1", caption: "Big win!" });
+    expect(deps.created[0]).toMatchObject({ accountId: "acc-1", mediaId: "media-1", caption: "Big win!", rightsConfirmedAt: NOW });
     expect(deps.queued).toEqual(["post-1"]);
     expect(deps.updated).toEqual([{ queueJobId: "job-post-1" }]);
+  });
+
+  it("refuses to schedule until the operator confirms the rights, and creates nothing", async () => {
+    const deps = fakeDeps();
+    await expect(
+      createScheduledPost({ ...deps, ownerId: "user-1", input: { ...INPUT, rightsConfirmed: false }, now: NOW }),
+    ).rejects.toThrow(/license/);
+    expect(deps.created).toEqual([]);
+    expect(deps.queued).toEqual([]);
   });
 
   it("rejects a caption that breaks the Instagram limits", async () => {
