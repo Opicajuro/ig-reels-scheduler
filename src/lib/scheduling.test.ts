@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { PublishQueue } from "./queues";
-import { schedulePost } from "./scheduling";
+import { requeueUnqueuedPosts, schedulePost } from "./scheduling";
 
 const MINUTE = 60 * 1000;
 const NOW = new Date("2026-10-10T12:00:00Z");
@@ -41,5 +41,37 @@ describe("schedulePost", () => {
     await schedulePost(deps.db, deps.queue, { id: "post-2", scheduledAt: new Date(NOW.getTime() + 10 * MINUTE) }, NOW);
 
     expect(deps.sent[0].runAt).toEqual(NOW);
+  });
+});
+
+describe("requeueUnqueuedPosts", () => {
+  it("queues only scheduled posts that have no job, and returns how many", async () => {
+    const sent: string[] = [];
+    const updates: Array<{ id: string; queueJobId: unknown }> = [];
+    const db = {
+      post: {
+        findMany: async ({ where }: { where: { status: string; queueJobId: null } }) => {
+          expect(where).toEqual({ status: "scheduled", queueJobId: null });
+          return [{ id: "old-1", scheduledAt: new Date(NOW.getTime() + 5 * MINUTE) }];
+        },
+        update: async ({ where, data }: { where: { id: string }; data: { queueJobId: unknown } }) => {
+          updates.push({ id: where.id, queueJobId: data.queueJobId });
+          return {};
+        },
+      },
+    };
+    const queue: PublishQueue = {
+      send: async (postId) => {
+        sent.push(postId);
+        return `job-${postId}`;
+      },
+      cancel: async () => {},
+    };
+
+    const count = await requeueUnqueuedPosts(db as unknown as PrismaClient, queue, NOW);
+
+    expect(count).toBe(1);
+    expect(sent).toEqual(["old-1"]);
+    expect(updates).toEqual([{ id: "old-1", queueJobId: "job-old-1" }]);
   });
 });

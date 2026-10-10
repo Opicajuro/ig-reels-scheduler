@@ -45,6 +45,7 @@ Set these on both the web and the worker service, unless noted.
 | `IG_APP_SECRET` | Meta app secret (keep it out of logs and screenshots) |
 | `IG_REDIRECT_URI` | `https://<your-domain>/api/ig/callback` |
 | `APP_URL` | `https://<your-domain>` |
+| `AUTH_URL` | `https://<your-domain>`. Sign-in fails with "Host must be trusted" if this is missing. |
 | `CHROME_PATH` | Chrome or Chrome headless shell binary. Needed only for clips with captions. |
 | `WHISPER_BIN` | whisper.cpp `whisper-cli` binary. Needed only for clips with captions. |
 | `WHISPER_MODEL` | Path to a whisper.cpp model file, for example `ggml-base.bin`. Needed only for captions. |
@@ -104,3 +105,12 @@ Run these in order and fix anything that fails before you move on.
 - **Token expiry:** the daily job refreshes tokens within 10 days of expiry. Accounts whose token has expired or was revoked are marked "needs to be reconnected", and the owner gets an email.
 - **Rotating secrets:** rotating `AUTH_SECRET` signs everyone out. Rotating `TOKEN_ENC_KEY` makes stored tokens unreadable, so do not rotate it without re-encrypting every token first.
 - **Backups:** back up Postgres daily, and keep the `TOKEN_ENC_KEY` in a password manager.
+
+## Moving posts from Redis to pg-boss
+
+Posts scheduled before the queue moved to pg-boss have no job, so they would never publish. After the first deploy,
+run this once on the worker's environment:
+
+    pnpm tsx scripts/requeue-scheduled-posts.ts
+
+It queues every scheduled post that has no job, and prints how many it queued.

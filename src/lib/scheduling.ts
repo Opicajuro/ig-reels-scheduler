@@ -15,3 +15,15 @@ export async function schedulePost(
   const queueJobId = await queue.send(post.id, runAt);
   await db.post.update({ where: { id: post.id }, data: { queueJobId } });
 }
+
+// Posts scheduled before the job queue moved to pg-boss have no job. This queues each of them once.
+export async function requeueUnqueuedPosts(db: PrismaClient, queue: PublishQueue, now: Date): Promise<number> {
+  const posts = await db.post.findMany({
+    where: { status: "scheduled", queueJobId: null },
+    select: { id: true, scheduledAt: true },
+  });
+  for (const post of posts) {
+    await schedulePost(db, queue, post, now);
+  }
+  return posts.length;
+}
