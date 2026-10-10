@@ -5,6 +5,11 @@ $ErrorActionPreference = "Stop"
 # The setup window closes as soon as the script ends, so errors are shown and the window waits for Enter.
 try {
   $install = $PSScriptRoot
+  # PostgreSQL cannot create its database under a path with letters with accents (such as the y in "Novy" with an accent) (the installer refuses such
+  # folders too), so stop here with a clear message instead of failing halfway through.
+  if ($install -match "[^\x00-\x7F]") {
+    throw "Localirs is installed in '$install', which has letters such as y with an accent. Uninstall it and install it again in a folder like C:\Localirs."
+  }
   $app = Join-Path $install "app"
   $tools = Join-Path $install "tools"
   $data = Join-Path $install "data"
