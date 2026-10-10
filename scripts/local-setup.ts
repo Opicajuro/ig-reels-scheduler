@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import pg from "pg";
 import { fillGeneratedSecrets, parseEnv, renderEnv, type EnvValues } from "./wizard-env";
 import { ensureBucket, storageClient } from "./wizard-storage";
@@ -88,7 +89,13 @@ async function main() {
   console.log("local setup finished: .env written, database and bucket ready, migrations applied");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// True when this module is the script node was started with. A plain `file://` + path comparison fails on Windows
+// (C:\ paths) and for any path with a space, so the path goes through pathToFileURL.
+export function isEntryPoint(moduleUrl: string, scriptPath: string | undefined): boolean {
+  return scriptPath !== undefined && moduleUrl === pathToFileURL(scriptPath).href;
+}
+
+if (isEntryPoint(import.meta.url, process.argv[1])) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);

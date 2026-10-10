@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildLocalValues, type LocalInstall } from "./local-setup";
+import { pathToFileURL } from "node:url";
+import { buildLocalValues, isEntryPoint, type LocalInstall } from "./local-setup";
 
 const install: LocalInstall = {
   postgresPassword: "pg-secret",
@@ -27,5 +28,18 @@ describe("buildLocalValues", () => {
     expect(values.WHISPER_MODEL).toBe(install.whisperModel);
     expect(values.TOKEN_ENC_KEY).toBe("generated");
     expect(values.AUTH_SECRET).toBe("generated");
+  });
+});
+
+describe("isEntryPoint", () => {
+  it("matches the script path even when it has a space, which a plain file:// comparison misses", () => {
+    const scriptPath = "/opt/Local App/scripts/local-setup.ts";
+    expect(`file://${scriptPath}` === pathToFileURL(scriptPath).href).toBe(false);
+    expect(isEntryPoint(pathToFileURL(scriptPath).href, scriptPath)).toBe(true);
+  });
+
+  it("is false when the module was imported rather than run", () => {
+    expect(isEntryPoint(pathToFileURL("/app/scripts/local-setup.ts").href, "/app/node_modules/vitest/cli.js")).toBe(false);
+    expect(isEntryPoint(pathToFileURL("/app/scripts/local-setup.ts").href, undefined)).toBe(false);
   });
 });
