@@ -9,7 +9,7 @@ export type PickedClip = { id: string; name: string };
 // Times are read in this browser's timezone and the sheet shows them in that same timezone.
 export function ExportForm({ projectId, clips }: { projectId: string; clips: PickedClip[] }) {
   const [firstAt, setFirstAt] = useState("");
-  const [everyHours, setEverySpacing] = useState(24);
+  const [everyHours, setEveryHours] = useState(24);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const ready = clips.length > 0 && firstAt !== "" && everyHours >= 1 && !busy;
@@ -62,7 +62,7 @@ export function ExportForm({ projectId, clips }: { projectId: string; clips: Pic
           min={1}
           max={168}
           value={everyHours}
-          onChange={(event) => setEverySpacing(Number(event.target.value))}
+          onChange={(event) => setEveryHours(Number(event.target.value))}
           required
         />
       </label>
