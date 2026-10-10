@@ -11,6 +11,8 @@ OutputDir=Output
 OutputBaseFilename=Localirs-Setup
 Compression=lzma2/max
 SolidCompression=yes
+LZMANumBlockThreads=4
+LZMAUseSeparateProcess=yes
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 

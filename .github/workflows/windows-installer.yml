@@ -22,9 +22,7 @@ jobs:
       - name: Restore downloaded tools
         uses: actions/cache@v4
         with:
-          path: |
-            installer/payload/tools/*.zip
-            installer/payload/tools/yt-dlp.exe
+          path: installer/downloads
           key: installer-tools-${{ hashFiles('installer/tools.json') }}
           save-always: true
       - name: Install Inno Setup

@@ -45,3 +45,4 @@ next-env.d.ts
 !.env.example
 installer/payload/
 installer/Output/
+installer/downloads/

@@ -1,18 +1,22 @@
 # Builds Localirs-Setup.exe on a Windows PC. Needs: Inno Setup 6 (iscc.exe), git, and Go (to build SeaweedFS).
-# Downloads the pinned tools into installer\payload\tools, compiles node_modules for Windows,
+# Downloads the pinned tools into installer\downloads, unpacks them into installer\payload\tools, compiles node_modules for Windows,
 # and packs everything with Inno Setup. Downloads are checked against tools.json; a null hash is
 # filled in on the first build and checked on every build after that.
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $payload = Join-Path $PSScriptRoot "payload"
 $tools = Join-Path $payload "tools"
+# Downloads stay outside the payload, so the installer ships only the unpacked tools, not their zips.
+$downloads = Join-Path $PSScriptRoot "downloads"
 $manifestPath = Join-Path $PSScriptRoot "tools.json"
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 
-New-Item -ItemType Directory -Force -Path $tools | Out-Null
+# Start from an empty tools folder, so a second build does not move folders into the ones the first build left.
+if (Test-Path $tools) { Remove-Item -Recurse -Force $tools }
+New-Item -ItemType Directory -Force -Path $tools, $downloads | Out-Null
 
 function Get-Tool($name, $entry, $target) {
-  $file = Join-Path $tools $target
+  $file = Join-Path $downloads $target
   if (-not (Test-Path $file)) {
     Write-Host "Downloading $name $($entry.version)"
     try {
@@ -49,6 +53,7 @@ Expand-Archive -Force $ffmpegZip (Join-Path $tools "ffmpeg-unzip")
 Copy-Item -Force (Get-ChildItem (Join-Path $tools "ffmpeg-unzip") -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName (Join-Path $tools "ffmpeg.exe")
 Copy-Item -Force (Get-ChildItem (Join-Path $tools "ffmpeg-unzip") -Recurse -Filter ffprobe.exe | Select-Object -First 1).FullName (Join-Path $tools "ffprobe.exe")
 Remove-Item -Recurse -Force (Join-Path $tools "ffmpeg-unzip")
+Copy-Item -Force $ytDlp (Join-Path $tools "yt-dlp.exe")
 
 # SeaweedFS is built from the pinned Go module, because its Windows release downloads are not a stable source.
 # It is unpacked under the temp folder: its deepest paths do not fit in the 260-character limit under the installer folder.
@@ -71,8 +76,24 @@ Move-Item -Force (Join-Path $tools "chrome-unzip\chrome-headless-shell-win64") (
 Remove-Item -Recurse -Force (Join-Path $tools "chrome-unzip")
 
 Expand-Archive -Force $pgZip (Join-Path $tools "postgres-unzip")
+# The server needs none of these, and pgAdmin alone is hundreds of MB.
+foreach ($extra in @("pgAdmin 4", "StackBuilder", "doc", "symbols")) {
+  $extraPath = Join-Path $tools "postgres-unzip\pgsql\$extra"
+  if (Test-Path $extraPath) { Remove-Item -Recurse -Force $extraPath }
+}
 Move-Item -Force (Join-Path $tools "postgres-unzip\pgsql") (Join-Path $tools "postgres")
 Remove-Item -Recurse -Force (Join-Path $tools "postgres-unzip")
+
+# whisper.cpp and the PostgreSQL binaries zip need the Visual C++ runtime, which a clean PC may not have. The build
+# machine has it, so its DLLs go next to the programs that load them.
+$vcRuntime = @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll", "vcomp140.dll")
+foreach ($target in @((Join-Path $tools "whisper\Release"), (Join-Path $tools "postgres\bin"))) {
+  foreach ($dll in $vcRuntime) {
+    $source = Join-Path $env:SystemRoot "System32\$dll"
+    if (-not (Test-Path $source)) { throw "$dll is missing on the build machine; install the Visual C++ 2015-2022 x64 runtime" }
+    Copy-Item -Force $source $target
+  }
+}
 
 # The app itself: tracked files only, then Windows-native dependencies.
 $app = Join-Path $payload "app"
@@ -85,6 +106,9 @@ if ($LASTEXITCODE -ne 0) { throw "git archive failed" }
 tar -xf $appTar -C $app
 if ($LASTEXITCODE -ne 0) { throw "extracting the app archive failed" }
 Remove-Item $appTar
+# pnpm's default node_modules is junctions into .pnpm, which Inno Setup cannot pack into a working install and whose
+# paths pass 260 characters. The hoisted layout is plain folders, like npm's.
+Set-Content -Path (Join-Path $app ".npmrc") -Value "node-linker=hoisted" -Encoding ascii
 Push-Location $app
 $env:PATH = "$(Join-Path $tools 'node');$env:PATH"
 # Prisma and next build read the app's settings when they load, so give them placeholders first. The real values

@@ -1,3 +1,8 @@
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
+# Their install scripts fetch Prisma's engines and esbuild's binary, so the installed app needs no download later.
+onlyBuiltDependencies:
+  - "@prisma/engines"
+  - esbuild
+  - prisma
