@@ -8,10 +8,13 @@ export async function refreshDueTokens(
   db: PrismaClient,
   { now, key, fetchFn = fetch }: { now: Date; key: Buffer; fetchFn?: typeof fetch },
 ) {
+  // Only active accounts: a revoked account must stay revoked, not turn into reauth_required.
   const rows = await db.igToken.findMany({
-    where: { expiresAt: { lte: new Date(now.getTime() + REFRESH_WINDOW_MS) } },
+    where: { expiresAt: { lte: new Date(now.getTime() + REFRESH_WINDOW_MS) }, account: { status: "active" } },
   });
 
+  // One account's error must not stop the others from refreshing, so errors are collected and thrown at the end.
+  const failures: string[] = [];
   for (const row of rows) {
     const decision = decideRefresh({ expiresAt: row.expiresAt, lastRefreshedAt: row.lastRefreshedAt, now });
     if (decision === "skip") continue;
@@ -42,10 +45,14 @@ export async function refreshDueTokens(
         },
       });
     } catch (err) {
-      if (!(err instanceof TokenInvalidError)) throw err;
-      await markReauthRequired(db, row.accountId);
+      if (err instanceof TokenInvalidError) {
+        await markReauthRequired(db, row.accountId);
+      } else {
+        failures.push(`${row.accountId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
+  if (failures.length > 0) throw new Error(`token refresh failed for ${failures.length} account(s): ${failures.join("; ")}`);
 }
 
 async function markReauthRequired(db: PrismaClient, accountId: string) {

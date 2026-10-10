@@ -31,7 +31,8 @@ export async function refreshToken(
   url.searchParams.set("access_token", token);
 
   const response = await fetchFn(url.toString());
-  const body = (await response.json()) as {
+  // A gateway error can come back as HTML, so a body that isn't JSON is reported with the status instead of a parse error.
+  const body = (await response.json().catch(() => ({}))) as {
     access_token?: string;
     expires_in?: number;
     error?: { code?: number; message?: string };
