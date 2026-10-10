@@ -1,0 +1,26 @@
+name: Windows installer
+
+# Builds installer\Output\Localirs-Setup.exe on a Windows runner. Start it from the Actions tab with "Run workflow",
+# then download the Localirs-Setup artifact from the run page.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+      - name: Build the installer
+        run: powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Localirs-Setup
+          path: installer/Output/Localirs-Setup.exe
+          if-no-files-found: error
