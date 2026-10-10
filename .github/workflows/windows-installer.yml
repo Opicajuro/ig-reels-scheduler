@@ -26,6 +26,7 @@ jobs:
             installer/payload/tools/*.zip
             installer/payload/tools/yt-dlp.exe
           key: installer-tools-${{ hashFiles('installer/tools.json') }}
+          save-always: true
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
       - name: Check the installer scripts parse

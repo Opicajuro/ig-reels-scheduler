@@ -15,7 +15,13 @@ function Get-Tool($name, $entry, $target) {
   $file = Join-Path $tools $target
   if (-not (Test-Path $file)) {
     Write-Host "Downloading $name $($entry.version)"
-    Invoke-WebRequest -Uri $entry.url -OutFile $file -UseBasicParsing
+    try {
+      Invoke-WebRequest -Uri $entry.url -OutFile $file -UseBasicParsing
+    } catch {
+      # A failed download must not stay behind, or the tools cache would keep it for the next build.
+      Remove-Item -Force $file -ErrorAction SilentlyContinue
+      throw
+    }
   }
   $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
   if ($entry.sha256) {
@@ -44,16 +50,16 @@ Copy-Item -Force (Get-ChildItem (Join-Path $tools "ffmpeg-unzip") -Recurse -Filt
 Copy-Item -Force (Get-ChildItem (Join-Path $tools "ffmpeg-unzip") -Recurse -Filter ffprobe.exe | Select-Object -First 1).FullName (Join-Path $tools "ffprobe.exe")
 Remove-Item -Recurse -Force (Join-Path $tools "ffmpeg-unzip")
 
-Copy-Item -Force $ytDlp (Join-Path $tools "yt-dlp.exe")
-
 # SeaweedFS is built from the pinned Go module, because its Windows release downloads are not a stable source.
-Expand-Archive -Force $seaweedZip (Join-Path $tools "seaweedfs-src")
-$seaweedDir = (Get-ChildItem (Join-Path $tools "seaweedfs-src") -Recurse -Filter go.mod | Select-Object -First 1).Directory.FullName
+# It is unpacked under the temp folder: its deepest paths do not fit in the 260-character limit under the installer folder.
+$seaweedSrc = Join-Path ([System.IO.Path]::GetTempPath()) "localirs-seaweedfs"
+Expand-Archive -Force $seaweedZip $seaweedSrc
+$seaweedDir = (Get-ChildItem $seaweedSrc -Recurse -Filter go.mod | Sort-Object { $_.FullName.Length } | Select-Object -First 1).Directory.FullName
 Push-Location $seaweedDir
 go build -ldflags "-s -w" -o (Join-Path $tools "weed.exe") ./weed
 if ($LASTEXITCODE -ne 0) { throw "go build of SeaweedFS failed" }
 Pop-Location
-Remove-Item -Recurse -Force (Join-Path $tools "seaweedfs-src")
+Remove-Item -Recurse -Force $seaweedSrc
 
 Expand-Archive -Force $whisperZip (Join-Path $tools "whisper")
 Copy-Item -Force $whisperModel (Join-Path $tools "whisper\ggml-base.bin")
