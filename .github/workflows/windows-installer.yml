@@ -32,7 +32,7 @@ jobs:
       - name: Check the installer scripts parse
         shell: pwsh
         run: |
-          foreach ($file in Get-ChildItem installer -Filter *.ps1) {
+          foreach ($file in Get-ChildItem installer, scripts -Filter *.ps1) {
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
