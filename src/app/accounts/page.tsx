@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { auth } from "@/auth";
+import { mockConnectEnabled } from "@/lib/mock-accounts";
 import { prisma } from "@/lib/prisma";
 
 async function AccountList() {
@@ -29,6 +30,11 @@ async function AccountList() {
         </ul>
       )}
       <a href="/api/ig/connect">Connect an Instagram account</a>
+      {mockConnectEnabled(process.env) ? (
+        <form method="post" action="/api/ig/dev-connect">
+          <button type="submit">Add a mock account (IG_MOCK)</button>
+        </form>
+      ) : null}
     </main>
   );
 }

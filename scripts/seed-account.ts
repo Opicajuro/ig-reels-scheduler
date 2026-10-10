@@ -1,12 +1,10 @@
 // Adds a fake Instagram account for local testing, so the schedule forms have an account to pick.
 // Run with: pnpm seed:account [--username name] [--expired]
-// The token is fake and encrypted with the app's own TOKEN_ENC_KEY, so it decrypts like a real one, but any call to
-// Meta with it fails. --expired seeds the account as reauth_required with a token that has already expired.
-import { randomBytes } from "node:crypto";
+// Uses the same mock account as the IG_MOCK button on /accounts (src/lib/mock-accounts.ts). --expired seeds the
+// account as reauth_required with a token that has already expired.
+import { createMockAccount } from "../src/lib/mock-accounts";
 import { prisma } from "../src/lib/prisma";
-import { encryptToken, loadTokenKey } from "../src/lib/token-crypto";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { loadTokenKey } from "../src/lib/token-crypto";
 
 // The value after a flag, or the fallback when the flag is missing or has no value after it.
 export function flagValue(args: string[], flag: string, fallback: string): string {
@@ -27,24 +25,7 @@ async function main() {
     console.log(`created user ${email}`);
   }
 
-  const sealed = encryptToken(`fake-token-${randomBytes(16).toString("hex")}`, loadTokenKey());
-  const account = await prisma.igAccount.create({
-    data: {
-      ownerId: user.id,
-      igUserId: `seed-${randomBytes(8).toString("hex")}`,
-      username,
-      accountType: "BUSINESS",
-      status: expired ? "reauth_required" : "active",
-      token: {
-        create: {
-          ciphertext: new Uint8Array(sealed.ciphertext),
-          iv: new Uint8Array(sealed.iv),
-          authTag: new Uint8Array(sealed.authTag),
-          expiresAt: new Date(Date.now() + (expired ? -1 : 60) * DAY_MS),
-        },
-      },
-    },
-  });
+  const account = await createMockAccount(prisma, { ownerId: user.id, key: loadTokenKey(), username, expired });
   console.log(`seeded account ${account.id} (@${username}, ${account.status}) for ${user.email}`);
 }
 
