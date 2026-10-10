@@ -28,9 +28,14 @@ included `docker-compose.yml` starts Postgres and MinIO.
     cp .env.example .env        # fill in the values, see docs/DEPLOY.md section 3
     docker compose up -d        # Postgres and MinIO
     pnpm install
+    pnpm exec prisma generate   # needs .env, so it comes after copying it
     pnpm exec prisma migrate deploy
     pnpm dev                    # web app on http://localhost:3000
     pnpm worker                 # in a second terminal: background jobs
+
+Create the storage bucket once: open the MinIO console at http://localhost:9001 (user `minio`,
+password `minio12345`), create a bucket named `ig-reels`. Sign-in emails need `RESEND_API_KEY` and
+`EMAIL_FROM` in `.env`.
 
 Optional, for links and captions: `yt-dlp` on the worker's PATH for clips made from a link, and
 `CHROME_PATH`, `WHISPER_BIN` and `WHISPER_MODEL` for captions.
