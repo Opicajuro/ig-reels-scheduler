@@ -1,8 +1,10 @@
 name: Windows installer
 
-# Builds installer\Output\Localirs-Setup.exe on a Windows runner. Start it from the Actions tab with "Run workflow",
-# then download the Localirs-Setup artifact from the run page.
+# Builds installer\Output\Localirs-Setup.exe on a Windows runner. It runs on every push to claude/combined-app.
+# Download the Localirs-Setup artifact from the run page in the Actions tab.
 on:
+  push:
+    branches: [claude/combined-app]
   workflow_dispatch:
 
 jobs:
