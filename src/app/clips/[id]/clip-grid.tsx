@@ -2,14 +2,9 @@
 
 import { useState } from "react";
 import { buildUploadSheet } from "@/lib/upload-sheet";
-import {
-  copyClipAction,
-  deleteClipAction,
-  renameClipAction,
-  saveClipDetailsAction,
-  scheduleClipAction,
-} from "../actions";
+import { copyClipAction, deleteClipAction, renameClipAction, saveClipDetailsAction } from "../actions";
 import { ConfirmForm } from "../confirm-form";
+import { ScheduleForm } from "./schedule-form";
 import styles from "../clips.module.css";
 
 export type ClipView = {
@@ -139,28 +134,12 @@ export function ClipGrid({
                 {accounts.length === 0 ? (
                   <p className={styles.muted}>Connect an Instagram account to schedule this clip.</p>
                 ) : (
-                  <form action={scheduleClipAction}>
-                    <input type="hidden" name="clipId" value={clip.id} />
-                    <label className={styles.label}>
-                      Instagram account
-                      <select name="accountId" required>
-                        {accounts.map((account) => (
-                          <option key={account.id} value={account.id}>
-                            @{account.username}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className={styles.label}>
-                      Publish at
-                      <input type="datetime-local" name="scheduledAt" required />
-                    </label>
-                    <label className={styles.label}>
-                      Caption
-                      <textarea name="caption" rows={3} maxLength={2200} defaultValue={clip.description || clip.title || clip.name} required />
-                    </label>
-                    <button type="submit">Schedule on Instagram</button>
-                  </form>
+                  <ScheduleForm
+                    clipId={clip.id}
+                    projectId={projectId}
+                    accounts={accounts}
+                    defaultCaption={clip.description || clip.title || clip.name}
+                  />
                 )}
               </details>
             </article>
