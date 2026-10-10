@@ -87,13 +87,8 @@ if ($LASTEXITCODE -ne 0) { throw "extracting the app archive failed" }
 Remove-Item $appTar
 Push-Location $app
 $env:PATH = "$(Join-Path $tools 'node');$env:PATH"
-corepack enable
-pnpm install --frozen-lockfile
-if ($LASTEXITCODE -ne 0) { throw "pnpm install failed" }
-pnpm exec prisma generate
-if ($LASTEXITCODE -ne 0) { throw "prisma generate failed" }
-# next build reads the app's settings when it loads, so give it placeholders here. The real values are
-# written on the user's PC by setup-localirs.ps1.
+# Prisma and next build read the app's settings when they load, so give them placeholders first. The real values
+# are written on the user's PC by setup-localirs.ps1.
 $placeholders = @{
   DATABASE_URL = "postgresql://build:build@127.0.0.1:5432/build"
   S3_ENDPOINT = "http://127.0.0.1:9000"; S3_BUCKET = "build"; S3_ACCESS_KEY = "build"; S3_SECRET_KEY = "build-secret"
@@ -102,6 +97,11 @@ $placeholders = @{
   AUTH_SECRET = "build-secret"; RESEND_API_KEY = "re_build"; EMAIL_FROM = "build@example.test"; APP_URL = "http://localhost:3000"
 }
 foreach ($key in $placeholders.Keys) { Set-Item -Path "Env:$key" -Value $placeholders[$key] }
+corepack enable
+pnpm install --frozen-lockfile
+if ($LASTEXITCODE -ne 0) { throw "pnpm install failed" }
+pnpm exec prisma generate
+if ($LASTEXITCODE -ne 0) { throw "prisma generate failed" }
 pnpm build
 if ($LASTEXITCODE -ne 0) { throw "pnpm build failed" }
 Pop-Location
