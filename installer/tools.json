@@ -1,0 +1,42 @@
+{
+  "node": {
+    "version": "22.22.0",
+    "url": "https://nodejs.org/dist/v22.22.0/node-v22.22.0-win-x64.zip",
+    "sha256": null
+  },
+  "ffmpeg": {
+    "version": "release-essentials",
+    "url": "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+    "sha256": null
+  },
+  "ytDlp": {
+    "version": "latest",
+    "url": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
+    "sha256": null
+  },
+  "whisperCpp": {
+    "version": "1.7.6",
+    "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.7.6/whisper-bin-x64.zip",
+    "sha256": null
+  },
+  "whisperModel": {
+    "version": "base",
+    "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+    "sha256": null
+  },
+  "chromeHeadlessShell": {
+    "version": "141.0.7390.37",
+    "url": "https://storage.googleapis.com/chrome-for-testing-public/141.0.7390.37/win64/chrome-headless-shell-win64.zip",
+    "sha256": null
+  },
+  "postgres": {
+    "version": "16.4-1",
+    "url": "https://get.enterprisedb.com/postgresql/postgresql-16.4-1-windows-x64-binaries.zip",
+    "sha256": null
+  },
+  "minio": {
+    "version": "latest",
+    "url": "https://dl.min.io/server/minio/release/windows-amd64/minio.exe",
+    "sha256": null
+  }
+}

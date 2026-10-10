@@ -45,6 +45,11 @@ Set these on both the web and the worker service, unless noted.
 | `IG_APP_SECRET` | Meta app secret (keep it out of logs and screenshots) |
 | `IG_REDIRECT_URI` | `https://<your-domain>/api/ig/callback` |
 | `APP_URL` | `https://<your-domain>` |
+| `CHROME_PATH` | Chrome or Chrome headless shell binary. Needed only for clips with captions. |
+| `WHISPER_BIN` | whisper.cpp `whisper-cli` binary. Needed only for clips with captions. |
+| `WHISPER_MODEL` | Path to a whisper.cpp model file, for example `ggml-base.bin`. Needed only for captions. |
+
+The worker also needs `ffmpeg` and `ffprobe` on its PATH for every clip, and `yt-dlp` on its PATH for clips made from a link.
 
 Never commit `.env`. The repository's `.gitignore` already excludes it.
 
