@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { createScheduledPost } from "@/lib/posts";
 import { getPublishQueue } from "@/lib/queues";
+import { PublishAtInput } from "./publish-at-input";
 
 async function PostEditor() {
   await connection();
@@ -71,10 +72,7 @@ async function PostEditor() {
             Caption
             <textarea name="caption" maxLength={2200} required />
           </label>
-          <label>
-            Publish at
-            <input name="scheduledAt" type="datetime-local" required />
-          </label>
+          <PublishAtInput />
           <label>
             <input name="shareToFeed" type="checkbox" defaultChecked /> Also share to feed
           </label>
