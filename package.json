@@ -10,7 +10,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "worker": "tsx --env-file-if-exists=.env src/worker/index.ts",
-    "wizard": "tsx scripts/wizard.ts"
+    "wizard": "tsx scripts/wizard.ts",
+    "seed:account": "tsx --env-file-if-exists=.env scripts/seed-account.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "2.11.3",
