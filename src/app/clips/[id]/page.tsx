@@ -70,13 +70,6 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
   return (
     <div className={styles.page}>
       <div className={styles.wrap}>
-        <header className={styles.top}>
-          <Link href="/" className={styles.brand}>
-            Local<b>irs</b>
-          </Link>
-          <Link href="/dashboard">Dashboard</Link>
-        </header>
-
         <Link href="/clips" className={styles.back}>
           ← All projects
         </Link>

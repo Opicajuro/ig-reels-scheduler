@@ -18,26 +18,8 @@
   margin: 0 auto;
 }
 
-.top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid #262c37;
-}
 
-.brand {
-  color: #eceef3;
-  font-weight: 700;
-  font-size: 1.1rem;
-  text-decoration: none;
-}
 
-.brand b {
-  color: #4d7cff;
-  font-weight: 700;
-}
 
 .back {
   display: inline-block;

@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { Nav } from "./nav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,7 +22,13 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {/* The menu reads the current address, which is only known per request. */}
+        <Suspense fallback={null}>
+          <Nav />
+        </Suspense>
+        {children}
+      </body>
     </html>
   );
 }

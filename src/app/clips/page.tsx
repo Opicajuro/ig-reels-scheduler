@@ -23,13 +23,6 @@ async function ClipProjects() {
   return (
     <div className={styles.page}>
       <div className={styles.wrap}>
-        <header className={styles.top}>
-          <Link href="/" className={styles.brand}>
-            Local<b>irs</b>
-          </Link>
-          <Link href="/dashboard">Dashboard</Link>
-        </header>
-
         <div className={styles.grid2}>
           <UploadForm />
           <form className={styles.panel} action={createLinkProjectAction}>

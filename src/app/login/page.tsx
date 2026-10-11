@@ -15,14 +15,19 @@ export default function LoginPage({ searchParams }: { searchParams: Promise<{ er
   }
 
   return (
-    <main>
+    <main className="login">
+      <p className="brand">
+        <span className="brand-mark" aria-hidden="true" />
+        Localirs
+      </p>
       <h1>Sign in</h1>
+      <p className="tagline">We will email you a link. No password needed.</p>
       {/* A failed sign-in comes back here as ?error=..., set by pages.error in src/auth.ts. */}
       <Suspense fallback={null}>
         <SignInError searchParams={searchParams} />
       </Suspense>
       <form action={sendSignInLink}>
-        <input name="email" type="email" required placeholder="you@example.com" />
+        <input name="email" aria-label="Email" type="email" required placeholder="you@example.com" />
         <button type="submit">Email me a sign-in link</button>
       </form>
     </main>
