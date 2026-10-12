@@ -96,7 +96,7 @@ export function ClipGrid({
                 </a>
               </div>
               <details className={styles.details}>
-                <summary>Title, description and posting</summary>
+                <summary>Posting and safe-clip rights</summary>
                 <form action={saveClipDetailsAction}>
                   <input type="hidden" name="clipId" value={clip.id} />
                   <input type="hidden" name="projectId" value={projectId} />
@@ -119,17 +119,13 @@ export function ClipGrid({
                   </label>
                   <button type="submit">Rename</button>
                 </form>
-                {accounts.length === 0 ? (
-                  <p className={styles.muted}>Connect an Instagram account to schedule this clip.</p>
-                ) : (
-                  <ScheduleForm
-                    clipId={clip.id}
-                    projectId={projectId}
-                    accounts={accounts}
-                    defaultCaption={clip.description || clip.title || clip.name}
-                    alreadyScheduledTo={alreadyScheduledTo}
-                  />
-                )}
+                <ScheduleForm
+                  clipId={clip.id}
+                  projectId={projectId}
+                  accounts={accounts}
+                  defaultCaption={clip.description || clip.title || clip.name}
+                  alreadyScheduledTo={alreadyScheduledTo}
+                />
               </details>
             </article>
           ))}

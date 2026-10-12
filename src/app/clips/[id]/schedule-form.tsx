@@ -30,9 +30,12 @@ export function ScheduleForm({
     <form action={scheduleClipAction}>
       <input type="hidden" name="clipId" value={clipId} />
       <input type="hidden" name="projectId" value={projectId} />
+      {accounts.length === 0 ? (
+        <p className={styles.muted}>Connect an Instagram account to schedule this clip. You can confirm the rights below now.</p>
+      ) : null}
       <label className={styles.label}>
         Instagram account
-        <select name="accountId" required>
+        <select name="accountId" required disabled={accounts.length === 0}>
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
               @{account.username}
@@ -73,7 +76,7 @@ export function ScheduleForm({
           audio
         </span>
       </label>
-      <button type="submit" disabled={!scheduledAt}>
+      <button type="submit" disabled={!scheduledAt || accounts.length === 0}>
         Schedule on Instagram
       </button>
     </form>
