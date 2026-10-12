@@ -12,6 +12,7 @@ import {
   renameClip,
   renameProject,
   scheduleClip,
+  scheduleClips,
   setClipDetails,
   startRender,
 } from "./clip-projects";
@@ -38,6 +39,7 @@ function fakeDb(
   const relatedTable: Record<string, string> = { project: "clipProject", account: "igAccount", media: "media" };
   const matches = (table: string, row: Row, where: Record<string, unknown>): boolean =>
     Object.entries(where).every(([key, value]) => {
+      if (value && typeof value === "object" && "in" in value) return (value.in as unknown[]).includes(row[key]);
       const relation = relations[table]?.[key];
       if (relation && value && typeof value === "object") {
         const related = relation(row);
@@ -58,8 +60,8 @@ function fakeDb(
       withIncludes(table, tables[table].find((row) => matches(table, row, where)), include),
     findUnique: async ({ where }: { where: { id: string } }) =>
       structuredClone(tables[table].find((row) => row.id === where.id) ?? null),
-    findMany: async ({ where = {} }: { where?: Record<string, unknown> } = {}) =>
-      structuredClone(tables[table].filter((row) => matches(table, row, where))),
+    findMany: async ({ where = {}, include }: { where?: Record<string, unknown>; include?: Record<string, boolean> } = {}) =>
+      tables[table].filter((row) => matches(table, row, where)).map((row) => withIncludes(table, row, include)),
     create: async ({ data }: { data: Record<string, unknown> }) => {
       const row = { id: `${table}-${tables[table].length + 1}`, ...data } as Row;
       tables[table].push(row);
@@ -320,6 +322,53 @@ describe("copyProject and clip operations", () => {
 
     const busy = fakeDb({ projects: [project({ status: "rendering" })], clips: [clip()] });
     await expect(deleteClip({ db: busy.db, store: fakeStore().store, ...owned, clipId: "c1" })).rejects.toThrow("rendering");
+  });
+});
+
+describe("scheduleClips", () => {
+  const account = { id: "acc-1", ownerId: "user-1", status: "active" };
+  const HOUR = 60 * 60 * 1000;
+
+  it("schedules one post per clip, spaced by the gap, under one rights confirmation", async () => {
+    const { db, tables } = fakeDb({
+      projects: [project()],
+      clips: [clip({ id: "c1" }), clip({ id: "c2", storageKey: "clips/p1/c2.mp4" })],
+      accounts: [account],
+    });
+    const files = fakeStore();
+    const first = Date.now() + 3 * HOUR;
+    await scheduleClips({
+      db,
+      store: files.store,
+      queue: { send: async () => "job-1", cancel: async () => {} },
+      ...owned,
+      clipIds: ["c1", "c2"],
+      accountId: "acc-1",
+      firstScheduledAt: new Date(first).toISOString(),
+      gapHours: 24,
+      rightsConfirmed: true,
+      audioSource: "original",
+      now: new Date(),
+    });
+
+    expect(tables.post.map((post) => new Date(post.scheduledAt as string).getTime())).toEqual([first, first + 24 * HOUR]);
+    expect(tables.auditLog).toHaveLength(2);
+  });
+
+  it("creates nothing when the rights are not confirmed or a clip is not in the owner's projects", async () => {
+    const { db, tables } = fakeDb({ projects: [project()], clips: [clip()], accounts: [account] });
+    const firstScheduledAt = new Date(Date.now() + 3 * HOUR).toISOString();
+    const base = { db, store: fakeStore().store, queue: { send: async () => "x", cancel: async () => {} }, ...owned };
+
+    await expect(
+      scheduleClips({ ...base, clipIds: ["c1"], accountId: "acc-1", firstScheduledAt, gapHours: 24, rightsConfirmed: false, audioSource: "original", now: new Date() }),
+    ).rejects.toThrow(/confirm/);
+    await expect(
+      scheduleClips({ ...base, clipIds: ["c1", "missing"], accountId: "acc-1", firstScheduledAt, gapHours: 24, rightsConfirmed: true, audioSource: "original", now: new Date() }),
+    ).rejects.toThrow("clip not found");
+
+    expect(tables.post).toEqual([]);
+    expect(tables.media).toEqual([]);
   });
 });
 

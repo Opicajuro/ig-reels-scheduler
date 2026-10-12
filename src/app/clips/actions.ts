@@ -127,3 +127,21 @@ export async function scheduleClipAction(formData: FormData) {
   revalidatePath("/dashboard");
   redirect("/dashboard");
 }
+
+export async function bulkScheduleClipsAction(formData: FormData) {
+  await clips.scheduleClips({
+    db: prisma,
+    store: s3ClipStore,
+    queue: getPublishQueue(),
+    ownerId: await ownerId(),
+    clipIds: formData.getAll("clipId").map(String),
+    accountId: text(formData, "accountId"),
+    firstScheduledAt: text(formData, "scheduledAt"),
+    gapHours: Number(text(formData, "gapHours")),
+    rightsConfirmed: formData.get("rightsConfirmed") === "on",
+    audioSource: parseAudioSource(formData.get("audioSource")),
+    now: new Date(),
+  });
+  revalidatePath("/dashboard");
+  redirect("/dashboard");
+}

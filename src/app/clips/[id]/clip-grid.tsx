@@ -5,6 +5,7 @@ import { copyClipAction, deleteClipAction, renameClipAction, saveClipDetailsActi
 import { ConfirmForm } from "../confirm-form";
 import { ExportForm } from "./export-form";
 import { ScheduleForm } from "./schedule-form";
+import { BulkScheduleForm } from "./bulk-schedule-form";
 import styles from "../clips.module.css";
 
 export type ClipView = {
@@ -131,6 +132,14 @@ export function ClipGrid({
           ))}
         </div>
       )}
+
+      {picked.size > 0 ? (
+        <BulkScheduleForm
+          clips={clips.filter((clip) => picked.has(clip.id)).map((clip) => ({ id: clip.id, name: clip.name }))}
+          accounts={accounts}
+          alreadyScheduledTo={alreadyScheduledTo}
+        />
+      ) : null}
 
       <div className={styles.dock}>
         <div className={styles.dockInner}>

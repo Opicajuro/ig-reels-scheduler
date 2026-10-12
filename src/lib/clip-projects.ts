@@ -354,6 +354,69 @@ export async function scheduleClip({
   return post;
 }
 
+// Posts several clips to one account under one rights confirmation. Every check runs before the first post is made,
+// so a refusal creates nothing. Clip i is published at the first time plus i gaps.
+export async function scheduleClips({
+  db,
+  store,
+  queue,
+  ownerId,
+  clipIds,
+  accountId,
+  firstScheduledAt,
+  gapHours,
+  rightsConfirmed,
+  audioSource,
+  now,
+}: {
+  db: PrismaClient;
+  store: ClipStore;
+  queue: PublishQueue;
+  ownerId: string;
+  clipIds: string[];
+  accountId: string;
+  firstScheduledAt: string;
+  gapHours: number;
+  rightsConfirmed: boolean;
+  audioSource: AudioSourceValue;
+  now: Date;
+}) {
+  const ids = [...new Set(clipIds)];
+  if (ids.length === 0) throw new Error("select at least one clip");
+  if (!Number.isInteger(gapHours) || gapHours < 1 || gapHours > 720) {
+    throw new Error("the gap between posts must be a whole number of hours from 1 to 720");
+  }
+  const first = new Date(firstScheduledAt);
+  if (Number.isNaN(first.getTime())) throw new Error("the first publish time is not valid");
+  if (first.getTime() <= now.getTime()) throw new Error("the first publish time must be in the future");
+
+  const rights = checkRights({ rightsConfirmed, audioSource, siblingAccountCount: 0 });
+  if (!rights.canSchedule) throw new Error(rights.warnings[0]);
+
+  const clips = await db.clip.findMany({ where: { id: { in: ids }, project: { ownerId } }, include: { project: true } });
+  if (clips.length !== ids.length) throw new Error("clip not found");
+  if (clips.some((clip) => clip.project.status === "rendering")) throw new Error("clips are rendering for this project");
+  const account = await db.igAccount.findFirst({ where: { id: accountId, ownerId, status: "active" } });
+  if (!account) throw new Error("account is not connected and active");
+
+  const byId = new Map(clips.map((clip) => [clip.id, clip]));
+  const plan = ids.map((clipId, index) => {
+    const clip = byId.get(clipId);
+    if (!clip) throw new Error("clip not found");
+    const caption = clip.description || clip.title || clip.name;
+    if (caption.length > 2200) throw new Error(`${clip.name}: caption must be at most 2200 characters`);
+    return { clipId, caption, scheduledAt: new Date(first.getTime() + index * gapHours * 60 * 60 * 1000).toISOString() };
+  });
+
+  const posts = [];
+  for (const item of plan) {
+    posts.push(
+      await scheduleClip({ db, store, queue, ownerId, accountId, rightsConfirmed, audioSource, now, ...item }),
+    );
+  }
+  return posts;
+}
+
 // Other accounts that already have a live post (scheduled, in progress, or published) made from this clip project.
 export async function countOtherAccounts(db: PrismaClient, projectId: string, accountId: string): Promise<number> {
   const posts = await db.post.findMany({
