@@ -23,3 +23,17 @@ export function captionPreset(name) {
   if (!Object.hasOwn(PRESETS, name)) throw new Error(`Unknown caption preset "${name}"`);
   return PRESETS[name];
 }
+
+// Where on the clip the caption sits. The bottom position is the one the captions have always used.
+export const CAPTION_POSITION_NAMES = ["bottom", "middle", "top"];
+
+const PLACEMENTS = {
+  bottom: { bottom: "18%" },
+  middle: { top: "50%", transform: "translateY(-50%)" },
+  top: { top: "12%" },
+};
+
+export function captionPlacement(name) {
+  if (!Object.hasOwn(PLACEMENTS, name)) throw new Error(`Unknown caption position "${name}"`);
+  return PLACEMENTS[name];
+}

@@ -208,6 +208,8 @@ model ClipProject {
   clipCount       Int?
   withCaptions    Boolean           @default(false)
   captionPreset   String?
+  captionPosition String            @default("bottom")
+  captionUppercase Boolean          @default(false)
   createdAt       DateTime          @default(now())
   clips           Clip[]
 }

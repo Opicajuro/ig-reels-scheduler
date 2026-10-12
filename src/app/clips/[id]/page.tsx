@@ -24,6 +24,11 @@ const CAPTION_STYLES = [
   { value: "yellow", label: "Yellow", hint: "Bold, black outline" },
   { value: "box", label: "Box", hint: "White on a dark panel" },
 ];
+const CAPTION_POSITIONS = [
+  { value: "bottom", label: "Bottom" },
+  { value: "middle", label: "Middle" },
+  { value: "top", label: "Top" },
+];
 
 async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
   await connection();
@@ -149,6 +154,24 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
                 </label>
               ))}
             </div>
+            <span className={styles.label}>Caption position</span>
+            <div className={styles.choice}>
+              {CAPTION_POSITIONS.map((position) => (
+                <label key={position.value} className={styles.pill}>
+                  <input
+                    type="radio"
+                    name="captionPosition"
+                    value={position.value}
+                    defaultChecked={position.value === project.captionPosition}
+                  />
+                  <span>{position.label}</span>
+                </label>
+              ))}
+            </div>
+            <label className={styles.toggle}>
+              <span>All capitals</span>
+              <input type="checkbox" name="captionUppercase" defaultChecked={project.captionUppercase} />
+            </label>
             <button type="submit" className={styles.primary} disabled={busy || waiting}>
               Make clips
             </button>

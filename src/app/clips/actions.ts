@@ -47,6 +47,8 @@ export async function startRenderAction(formData: FormData) {
     clipCount: text(formData, "clipCount") === "auto" ? null : Number(text(formData, "clipCount")),
     withCaptions: formData.get("withCaptions") === "on",
     captionPreset: text(formData, "captionPreset"),
+    captionPosition: text(formData, "captionPosition"),
+    captionUppercase: formData.get("captionUppercase") === "on",
   });
   revalidatePath(`/clips/${projectId}`);
 }

@@ -1,4 +1,4 @@
-import { CAPTION_PRESET_NAMES } from "./remotion/caption-presets.js";
+import { CAPTION_POSITION_NAMES, CAPTION_PRESET_NAMES } from "./remotion/caption-presets.js";
 
 export const MIN_CLIP_SECONDS = 15;
 export const MAX_CLIP_SECONDS = 180;
@@ -36,6 +36,13 @@ export function assertHttpUrl(value) {
 export function parseCaptionPreset(value) {
   if (!CAPTION_PRESET_NAMES.includes(value)) {
     throw new HttpError(400, `captionPreset must be one of ${CAPTION_PRESET_NAMES.join(", ")}`);
+  }
+  return value;
+}
+
+export function parseCaptionPosition(value) {
+  if (!CAPTION_POSITION_NAMES.includes(value)) {
+    throw new HttpError(400, `captionPosition must be one of ${CAPTION_POSITION_NAMES.join(", ")}`);
   }
   return value;
 }

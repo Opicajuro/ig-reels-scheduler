@@ -81,6 +81,8 @@ export async function renderClipProject({
           output,
           chromePath: requireEnv("CHROME_PATH"),
           preset: project.captionPreset,
+          position: project.captionPosition,
+          uppercase: project.captionUppercase,
         });
       } else {
         await renderClip({ input: sourcePath, output, start: highlight.start, length: highlight.length });

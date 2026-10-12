@@ -4,6 +4,7 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import {
   assertHttpUrl,
   MAX_CLIPS,
+  parseCaptionPosition,
   parseCaptionPreset,
   parseClipName,
   parseClipSeconds,
@@ -94,6 +95,8 @@ export async function startRender({
   clipCount,
   withCaptions,
   captionPreset,
+  captionPosition,
+  captionUppercase,
 }: {
   db: PrismaClient;
   queue: ClipQueue;
@@ -103,6 +106,8 @@ export async function startRender({
   clipCount: unknown;
   withCaptions: boolean;
   captionPreset?: unknown;
+  captionPosition?: unknown;
+  captionUppercase?: boolean;
 }) {
   const project = await ownedProject(db, ownerId, projectId);
   if (project.status === "awaiting_source") throw new Error("upload the video before making clips");
@@ -114,10 +119,21 @@ export async function startRender({
     throw new Error(`clipCount must be a whole number from 1 to ${MAX_CLIPS}`);
   }
   const preset = withCaptions ? parseCaptionPreset(captionPreset) : null;
+  const position = withCaptions ? parseCaptionPosition(captionPosition) : "bottom";
+  const uppercase = withCaptions && captionUppercase === true;
 
   await db.clipProject.update({
     where: { id: projectId },
-    data: { status: "rendering", error: null, clipSeconds: seconds, clipCount, withCaptions, captionPreset: preset },
+    data: {
+      status: "rendering",
+      error: null,
+      clipSeconds: seconds,
+      clipCount,
+      withCaptions,
+      captionPreset: preset,
+      captionPosition: position,
+      captionUppercase: uppercase,
+    },
   });
   try {
     await queue.send(projectId);

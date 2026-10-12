@@ -4,19 +4,29 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
-import { captionPreset } from "./remotion/caption-presets.js";
+import { captionPlacement, captionPreset } from "./remotion/caption-presets.js";
 
 const ENTRY_POINT = fileURLToPath(new URL("./remotion/index.jsx", import.meta.url));
 
-export async function renderCaptionedClip({ clipPath, durationSeconds, captions, output, chromePath, preset }) {
+export async function renderCaptionedClip({
+  clipPath,
+  durationSeconds,
+  captions,
+  output,
+  chromePath,
+  preset,
+  position = "bottom",
+  uppercase = false,
+}) {
   if (!chromePath) throw new Error("chromePath is required to render captions");
   captionPreset(preset);
+  captionPlacement(position);
 
   const publicDir = await mkdtemp(path.join(os.tmpdir(), "remotion-clip-"));
   await copyFile(clipPath, path.join(publicDir, "clip.mp4"));
 
   const serveUrl = await bundle({ entryPoint: ENTRY_POINT, publicDir });
-  const inputProps = { captions, durationSeconds, preset };
+  const inputProps = { captions, durationSeconds, preset, position, uppercase };
   const composition = await selectComposition({
     serveUrl,
     id: "Captions",

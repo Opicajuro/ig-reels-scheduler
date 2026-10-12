@@ -1,7 +1,7 @@
 import { AbsoluteFill, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
-import { captionPreset } from "./caption-presets.js";
+import { captionPlacement, captionPreset } from "./caption-presets.js";
 
-export function Captions({ captions, preset }) {
+export function Captions({ captions, preset, position, uppercase }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const timeMs = (frame / fps) * 1000;
@@ -15,7 +15,7 @@ export function Captions({ captions, preset }) {
         <div
           style={{
             position: "absolute",
-            bottom: "18%",
+            ...captionPlacement(position),
             width: "100%",
             padding: "16px 48px",
             boxSizing: "border-box",
@@ -26,6 +26,7 @@ export function Captions({ captions, preset }) {
             fontSize: 64,
             fontWeight: 800,
             textShadow: look.textShadow,
+            textTransform: uppercase ? "uppercase" : "none",
           }}
         >
           {active.text}

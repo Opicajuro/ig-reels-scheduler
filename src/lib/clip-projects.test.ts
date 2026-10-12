@@ -186,6 +186,7 @@ describe("startRender", () => {
       clipCount: 4,
       withCaptions: true,
       captionPreset: "yellow",
+      captionPosition: "bottom",
     });
 
     expect(tables.clipProject[0]).toMatchObject({
@@ -210,6 +211,23 @@ describe("startRender", () => {
       withCaptions: false,
     });
     expect(tables.clipProject[0]).toMatchObject({ status: "rendering", clipCount: null });
+  });
+
+  it("stores the caption position and the all-capitals choice with the look", async () => {
+    const { db, tables } = fakeDb({ projects: [project()] });
+    await startRender({
+      db,
+      queue: { send: async () => "job-1" },
+      ...owned,
+      projectId: "p1",
+      clipSeconds: 30,
+      clipCount: 2,
+      withCaptions: true,
+      captionPreset: "box",
+      captionPosition: "top",
+      captionUppercase: true,
+    });
+    expect(tables.clipProject[0]).toMatchObject({ captionPreset: "box", captionPosition: "top", captionUppercase: true });
   });
 
   it("refuses a project that is still waiting for its upload or is already rendering", async () => {
