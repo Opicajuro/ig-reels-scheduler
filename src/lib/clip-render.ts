@@ -8,7 +8,7 @@ import { captionsForClip } from "@/clip-engine/captions-timing.js";
 import { downloadVideo } from "@/clip-engine/download.js";
 import { audioSamples, motionFrames, probeDuration, renderClip } from "@/clip-engine/ffmpeg.js";
 import { loudnessPerSecond, motionPerSecond } from "@/clip-engine/analysis.js";
-import { combineScores, MIN_SEGMENT_SECONDS, maxClipCount, pickHighlights } from "@/clip-engine/helpers.js";
+import { combineScores, MIN_SEGMENT_SECONDS, pickHighlights, resolveClipCount } from "@/clip-engine/helpers.js";
 import { renderCaptionedClip } from "@/clip-engine/render-captions.js";
 import { transcribeToCaptions } from "@/clip-engine/transcribe.js";
 
@@ -54,7 +54,7 @@ export async function renderClipProject({
     }
     await db.clipProject.update({ where: { id: projectId }, data: { durationSeconds } });
 
-    const clipCount = Math.min(project.clipCount, maxClipCount(durationSeconds, project.clipSeconds));
+    const clipCount = resolveClipCount(project.clipCount, durationSeconds, project.clipSeconds);
     const motion = await motionPerSecond(motionFrames(sourcePath), durationSeconds);
     const audio = await loudnessPerSecond(audioSamples(sourcePath), durationSeconds);
     const highlights = pickHighlights(combineScores(motion, audio), project.clipSeconds, clipCount);

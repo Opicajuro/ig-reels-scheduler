@@ -109,7 +109,8 @@ export async function startRender({
   if (project.status === "rendering") throw new Error("clips are already rendering for this project");
 
   const seconds = parseClipSeconds(clipSeconds);
-  if (typeof clipCount !== "number" || !Number.isInteger(clipCount) || clipCount < 1 || clipCount > MAX_CLIPS) {
+  // null means Auto: the worker picks the count once it knows the video's length.
+  if (clipCount !== null && (typeof clipCount !== "number" || !Number.isInteger(clipCount) || clipCount < 1 || clipCount > MAX_CLIPS)) {
     throw new Error(`clipCount must be a whole number from 1 to ${MAX_CLIPS}`);
   }
   const preset = withCaptions ? parseCaptionPreset(captionPreset) : null;

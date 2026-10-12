@@ -205,7 +205,7 @@ model ClipProject {
   error           String?
   durationSeconds Int?
   clipSeconds     Int               @default(30)
-  clipCount       Int               @default(3)
+  clipCount       Int?
   withCaptions    Boolean           @default(false)
   captionPreset   String?
   createdAt       DateTime          @default(now())

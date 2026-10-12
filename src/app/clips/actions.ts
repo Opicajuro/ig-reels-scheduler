@@ -44,7 +44,7 @@ export async function startRenderAction(formData: FormData) {
     ownerId: await ownerId(),
     projectId,
     clipSeconds: Number(text(formData, "clipSeconds")),
-    clipCount: Number(text(formData, "clipCount")),
+    clipCount: text(formData, "clipCount") === "auto" ? null : Number(text(formData, "clipCount")),
     withCaptions: formData.get("withCaptions") === "on",
     captionPreset: text(formData, "captionPreset"),
   });

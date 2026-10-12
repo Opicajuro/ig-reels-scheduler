@@ -52,6 +52,12 @@ export function maxClipCount(durationSeconds, clipSeconds) {
   return Math.max(1, Math.min(MAX_CLIPS, Math.floor(durationSeconds / clipSeconds)));
 }
 
+// Auto (null) makes as many clips as the video allows. A chosen count is capped at that same maximum.
+export function resolveClipCount(requested, durationSeconds, clipSeconds) {
+  const max = maxClipCount(durationSeconds, clipSeconds);
+  return requested === null ? max : Math.min(requested, max);
+}
+
 export function parseClipCount(value, durationSeconds, clipSeconds) {
   const count = Number(value);
   const max = maxClipCount(durationSeconds, clipSeconds);

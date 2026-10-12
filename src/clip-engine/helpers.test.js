@@ -12,7 +12,15 @@ import {
   parseUploadTitle,
   parseProbeDuration,
   pickHighlights,
+  resolveClipCount,
 } from "./helpers.js";
+
+test("resolveClipCount makes as many clips as the video allows for Auto, and caps a chosen count at that", () => {
+  assert.equal(resolveClipCount(null, 100, 30), 3);
+  assert.equal(resolveClipCount(null, 5, 30), 1);
+  assert.equal(resolveClipCount(2, 100, 30), 2);
+  assert.equal(resolveClipCount(9, 100, 30), 3);
+});
 
 test("pickHighlights returns one window per region, each at the best-scoring start, ties to the earliest", () => {
   const scores = [0, 0, 0, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 9, 9, 0, 0, 0, 0, 0];

@@ -196,6 +196,20 @@ describe("startRender", () => {
     expect(queued).toEqual(["p1"]);
   });
 
+  it("stores Auto as no count, so the worker picks one from the video's length", async () => {
+    const { db, tables } = fakeDb({ projects: [project()] });
+    await startRender({
+      db,
+      queue: { send: async () => "job-1" },
+      ...owned,
+      projectId: "p1",
+      clipSeconds: 30,
+      clipCount: null,
+      withCaptions: false,
+    });
+    expect(tables.clipProject[0]).toMatchObject({ status: "rendering", clipCount: null });
+  });
+
   it("refuses a project that is still waiting for its upload or is already rendering", async () => {
     const waiting = fakeDb({ projects: [project({ status: "awaiting_source" })] });
     await expect(

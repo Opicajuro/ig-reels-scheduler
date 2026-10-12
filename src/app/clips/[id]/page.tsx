@@ -121,7 +121,8 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
               ))}
             </div>
             <span className={styles.label}>Number of clips</span>
-            <select name="clipCount" defaultValue={project.clipCount}>
+            <select name="clipCount" defaultValue={project.clipCount ?? "auto"}>
+              <option value="auto">Auto</option>
               {CLIP_COUNTS.map((count) => (
                 <option key={count} value={count}>
                   {count}
@@ -129,7 +130,7 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
               ))}
             </select>
             <p className={styles.muted}>
-              Each clip ends on a quiet moment, so it can run a little longer than the length you pick. Fewer clips are made if the video is short.
+              Auto makes as many clips as the video allows. Each clip ends on a quiet moment, so it can run a little longer than the length you pick. Fewer clips are made if the video is short.
             </p>
             <label className={styles.toggle}>
               <span>Burn in captions</span>
