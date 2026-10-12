@@ -1,22 +1,19 @@
-# Runs once after install, and again if you need to change the setup. Asks for the few things only you can give
-# (a Resend key for sign-in email and a sender address), starts the database and file storage on this PC, and
-# writes the app settings. Nothing else is installed.
+# Runs after every install and update. Starts the database and file storage on this PC, and writes the app settings.
+# The installer passes in the Resend API key and sender address from its own window. An update that leaves the key
+# empty keeps the key saved before. Nothing here asks for input: the installer runs this window hidden, so everything
+# printed here goes to data\setup.log, which the installer points to if setup fails.
+param([string]$ResendApiKey = "", [string]$EmailFrom = "")
 $ErrorActionPreference = "Stop"
-# The setup window closes as soon as the script ends, so errors are shown and the window waits for Enter.
+$install = $PSScriptRoot
+$data = Join-Path $install "data"
+New-Item -ItemType Directory -Force -Path $data | Out-Null
+Start-Transcript -Path (Join-Path $data "setup.log") | Out-Null
 try {
-  $install = $PSScriptRoot
-  # PostgreSQL cannot create its database under a path with letters with accents (such as the y in "Novy" with an accent) (the installer refuses such
-  # folders too), so stop here with a clear message instead of failing halfway through.
-  if ($install -match "[^\x00-\x7F]") {
-    throw "Localirs is installed in '$install', which has letters such as y with an accent. Uninstall it and install it again in a folder like C:\Localirs."
-  }
   $app = Join-Path $install "app"
   $tools = Join-Path $install "tools"
-  $data = Join-Path $install "data"
   $node = Join-Path $tools "node\node.exe"
   $pgBin = Join-Path $tools "postgres\bin"
   . (Join-Path $install "services.ps1")
-  New-Item -ItemType Directory -Force -Path $data | Out-Null
 
   function New-Secret([int]$length) {
     -join ((48..57 + 65..90 + 97..122) | Get-Random -Count $length | ForEach-Object { [char]$_ })
@@ -28,34 +25,9 @@ try {
     [Convert]::ToBase64String($bytes)
   }
 
-  # .env values cannot be empty or hold quotes or line breaks, so the answer is checked here, before it is saved.
+  # .env values cannot be empty or hold quotes or line breaks, so the values are checked before they are saved.
   function Test-PlainValue([string]$value) {
     return $value.Trim() -ne "" -and $value -notmatch "[`"'\r\n]"
-  }
-
-  function Read-PlainValue([string]$prompt) {
-    while ($true) {
-      $answer = (Read-Host $prompt).Trim()
-      if (Test-PlainValue $answer) { return $answer }
-      Write-Host "Please type a value without quotes." -ForegroundColor Yellow
-    }
-  }
-
-  # Resend only sends from onboarding@resend.dev or from a domain verified in the Resend account. Free mail
-  # domains such as gmail.com can never be verified there, and a sender on one makes every sign-in fail.
-  $testSender = "Localirs <onboarding@resend.dev>"
-  function Test-SenderAddress([string]$value) {
-    if (-not (Test-PlainValue $value)) { return $false }
-    return $value -notmatch "@(gmail|googlemail|outlook|hotmail|live|msn|yahoo|icloud|me|aol|gmx|proton|protonmail|seznam|azet|centrum|zoznam|post)\.[a-z.]+>?\s*$"
-  }
-
-  function Read-SenderAddress {
-    while ($true) {
-      $answer = (Read-Host "Sender address. Press Enter to use $testSender, which only sends to your Resend account's email; or type an address on a domain you verified in Resend").Trim()
-      if ($answer -eq "") { return $testSender }
-      if (Test-SenderAddress $answer) { return $answer }
-      Write-Host "Resend cannot send from that address (gmail.com, outlook.com and similar can't be verified). Press Enter for the test sender." -ForegroundColor Yellow
-    }
   }
 
   $secretsPath = Join-Path $data "secrets.json"
@@ -71,13 +43,10 @@ try {
       storageSigningKey = New-SigningKey
     }
   }
-  # Asked on the first run, and again on a later run if a saved answer is missing or unusable.
-  if (-not (Test-PlainValue $secrets.resendApiKey) -or -not (Test-SenderAddress $secrets.emailFrom)) {
-    Write-Host "Localirs setup. You need a Resend account for sign-in emails (https://resend.com)."
-    if (-not (Test-PlainValue $secrets.resendApiKey)) {
-      $secrets.resendApiKey = Read-PlainValue "Resend API key (starts with re_)"
-    }
-    $secrets.emailFrom = Read-SenderAddress
+  if ($ResendApiKey -ne "") { $secrets.resendApiKey = $ResendApiKey }
+  if ($EmailFrom -ne "") { $secrets.emailFrom = $EmailFrom }
+  if (-not (Test-PlainValue $secrets.resendApiKey) -or -not (Test-PlainValue $secrets.emailFrom)) {
+    throw "There is no Resend API key or sender address. Run the installer again and enter them."
   }
   $secrets | ConvertTo-Json | Set-Content -Path $secretsPath
 
@@ -120,11 +89,11 @@ try {
   & $node "node_modules\tsx\dist\cli.mjs" "scripts\local-setup.ts"
   $setupExit = $LASTEXITCODE
   Pop-Location
-  if ($setupExit -ne 0) { throw "Setup did not finish. Read the messages above." }
-  Write-Host "Setup finished. Start Localirs from the Start menu." -ForegroundColor Green
+  if ($setupExit -ne 0) { throw "Setup did not finish. The messages are in data\setup.log." }
+  Write-Host "Setup finished."
 } catch {
   Write-Host "Setup stopped: $_" -ForegroundColor Red
   exit 1
 } finally {
-  Read-Host "Press Enter to close"
+  Stop-Transcript | Out-Null
 }
