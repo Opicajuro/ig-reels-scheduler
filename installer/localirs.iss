@@ -14,6 +14,8 @@ SolidCompression=yes
 LZMANumBlockThreads=4
 LZMAUseSeparateProcess=yes
 DisableProgramGroupPage=yes
+; Always show the folder page. On an update it is filled in with the current folder, so Next updates in place.
+DisableDirPage=no
 PrivilegesRequired=lowest
 
 [Files]
