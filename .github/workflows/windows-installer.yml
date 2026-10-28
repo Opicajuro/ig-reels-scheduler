@@ -6,6 +6,7 @@ name: Windows installer
 on:
   push:
     branches: [claude/combined-app]
+    paths-ignore: ["**.md"]
   workflow_dispatch:
 
 # Publishing a release needs write access to the repository's contents.
@@ -21,15 +22,32 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.26.6"
+      # The downloads folder also holds weed.exe, built once per SeaweedFS version (v2: the entries before it had none).
+      # It is saved after the build step even when the build fails: Get-Tool deletes a failed download, and a failed
+      # go build leaves no weed.exe.
       - name: Restore downloaded tools
-        uses: actions/cache@v4
+        id: tools
+        uses: actions/cache/restore@v4
         with:
           path: installer/downloads
-          key: installer-tools-${{ hashFiles('installer/tools.json') }}
-          save-always: true
+          key: installer-tools-v2-${{ hashFiles('installer/tools.json') }}
+      # Go is only needed to build weed.exe, which the restored tools may already hold.
+      - uses: actions/setup-go@v5
+        if: hashFiles('installer/downloads/weed-*.exe') == ''
+        with:
+          go-version: "1.26.6"
+      - name: Restore the pnpm store
+        uses: actions/cache@v4
+        with:
+          path: installer/pnpm-store
+          key: pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-
+      - name: Restore the Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: installer/next-cache
+          key: next-cache-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: next-cache-${{ hashFiles('pnpm-lock.yaml') }}-
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
       - name: Check the installer scripts parse
@@ -43,6 +61,12 @@ jobs:
           }
       - name: Build the installer
         run: powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
+      - name: Save downloaded tools
+        if: ${{ !cancelled() && steps.tools.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: installer/downloads
+          key: ${{ steps.tools.outputs.cache-primary-key }}
       - name: Upload the installer
         uses: actions/upload-artifact@v4
         with:

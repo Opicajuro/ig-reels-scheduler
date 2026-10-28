@@ -23,23 +23,23 @@
     "@remotion/captions": "^4.0.534",
     "@remotion/renderer": "^4.0.534",
     "archiver": "^7.0.1",
+    "dotenv": "^18.0.7",
     "next": "16.4.0",
     "pg": "^8.23.1",
     "pg-boss": "^12.37.1",
+    "prisma": "7.10.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "remotion": "^4.0.534"
+    "remotion": "^4.0.534",
+    "tsx": "4.23.15"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "dotenv": "^18.0.7",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
-    "prisma": "7.10.0",
-    "tsx": "4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.3"
   },

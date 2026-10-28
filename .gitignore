@@ -46,3 +46,5 @@ next-env.d.ts
 installer/payload/
 installer/Output/
 installer/downloads/
+installer/pnpm-store/
+installer/next-cache/
