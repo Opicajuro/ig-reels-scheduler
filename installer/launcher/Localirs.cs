@@ -99,10 +99,19 @@ static class Launcher
         poll.Stop();
         tray.Text = "Localirs - not running";
         string log = Path.Combine(DataDir, "start.log");
-        string tail = File.Exists(log) ? string.Join(Environment.NewLine, File.ReadAllLines(log).Reverse().Take(12).Reverse()) : "";
+        string tail = File.Exists(log) ? string.Join(Environment.NewLine, TranscriptBody(File.ReadAllLines(log)).Reverse().Take(20).Reverse()) : "";
         MessageBox.Show(headline + Environment.NewLine + Environment.NewLine + tail + Environment.NewLine + Environment.NewLine +
             "The full log is " + log, "Localirs", MessageBoxButtons.OK, MessageBoxIcon.Error);
         Application.Exit();
+    }
+
+    // A PowerShell transcript is a header, the script's output and a footer, each block between lines of asterisks.
+    // Only the output says what went wrong.
+    static string[] TranscriptBody(string[] lines)
+    {
+        int[] separators = Enumerable.Range(0, lines.Length).Where(i => lines[i].StartsWith("*****")).ToArray();
+        if (separators.Length < 3) return lines;
+        return lines.Skip(separators[1] + 1).Take(separators[2] - separators[1] - 1).ToArray();
     }
 
     // Any HTTP answer from the web app means it is up, even an error page.

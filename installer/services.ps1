@@ -60,9 +60,16 @@ function Start-Database([string]$pgBin, [string]$data) {
   $pgData = Join-Path $data "postgres"
   & (Join-Path $pgBin "pg_ctl.exe") -D $pgData status | Out-Null
   if ($LASTEXITCODE -eq 0) { return }
+  # This folder's database is not running, so anything on 5432 is another program, usually an earlier Localirs install.
+  if (Test-LocalPort 5432) {
+    throw "Port 5432 is used by another program, probably Localirs installed in another folder. Quit that one (its tray icon or its PowerShell window), or restart the PC, then try again."
+  }
   # No pipe here: pg_ctl's child keeps a pipe open for as long as the server runs, which would hang the script.
   & (Join-Path $pgBin "pg_ctl.exe") -D $pgData -l (Join-Path $data "postgres.log") -o "-p 5432" -w start
-  if ($LASTEXITCODE -ne 0) { throw "The database did not start. See data\postgres.log" }
+  if ($LASTEXITCODE -ne 0) {
+    $log = Get-Content (Join-Path $data "postgres.log") -Tail 15 -ErrorAction SilentlyContinue
+    throw "The database did not start. The end of data\postgres.log:`r`n$($log -join "`r`n")"
+  }
 }
 
 function Stop-Database([string]$pgBin, [string]$data) {
