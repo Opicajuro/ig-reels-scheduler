@@ -131,6 +131,22 @@ begin
     Result := AlertPageValid;
 end;
 
+// An update cannot replace files that Localirs's services hold open, so stop them first. The stop script comes from
+// this setup, because versions before the tray launcher have none in their folder.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  AppDir: String;
+  ResultCode: Integer;
+begin
+  Result := '';
+  AppDir := ExpandConstant('{app}');
+  if not DirExists(AppDir) then Exit;
+  ExtractTemporaryFile('stop-localirs.ps1');
+  ExtractTemporaryFile('services.ps1');
+  if (not Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\stop-localirs.ps1') + '" -InstallDir "' + AppDir + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
+    Result := 'Localirs is still running and could not be stopped. The details are in ' + AppDir + '\data\stop.log. Restart the PC, then run this setup again.';
+end;
+
 // Runs the setup hidden, with its progress on the install screen. Its output goes to data\setup.log.
 // The sender is only passed with a key, so an empty page changes nothing.
 procedure CurStepChanged(CurStep: TSetupStep);

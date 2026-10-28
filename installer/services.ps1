@@ -56,6 +56,13 @@ function Stop-ProcessFromPidFile([string]$data, [string]$name) {
   Remove-Item -Force $pidFile -ErrorAction SilentlyContinue
 }
 
+# Ends every process whose program is inside the folder, with its children.
+function Stop-ProcessesInFolder([string]$folder) {
+  $prefix = $folder.TrimEnd("\") + "\"
+  Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) } |
+    ForEach-Object { & taskkill.exe /PID $_.ProcessId /T /F 2>&1 | Out-Null }
+}
+
 function Start-Database([string]$pgBin, [string]$data) {
   $pgData = Join-Path $data "postgres"
   & (Join-Path $pgBin "pg_ctl.exe") -D $pgData status | Out-Null
