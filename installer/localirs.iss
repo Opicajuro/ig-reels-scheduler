@@ -17,35 +17,53 @@ DisableProgramGroupPage=yes
 ; Always show the folder page. On an update it is filled in with the current folder, so Next updates in place.
 DisableDirPage=no
 PrivilegesRequired=lowest
+SetupIconFile=launcher\localirs.ico
+UninstallDisplayIcon={app}\Localirs.exe
+; Localirs.exe holds this mutex while it runs. Its services lock their files, so setup asks you to quit it first.
+AppMutex=Localirs.Launcher
+
+[Tasks]
+Name: "desktopicon"; Description: "Create a desktop icon"; GroupDescription: "Shortcuts:"
 
 [Files]
+Source: "payload\Localirs.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "payload\app\*"; DestDir: "{app}\app"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "payload\tools\*"; DestDir: "{app}\tools"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "start-localirs.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "stop-localirs.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "setup-localirs.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "services.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Start Localirs"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\start-localirs.ps1"""; WorkingDir: "{app}"
+Name: "{group}\Localirs"; Filename: "{app}\Localirs.exe"; WorkingDir: "{app}"
+Name: "{autodesktop}\Localirs"; Filename: "{app}\Localirs.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{group}\Uninstall Localirs"; Filename: "{uninstallexe}"
+
+[Run]
+Filename: "{app}\Localirs.exe"; Description: "Open Localirs now"; Flags: postinstall nowait skipifsilent
+
+[UninstallRun]
+; Stops the web app, worker, storage and database so their files can be removed.
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\stop-localirs.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "StopLocalirs"
 
 [Code]
 const
-  // Free-mail domains can never be verified in Resend, so sign-in email from them never arrives.
+  // Free-mail domains can never be verified in Resend, so email sent from them never arrives.
   FreeMailDomains = '|gmail|googlemail|outlook|hotmail|live|msn|yahoo|icloud|me|aol|gmx|proton|protonmail|seznam|azet|centrum|zoznam|post|';
 
 var
-  ResendPage: TInputQueryWizardPage;
+  AlertPage: TInputQueryWizardPage;
 
 procedure InitializeWizard;
 begin
-  ResendPage := CreateInputQueryPage(wpSelectDir,
-    'Sign-in email',
-    'Localirs emails sign-in links through Resend (https://resend.com). Keep the sender address unless you verified your own domain in Resend.',
-    'Leave the API key empty to keep the one from an earlier install.');
-  ResendPage.Add('Resend API key (starts with re_):', True);
-  ResendPage.Add('Sender address:', False);
-  ResendPage.Values[1] := 'Localirs <onboarding@resend.dev>';
+  AlertPage := CreateInputQueryPage(wpSelectDir,
+    'Email me when a post fails (optional)',
+    'Localirs can email you when a scheduled Reel fails, through Resend (https://resend.com). Leave everything empty to skip it; failures still show in the app.',
+    'Keep the sender address unless you verified your own domain in Resend. Empty fields keep what an earlier install saved.');
+  AlertPage.Add('Your email address:', False);
+  AlertPage.Add('Resend API key (starts with re_):', True);
+  AlertPage.Add('Sender address:', False);
+  AlertPage.Values[2] := 'Localirs <onboarding@resend.dev>';
 end;
 
 function IsPlainText(Value: String): Boolean;
@@ -65,14 +83,20 @@ begin
   Result := Pos('|' + Domain + '|', FreeMailDomains) > 0;
 end;
 
-function ResendPageValid: Boolean;
+// Empty email and key: no change. Otherwise the email, key and sender must all be usable.
+function AlertPageValid: Boolean;
 var
-  Key, Sender: String;
+  Email, Key, Sender: String;
 begin
-  Key := ResendPage.Values[0];
-  Sender := ResendPage.Values[1];
+  Email := AlertPage.Values[0];
+  Key := AlertPage.Values[1];
+  Sender := AlertPage.Values[2];
   Result := False;
-  if (Key = '') and (not FileExists(ExpandConstant('{app}\data\secrets.json'))) then
+  if (Email = '') and (Key = '') then
+    Result := True
+  else if (Pos('@', Email) = 0) or (not IsPlainText(Email)) then
+    MsgBox('Enter the email address the failure emails should go to.', mbError, MB_OK)
+  else if (Key = '') and (not FileExists(ExpandConstant('{app}\data\secrets.json'))) then
     MsgBox('Enter your Resend API key. You can create one at https://resend.com/api-keys.', mbError, MB_OK)
   else if not IsPlainText(Key) then
     MsgBox('The Resend API key cannot contain quotes or line breaks.', mbError, MB_OK)
@@ -103,20 +127,23 @@ begin
         Exit;
       end;
   end
-  else if CurPageID = ResendPage.ID then
-    Result := ResendPageValid;
+  else if CurPageID = AlertPage.ID then
+    Result := AlertPageValid;
 end;
 
 // Runs the setup hidden, with its progress on the install screen. Its output goes to data\setup.log.
+// The sender is only passed with a key, so an empty page changes nothing.
 procedure CurStepChanged(CurStep: TSetupStep);
 var
-  AppDir, Params: String;
+  AppDir, Params, Sender: String;
   ResultCode: Integer;
 begin
   if CurStep = ssPostInstall then
   begin
     AppDir := ExpandConstant('{app}');
-    Params := '-ExecutionPolicy Bypass -File "' + AppDir + '\setup-localirs.ps1" -ResendApiKey "' + ResendPage.Values[0] + '" -EmailFrom "' + ResendPage.Values[1] + '"';
+    Sender := '';
+    if AlertPage.Values[1] <> '' then Sender := AlertPage.Values[2];
+    Params := '-ExecutionPolicy Bypass -File "' + AppDir + '\setup-localirs.ps1" -AlertEmail "' + AlertPage.Values[0] + '" -ResendApiKey "' + AlertPage.Values[1] + '" -EmailFrom "' + Sender + '"';
     WizardForm.StatusLabel.Caption := 'Setting up the database and file storage. The first time this takes a few minutes.';
     if (not Exec('powershell.exe', Params, AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
       MsgBox('Localirs is installed, but its setup did not finish. The details are in ' + AppDir + '\data\setup.log.' + #13#10 + #13#10 + 'Fix the problem, then run the installer again.', mbError, MB_OK);

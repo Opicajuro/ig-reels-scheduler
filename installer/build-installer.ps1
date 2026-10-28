@@ -130,6 +130,15 @@ pnpm build
 if ($LASTEXITCODE -ne 0) { throw "pnpm build failed" }
 Pop-Location
 
+# Localirs.exe, the tray launcher, built with the C# compiler that ships with .NET Framework 4 (in every Windows).
+$csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+if (-not (Test-Path $csc)) { throw "The .NET Framework 4 C# compiler is missing: $csc" }
+$launcher = Join-Path $PSScriptRoot "launcher"
+& $csc /nologo /target:winexe /optimize+ "/win32icon:$(Join-Path $launcher 'localirs.ico')" `
+  /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Core.dll `
+  "/out:$(Join-Path $payload 'Localirs.exe')" (Join-Path $launcher "Localirs.cs")
+if ($LASTEXITCODE -ne 0) { throw "Building Localirs.exe failed" }
+
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" (Join-Path $PSScriptRoot "localirs.iss")
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 Write-Host "Built installer\Output\Localirs-Setup.exe"

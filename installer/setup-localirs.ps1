@@ -1,8 +1,8 @@
 # Runs after every install and update. Starts the database and file storage on this PC, and writes the app settings.
-# The installer passes in the Resend API key and sender address from its own window. An update that leaves the key
-# empty keeps the key saved before. Nothing here asks for input: the installer runs this window hidden, so everything
+# The installer passes in the optional failure-email settings (your email, Resend API key and sender) from its own
+# window. Empty answers keep what was saved before. Nothing here asks for input: the installer runs this window hidden, so everything
 # printed here goes to data\setup.log, which the installer points to if setup fails.
-param([string]$ResendApiKey = "", [string]$EmailFrom = "")
+param([string]$ResendApiKey = "", [string]$EmailFrom = "", [string]$AlertEmail = "")
 $ErrorActionPreference = "Stop"
 $install = $PSScriptRoot
 $data = Join-Path $install "data"
@@ -37,16 +37,21 @@ try {
     $secrets = [pscustomobject]@{
       resendApiKey = ""
       emailFrom = ""
+      alertEmail = ""
       postgresSuperPassword = New-Secret 24
       postgresAppPassword = New-Secret 24
       storageSecret = New-Secret 24
       storageSigningKey = New-SigningKey
     }
   }
+  # Installs from before failure emails were optional have no alertEmail yet.
+  if (-not ($secrets.PSObject.Properties.Name -contains "alertEmail")) { $secrets | Add-Member alertEmail "" }
+  # Failure emails are optional. Empty answers keep what was saved before.
   if ($ResendApiKey -ne "") { $secrets.resendApiKey = $ResendApiKey }
   if ($EmailFrom -ne "") { $secrets.emailFrom = $EmailFrom }
-  if (-not (Test-PlainValue $secrets.resendApiKey) -or -not (Test-PlainValue $secrets.emailFrom)) {
-    throw "There is no Resend API key or sender address. Run the installer again and enter them."
+  if ($AlertEmail -ne "") { $secrets.alertEmail = $AlertEmail }
+  foreach ($value in @($secrets.resendApiKey, $secrets.emailFrom, $secrets.alertEmail)) {
+    if ($value -ne "" -and -not (Test-PlainValue $value)) { throw "A failure-email setting holds quotes or line breaks. Run the installer again and fix it." }
   }
   $secrets | ConvertTo-Json | Set-Content -Path $secretsPath
 
@@ -80,6 +85,7 @@ try {
   $env:LOCALIRS_STORAGE_SECRET = $secrets.storageSecret
   $env:LOCALIRS_RESEND_API_KEY = $secrets.resendApiKey
   $env:LOCALIRS_EMAIL_FROM = $secrets.emailFrom
+  $env:LOCALIRS_ALERT_EMAIL = $secrets.alertEmail
   $env:LOCALIRS_CHROME_PATH = Join-Path $tools "chrome\chrome-headless-shell.exe"
   $env:LOCALIRS_WHISPER_BIN = Join-Path $tools "whisper\Release\whisper-cli.exe"
   $env:LOCALIRS_WHISPER_MODEL = Join-Path $tools "whisper\ggml-base.bin"

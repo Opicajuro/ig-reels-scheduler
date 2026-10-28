@@ -13,6 +13,7 @@ import {
   type EnvValues,
 } from "./wizard-env";
 import { ensureBucket, storageClient } from "./wizard-storage";
+import { ensureOwner } from "./local-setup";
 
 const ENV_FILE = ".env";
 const ENV_EXAMPLE = ".env.example";
@@ -128,6 +129,8 @@ async function main(): Promise<void> {
   await startServices(values);
   await prepareBucket(values);
   prepareDatabase();
+  // Localirs has no sign-in; the app belongs to the first user row, created here.
+  await ensureOwner(values.DATABASE_URL, "");
   console.log(`
 Setup complete.
 

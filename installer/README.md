@@ -19,9 +19,10 @@ needs installing by hand. The only things you type are a Resend API key and a se
 ## Use it
 
 1. Run `Localirs-Setup.exe`. It copies the app to `%LOCALAPPDATA%\Localirs`.
-2. The setup window asks for your Resend API key and sender address, then starts the database and file storage
-   and writes the app settings.
-3. Start Localirs from the Start menu. It opens http://localhost:3000/clips. Sign in with your email.
+2. Setup optionally asks where to email you when a post fails (your email, a Resend API key and a sender), then
+   starts the database and file storage and writes the app settings.
+3. Open Localirs from its desktop or Start menu icon. It starts with no console window, shows a tray icon, and
+   opens in its own window (Microsoft Edge app mode). There is no sign-in. Quit it from the tray icon.
 4. To connect Instagram, you still need a Meta app (see `docs/APP_REVIEW.md`). Put its ID and secret in
    `%LOCALAPPDATA%\Localirs\app\.env`, then restart Localirs.
 
