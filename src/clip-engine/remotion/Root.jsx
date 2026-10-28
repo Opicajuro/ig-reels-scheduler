@@ -1,19 +1,14 @@
-import { Composition } from "remotion";
-import { Captions } from "./Captions.jsx";
-
-const FPS = 30;
+import { Still } from "remotion";
+import { CaptionStill } from "./CaptionStill.jsx";
 
 export function Root() {
   return (
-    <Composition
-      id="Captions"
-      component={Captions}
+    <Still
+      id="CaptionStill"
+      component={CaptionStill}
       width={1080}
       height={1920}
-      fps={FPS}
-      durationInFrames={FPS}
-      defaultProps={{ src: "clip.mp4", captions: [], durationSeconds: 1, preset: "classic", position: "bottom", uppercase: false }}
-      calculateMetadata={({ props }) => ({ durationInFrames: Math.round(props.durationSeconds * FPS) })}
+      defaultProps={{ text: "", preset: "classic", position: "bottom", uppercase: false }}
     />
   );
 }

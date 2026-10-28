@@ -1,16 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { PrismaClient } from "@/generated/prisma/client";
+import type { ClipProject, PrismaClient } from "@/generated/prisma/client";
 import { requireEnv } from "./env";
 import { buildClipKey, buildClipSourceKey } from "./storage";
 import type { ClipStore } from "./clip-store";
+import type { Caption } from "@remotion/captions";
 import { captionsForClip } from "@/clip-engine/captions-timing.js";
 import { downloadVideo } from "@/clip-engine/download.js";
-import { audioSamples, cutForCaptions, motionFrames, probeDuration, renderClip } from "@/clip-engine/ffmpeg.js";
+import { audioSamples, motionFrames, probeDuration, renderClip } from "@/clip-engine/ffmpeg.js";
 import { loudnessPerSecond, motionPerSecond } from "@/clip-engine/analysis.js";
 import { combineScores, MIN_SEGMENT_SECONDS, pickHighlights, resolveClipCount } from "@/clip-engine/helpers.js";
-import { bundleCaptions, renderCaptions } from "@/clip-engine/render-captions.js";
+import { bundleCaptions, renderCaptionStills } from "@/clip-engine/render-captions.js";
 import { transcribeToCaptions } from "@/clip-engine/transcribe.js";
 
 export function clipName(index: number): string {
@@ -73,28 +74,19 @@ export async function renderClipProject({
       (highlight) => ({ ...highlight, clipId: randomUUID() }),
     );
 
-    // Captions are rendered from one Remotion bundle for the whole project. Bundling copies its public folder,
-    // so every cut must be there first.
-    const captionBundle = captions ? await cutAndBundle(sourcePath, highlights, path.join(workDir, "public")) : null;
+    // Each caption is drawn once as a PNG, all from one Remotion bundle, then laid over its clip by ffmpeg.
+    const overlays = captions ? await captionOverlays(captions, highlights, path.join(workDir, "captions"), project) : null;
 
     for (const [index, highlight] of highlights.entries()) {
       const { clipId } = highlight;
       const output = path.join(workDir, `${clipId}.mp4`);
-      if (captions && captionBundle) {
-        await renderCaptions({
-          serveUrl: captionBundle,
-          src: `${clipId}.mp4`,
-          durationSeconds: highlight.length,
-          captions: captionsForClip(captions, highlight.start * 1000, (highlight.start + highlight.length) * 1000),
-          output,
-          chromePath: requireEnv("CHROME_PATH"),
-          preset: project.captionPreset,
-          position: project.captionPosition,
-          uppercase: project.captionUppercase,
-        });
-      } else {
-        await renderClip({ input: sourcePath, output, start: highlight.start, length: highlight.length });
-      }
+      await renderClip({
+        input: sourcePath,
+        output,
+        start: highlight.start,
+        length: highlight.length,
+        overlays: overlays?.get(clipId) ?? [],
+      });
 
       const storageKey = buildClipKey(projectId, clipId);
       await store.upload(storageKey, output, "video/mp4");
@@ -118,19 +110,33 @@ export async function renderClipProject({
   }
 }
 
-async function cutAndBundle(
-  sourcePath: string,
+async function captionOverlays(
+  captions: Caption[],
   highlights: { clipId: string; start: number; length: number }[],
-  publicDir: string,
-): Promise<string> {
-  await mkdir(publicDir, { recursive: true });
-  for (const highlight of highlights) {
-    await cutForCaptions({
-      input: sourcePath,
-      output: path.join(publicDir, `${highlight.clipId}.mp4`),
-      start: highlight.start,
-      length: highlight.length,
-    });
-  }
-  return bundleCaptions(publicDir);
+  dir: string,
+  look: Pick<ClipProject, "captionPreset" | "captionPosition" | "captionUppercase">,
+): Promise<Map<string, { image: string; start: number; end: number }[]>> {
+  await mkdir(dir, { recursive: true });
+  const overlays = new Map(
+    highlights.map((highlight) => [
+      highlight.clipId,
+      captionsForClip(captions, highlight.start * 1000, (highlight.start + highlight.length) * 1000).map(
+        (caption: Caption, index: number) => ({
+          text: caption.text,
+          image: path.join(dir, `${highlight.clipId}-${index}.png`),
+          start: caption.startMs / 1000,
+          end: caption.endMs / 1000,
+        }),
+      ),
+    ]),
+  );
+  await renderCaptionStills({
+    serveUrl: await bundleCaptions(),
+    stills: [...overlays.values()].flat().map(({ text, image }) => ({ text, output: image })),
+    chromePath: requireEnv("CHROME_PATH"),
+    preset: look.captionPreset,
+    position: look.captionPosition,
+    uppercase: look.captionUppercase,
+  });
+  return overlays;
 }

@@ -66,31 +66,30 @@ export async function probeDuration(file) {
   return parseProbeDuration(JSON.parse(stdout));
 }
 
-function encodeVertical({ input, output, start, length, preset, crf }) {
-  return run("ffmpeg", [
+// A finished clip, as it is uploaded. Each overlay is a full-frame transparent PNG shown from start to end, in
+// seconds from the start of the clip. The PNGs are extra inputs so no path ends up inside the filter graph.
+export async function renderClip({ input, output, start, length, overlays }) {
+  const filters = [`[0:v]${VERTICAL_FILTER}[v0]`];
+  overlays.forEach((overlay, index) => {
+    filters.push(`[v${index}][${index + 1}:v]overlay=enable='between(t,${overlay.start},${overlay.end})'[v${index + 1}]`);
+  });
+  await run("ffmpeg", [
     "-y",
     "-v", "error",
     "-ss", String(start),
     "-i", input,
+    ...overlays.flatMap((overlay) => ["-i", overlay.image]),
     "-t", String(length),
-    "-vf", VERTICAL_FILTER,
+    "-filter_complex", filters.join(";"),
+    "-map", `[v${overlays.length}]`,
+    "-map", "0:a?",
     "-c:v", "libx264",
-    "-preset", preset,
-    "-crf", crf,
+    "-preset", "veryfast",
+    "-crf", "21",
     "-pix_fmt", "yuv420p",
     "-c:a", "aac",
     "-b:a", "128k",
     "-movflags", "+faststart",
     output,
   ]);
-}
-
-// A finished clip, as it is uploaded.
-export async function renderClip({ input, output, start, length }) {
-  await encodeVertical({ input, output, start, length, preset: "veryfast", crf: "21" });
-}
-
-// A cut that only feeds the caption render, which encodes it again: fast to make, with quality to spare.
-export async function cutForCaptions({ input, output, start, length }) {
-  await encodeVertical({ input, output, start, length, preset: "ultrafast", crf: "16" });
 }
