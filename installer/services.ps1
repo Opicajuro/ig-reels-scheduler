@@ -56,11 +56,11 @@ function Stop-ProcessFromPidFile([string]$data, [string]$name) {
   Remove-Item -Force $pidFile -ErrorAction SilentlyContinue
 }
 
-# Ends every process whose program is inside the folder, with its children.
+# Ends every process whose program is inside the folder. One that already exited in the meantime is skipped.
 function Stop-ProcessesInFolder([string]$folder) {
   $prefix = $folder.TrimEnd("\") + "\"
   Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) } |
-    ForEach-Object { & taskkill.exe /PID $_.ProcessId /T /F 2>&1 | Out-Null }
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 
 function Start-Database([string]$pgBin, [string]$data) {
