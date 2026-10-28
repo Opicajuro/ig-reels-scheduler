@@ -1,7 +1,7 @@
 import { AbsoluteFill, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { captionPlacement, captionPreset } from "./caption-presets.js";
 
-export function Captions({ captions, preset, position, uppercase }) {
+export function Captions({ src, captions, preset, position, uppercase }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const timeMs = (frame / fps) * 1000;
@@ -10,7 +10,7 @@ export function Captions({ captions, preset, position, uppercase }) {
 
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
-      <OffthreadVideo src={staticFile("clip.mp4")} />
+      <OffthreadVideo src={staticFile(src)} />
       {active ? (
         <div
           style={{

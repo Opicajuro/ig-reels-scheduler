@@ -1,6 +1,4 @@
-import { copyFile, mkdtemp } from "node:fs/promises";
 import os from "node:os";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
@@ -8,8 +6,16 @@ import { captionPlacement, captionPreset } from "./remotion/caption-presets.js";
 
 const ENTRY_POINT = fileURLToPath(new URL("./remotion/index.jsx", import.meta.url));
 
-export async function renderCaptionedClip({
-  clipPath,
+// Builds the caption composition once for a project. publicDir holds every clip to caption; bundling copies it,
+// so the clips must be in it before this runs.
+export function bundleCaptions(publicDir) {
+  return bundle({ entryPoint: ENTRY_POINT, publicDir });
+}
+
+// Renders one clip from the bundle. src is the clip's file name in the bundle's publicDir.
+export async function renderCaptions({
+  serveUrl,
+  src,
   durationSeconds,
   captions,
   output,
@@ -22,11 +28,7 @@ export async function renderCaptionedClip({
   captionPreset(preset);
   captionPlacement(position);
 
-  const publicDir = await mkdtemp(path.join(os.tmpdir(), "remotion-clip-"));
-  await copyFile(clipPath, path.join(publicDir, "clip.mp4"));
-
-  const serveUrl = await bundle({ entryPoint: ENTRY_POINT, publicDir });
-  const inputProps = { captions, durationSeconds, preset, position, uppercase };
+  const inputProps = { src, captions, durationSeconds, preset, position, uppercase };
   const composition = await selectComposition({
     serveUrl,
     id: "Captions",
@@ -38,6 +40,10 @@ export async function renderCaptionedClip({
     composition,
     serveUrl,
     codec: "h264",
+    // Same quality as clips without captions; Remotion's defaults (preset medium, half the cores) are much slower.
+    x264Preset: "veryfast",
+    crf: 21,
+    concurrency: os.cpus().length,
     outputLocation: output,
     inputProps,
     browserExecutable: chromePath,

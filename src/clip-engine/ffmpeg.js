@@ -66,8 +66,8 @@ export async function probeDuration(file) {
   return parseProbeDuration(JSON.parse(stdout));
 }
 
-export async function renderClip({ input, output, start, length }) {
-  await run("ffmpeg", [
+function encodeVertical({ input, output, start, length, preset, crf }) {
+  return run("ffmpeg", [
     "-y",
     "-v", "error",
     "-ss", String(start),
@@ -75,12 +75,22 @@ export async function renderClip({ input, output, start, length }) {
     "-t", String(length),
     "-vf", VERTICAL_FILTER,
     "-c:v", "libx264",
-    "-preset", "veryfast",
-    "-crf", "21",
+    "-preset", preset,
+    "-crf", crf,
     "-pix_fmt", "yuv420p",
     "-c:a", "aac",
     "-b:a", "128k",
     "-movflags", "+faststart",
     output,
   ]);
+}
+
+// A finished clip, as it is uploaded.
+export async function renderClip({ input, output, start, length }) {
+  await encodeVertical({ input, output, start, length, preset: "veryfast", crf: "21" });
+}
+
+// A cut that only feeds the caption render, which encodes it again: fast to make, with quality to spare.
+export async function cutForCaptions({ input, output, start, length }) {
+  await encodeVertical({ input, output, start, length, preset: "ultrafast", crf: "16" });
 }

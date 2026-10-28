@@ -1,14 +1,16 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { renderCaptionedClip } from "./render-captions.js";
+import { bundleCaptions, renderCaptions } from "./render-captions.js";
 
-test("renderCaptionedClip writes a captioned 9:16 clip of the same length", async () => {
+test("renderCaptions writes a captioned 9:16 clip of the same length", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "captions-test-"));
-  const clipPath = path.join(dir, "clip.mp4");
+  const publicDir = path.join(dir, "public");
+  mkdirSync(publicDir);
+  const clipPath = path.join(publicDir, "clip-001.mp4");
   const output = path.join(dir, "captioned.mp4");
   execFileSync("ffmpeg", [
     "-v", "error", "-y",
@@ -18,8 +20,9 @@ test("renderCaptionedClip writes a captioned 9:16 clip of the same length", asyn
     clipPath,
   ]);
 
-  await renderCaptionedClip({
-    clipPath,
+  await renderCaptions({
+    serveUrl: await bundleCaptions(publicDir),
+    src: "clip-001.mp4",
     durationSeconds: 4,
     captions: [{ text: "hello world", startMs: 500, endMs: 2000, timestampMs: 500, confidence: 1 }],
     output,

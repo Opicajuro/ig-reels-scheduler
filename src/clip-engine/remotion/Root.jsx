@@ -12,7 +12,7 @@ export function Root() {
       height={1920}
       fps={FPS}
       durationInFrames={FPS}
-      defaultProps={{ captions: [], durationSeconds: 1, preset: "classic", position: "bottom", uppercase: false }}
+      defaultProps={{ src: "clip.mp4", captions: [], durationSeconds: 1, preset: "classic", position: "bottom", uppercase: false }}
       calculateMetadata={({ props }) => ({ durationInFrames: Math.round(props.durationSeconds * FPS) })}
     />
   );
