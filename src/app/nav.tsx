@@ -5,8 +5,9 @@ import { usePathname } from "next/navigation";
 
 export const SECTIONS = [
   { href: "/clips", label: "Clips" },
-  { href: "/dashboard", label: "Scheduled" },
+  { href: "/scheduled", label: "Scheduled" },
   { href: "/accounts", label: "Accounts" },
+  { href: "/settings", label: "Settings" },
 ] as const;
 
 // The menu bar on every screen.

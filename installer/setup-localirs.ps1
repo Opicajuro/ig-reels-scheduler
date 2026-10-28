@@ -1,6 +1,7 @@
 # Runs after every install and update. Starts the database and file storage on this PC, and writes the app settings.
 # The installer passes in the optional failure-email settings (your email, Resend API key and sender) from its own
-# window. Empty answers keep what was saved before. Nothing here asks for input: the installer runs this window hidden, so everything
+# window. Empty answers keep what was saved before. local-setup copies them to the app's Settings page where that has
+# no value yet; after that they are changed on the Settings page. Nothing here asks for input: the installer runs this window hidden, so everything
 # printed here goes to data\setup.log, which the installer points to if setup fails.
 param([string]$ResendApiKey = "", [string]$EmailFrom = "", [string]$AlertEmail = "")
 $ErrorActionPreference = "Stop"
@@ -25,7 +26,7 @@ try {
     [Convert]::ToBase64String($bytes)
   }
 
-  # .env values cannot be empty or hold quotes or line breaks, so the values are checked before they are saved.
+  # These values reach setup on a command line, so they cannot hold quotes or line breaks; they are checked first.
   function Test-PlainValue([string]$value) {
     return $value.Trim() -ne "" -and $value -notmatch "[`"'\r\n]"
   }

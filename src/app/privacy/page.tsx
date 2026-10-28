@@ -1,17 +1,20 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { connection } from "next/server";
 import { PageHeader } from "@/components/page-header";
+import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 
 export const metadata: Metadata = { title: "Privacy policy" };
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  await connection();
+  // The contact is the failure-email address from Settings.
+  const { alertEmail } = await getSettings(prisma);
+
   return (
     <main>
       <PageHeader title="Privacy policy" />
-      <p>
-        <strong>Draft:</strong> replace this text and the contact details before submitting the app for Meta App
-        Review.
-      </p>
-
       <h2>What we store</h2>
       <ul>
         <li>Your Instagram account ID, username, and account type (Business or Creator).</li>
@@ -30,7 +33,16 @@ export default function PrivacyPage() {
       </p>
 
       <h2>Contact</h2>
-      <p>[contact email to be added]</p>
+      {alertEmail ? (
+        <p>
+          Questions or deletion requests: <a href={`mailto:${alertEmail}`}>{alertEmail}</a>
+        </p>
+      ) : (
+        <p>
+          No contact address yet. Add your email address under Failure emails on the{" "}
+          <Link href="/settings">Settings</Link> page.
+        </p>
+      )}
     </main>
   );
 }

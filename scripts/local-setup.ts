@@ -3,6 +3,9 @@ import { readFile, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "../src/generated/prisma/client";
+import { fillMissingSettings } from "../src/lib/settings";
 import { assertPlainValue, fillGeneratedSecrets, parseEnv, renderEnv, type EnvValues } from "./wizard-env";
 import { ensureBucket, storageClient } from "./wizard-storage";
 
@@ -11,7 +14,7 @@ import { ensureBucket, storageClient } from "./wizard-storage";
 export type LocalInstall = {
   postgresPassword: string;
   storageSecret: string;
-  /** optional: failure emails are sent only when all three are set */
+  /** optional, saved on /settings: failure emails are sent only when all three are set */
   resendApiKey: string;
   emailFrom: string;
   alertEmail: string;
@@ -30,8 +33,6 @@ export function buildLocalValues(install: LocalInstall, generate: () => string):
       S3_SECRET_KEY: install.storageSecret,
       APP_URL: "http://localhost:3000",
       IG_REDIRECT_URI: "http://localhost:3000/api/ig/callback",
-      RESEND_API_KEY: install.resendApiKey,
-      EMAIL_FROM: install.emailFrom,
       CHROME_PATH: install.chromePath,
       WHISPER_BIN: install.whisperBin,
       WHISPER_MODEL: install.whisperModel,
@@ -57,20 +58,30 @@ export async function prepareDatabase(adminUrl: string, appPassword: string): Pr
 }
 
 // Localirs has no sign-in; everything belongs to the first user row (src/lib/owner.ts). A new install gets that row
-// here. Its email is where failure emails go, so a new address from setup replaces the old one.
-export async function ensureOwner(databaseUrl: string, alertEmail: string): Promise<void> {
+// here. Failure emails go to the address on /settings, not to this row's email.
+export async function ensureOwner(databaseUrl: string): Promise<void> {
   const db = new pg.Client({ connectionString: databaseUrl });
   await db.connect();
   try {
     const owner = await db.query('SELECT id FROM "User" ORDER BY "createdAt" LIMIT 1');
     if (owner.rowCount === 0) {
-      await db.query('INSERT INTO "User" (id, email) VALUES ($1, $2)', [randomUUID(), alertEmail || "owner@localhost"]);
-    } else if (alertEmail) {
-      await db.query('UPDATE "User" SET email = $1 WHERE id = $2', [alertEmail, owner.rows[0].id]);
+      await db.query('INSERT INTO "User" (id, email) VALUES ($1, $2)', [randomUUID(), "owner@localhost"]);
     }
   } finally {
     await db.end();
   }
+}
+
+// The settings that live on /settings. The installer's failure-email answers come first; an older install also had
+// the Meta app and Resend values in .env. Either fills only settings that are still empty.
+export function settingsFromSetup(install: LocalInstall, oldEnv: EnvValues) {
+  return {
+    metaAppId: oldEnv.IG_APP_ID || null,
+    metaAppSecret: oldEnv.IG_APP_SECRET || null,
+    alertEmail: install.alertEmail || null,
+    resendApiKey: install.resendApiKey || oldEnv.RESEND_API_KEY || null,
+    emailFrom: install.emailFrom || oldEnv.EMAIL_FROM || null,
+  };
 }
 
 function requireInstallValue(name: string): string {
@@ -94,11 +105,9 @@ async function main() {
   const values = buildLocalValues(install, generate);
   for (const [key, value] of Object.entries(values)) assertPlainValue(key, value);
 
-  const template = await readFile(".env.example", "utf8");
   const existing = await readFile(".env", "utf8").then(parseEnv).catch(() => ({} as EnvValues));
   // Secrets already in .env are kept, so running setup again does not lock out stored tokens.
-  const written = renderEnv(template, { ...values, ...Object.fromEntries(Object.entries(existing).filter(([key]) => key === "TOKEN_ENC_KEY")) });
-  await writeFile(".env", written);
+  if (existing.TOKEN_ENC_KEY) values.TOKEN_ENC_KEY = existing.TOKEN_ENC_KEY;
 
   await prepareDatabase(requireInstallValue("LOCALIRS_POSTGRES_ADMIN_URL"), install.postgresPassword);
 
@@ -115,9 +124,23 @@ async function main() {
   }
 
   // Runs Prisma through Node, so the install needs no pnpm on the PC.
-  execFileSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], { stdio: "inherit" });
-  await ensureOwner(values.DATABASE_URL, install.alertEmail);
-  console.log("local setup finished: .env written, database and bucket ready, migrations applied, owner ready");
+  execFileSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], {
+    stdio: "inherit",
+    env: { ...process.env, DATABASE_URL: values.DATABASE_URL },
+  });
+  await ensureOwner(values.DATABASE_URL);
+  // Secrets in the settings are sealed with the token key (src/lib/token-crypto.ts reads it from the environment).
+  process.env.TOKEN_ENC_KEY = values.TOKEN_ENC_KEY;
+  const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: values.DATABASE_URL }) });
+  try {
+    await fillMissingSettings(db, settingsFromSetup(install, existing));
+  } finally {
+    await db.$disconnect();
+  }
+
+  // Written last, once the old Meta app and Resend values are safe in the settings: .env no longer holds them.
+  await writeFile(".env", renderEnv(await readFile(".env.example", "utf8"), values));
+  console.log("local setup finished: database and bucket ready, migrations applied, owner and settings ready, .env written");
 }
 
 // True when this module is the script node was started with. A plain `file://` + path comparison fails on Windows

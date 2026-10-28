@@ -1,5 +1,3 @@
-import { requireEnv } from "./env";
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TOKEN_WARNING_DAYS = 7;
 const RESEND_URL = "https://api.resend.com/emails";
@@ -28,12 +26,17 @@ export function buildAlerts({ failedPosts, tokens, accounts, now }: AlertInput):
   return alerts;
 }
 
+// apiKey and from come from the settings (emailSettings in ./settings).
 export async function sendEmail({
+  apiKey,
+  from,
   to,
   subject,
   text,
   fetchFn = fetch,
 }: {
+  apiKey: string;
+  from: string;
   to: string;
   subject: string;
   text: string;
@@ -42,10 +45,10 @@ export async function sendEmail({
   const response = await fetchFn(RESEND_URL, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${requireEnv("RESEND_API_KEY")}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from: requireEnv("EMAIL_FROM"), to: [to], subject, text }),
+    body: JSON.stringify({ from, to: [to], subject, text }),
   });
   if (!response.ok) {
     const body = (await response.json()) as { message?: string };

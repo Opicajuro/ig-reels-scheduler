@@ -48,34 +48,29 @@ describe("buildAlerts", () => {
 });
 
 describe("sendEmail", () => {
+  const SENDER = { apiKey: "re_test", from: "Scheduler <alerts@example.com>" };
+
   it("posts the message to Resend with the API key", async () => {
-    process.env.RESEND_API_KEY = "re_test";
-    process.env.EMAIL_FROM = "Scheduler <alerts@example.com>";
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const fetchFn = async (input: RequestInfo | URL, init?: RequestInit) => {
       calls.push({ url: String(input), init });
       return new Response(JSON.stringify({ id: "email-1" }), { status: 200 });
     };
 
-    await sendEmail({ to: "owner@example.com", subject: "Alerts", text: "Post failed", fetchFn });
+    await sendEmail({ ...SENDER, to: "owner@example.com", subject: "Alerts", text: "Post failed", fetchFn });
 
     expect(calls[0].url).toBe("https://api.resend.com/emails");
     expect(new Headers(calls[0].init?.headers).get("Authorization")).toBe("Bearer re_test");
     expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
+      from: "Scheduler <alerts@example.com>",
       to: ["owner@example.com"],
       subject: "Alerts",
       text: "Post failed",
     });
-    delete process.env.RESEND_API_KEY;
-    delete process.env.EMAIL_FROM;
   });
 
   it("throws when Resend refuses the message", async () => {
-    process.env.RESEND_API_KEY = "re_test";
-    process.env.EMAIL_FROM = "Scheduler <alerts@example.com>";
     const fetchFn = async () => new Response(JSON.stringify({ message: "bad key" }), { status: 401 });
-    await expect(sendEmail({ to: "x@example.com", subject: "s", text: "t", fetchFn })).rejects.toThrow("bad key");
-    delete process.env.RESEND_API_KEY;
-    delete process.env.EMAIL_FROM;
+    await expect(sendEmail({ ...SENDER, to: "x@example.com", subject: "s", text: "t", fetchFn })).rejects.toThrow("bad key");
   });
 });

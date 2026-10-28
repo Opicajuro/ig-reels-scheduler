@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAuthorizeUrl, connectAccount, metaAppConfigured } from "./ig-connect";
+import { buildAuthorizeUrl, connectAccount, metaAppConfig } from "./ig-connect";
 
 const CONFIG = {
   appId: "123",
@@ -24,18 +24,18 @@ const SHORT_TOKEN = { access_token: "short", user_id: 17841 };
 const LONG_TOKEN = { access_token: "long", token_type: "bearer", expires_in: 5184000 };
 const BUSINESS_PROFILE = { user_id: "17841", username: "streamer", account_type: "BUSINESS" };
 
-describe("metaAppConfigured", () => {
-  const SET_UP = { IG_APP_ID: "123", IG_APP_SECRET: "shh", IG_REDIRECT_URI: "http://localhost:3000/api/ig/callback" };
+describe("metaAppConfig", () => {
+  const SETTINGS = { metaAppId: "123", metaAppSecret: "shh" };
+  const REDIRECT = "http://localhost:3000/api/ig/callback";
 
-  it("is true once the app ID, secret and redirect address are all set", () => {
-    expect(metaAppConfigured(SET_UP)).toBe(true);
+  it("is the app ID and secret from the settings with the redirect address from .env", () => {
+    expect(metaAppConfig(SETTINGS, REDIRECT)).toEqual({ appId: "123", appSecret: "shh", redirectUri: REDIRECT });
   });
 
-  it("is false for the installer's placeholder app ID or any missing value", () => {
-    expect(metaAppConfigured({ ...SET_UP, IG_APP_ID: "0" })).toBe(false);
-    expect(metaAppConfigured({ ...SET_UP, IG_APP_ID: undefined })).toBe(false);
-    expect(metaAppConfigured({ ...SET_UP, IG_APP_SECRET: "" })).toBe(false);
-    expect(metaAppConfigured({ ...SET_UP, IG_REDIRECT_URI: undefined })).toBe(false);
+  it("is null while any of the three is missing", () => {
+    expect(metaAppConfig({ ...SETTINGS, metaAppId: null }, REDIRECT)).toBeNull();
+    expect(metaAppConfig({ ...SETTINGS, metaAppSecret: null }, REDIRECT)).toBeNull();
+    expect(metaAppConfig(SETTINGS, undefined)).toBeNull();
   });
 });
 

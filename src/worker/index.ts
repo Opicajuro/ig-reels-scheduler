@@ -22,6 +22,8 @@ import { downloadToFile, uploadFromFile } from "@/lib/storage";
 import { createPublishProcessor } from "./publish-processor";
 import { sendOwnerAlerts } from "@/lib/alert-job";
 import { sendEmail } from "@/lib/alerts";
+import { getOwnerId } from "@/lib/owner";
+import { emailSettings, getSettings } from "@/lib/settings";
 
 const DAILY_AT_03_UTC = "0 3 * * *";
 const DAILY_AT_08_UTC = "0 8 * * *";
@@ -50,15 +52,19 @@ async function main() {
   await boss.work(PUBLISH_QUEUE, createPublishProcessor());
   await boss.work(INSIGHTS_QUEUE, processInsightsJob);
 
-  // Failure emails are optional: they run only when setup was given a Resend key and sender.
-  if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
-    await boss.schedule(OWNER_ALERTS_QUEUE, DAILY_AT_08_UTC, {}, { tz: "UTC" });
-    await boss.work(OWNER_ALERTS_QUEUE, async () => {
-      await sendOwnerAlerts({ db: prisma, now: new Date(), send: sendEmail });
+  // Failure emails are optional. The settings are read at each run, so saving them on /settings turns the emails on
+  // or off without restarting the worker.
+  await boss.schedule(OWNER_ALERTS_QUEUE, DAILY_AT_08_UTC, {}, { tz: "UTC" });
+  await boss.work(OWNER_ALERTS_QUEUE, async () => {
+    const email = emailSettings(await getSettings(prisma));
+    if (!email) return;
+    await sendOwnerAlerts({
+      db: prisma,
+      ownerId: await getOwnerId(),
+      now: new Date(),
+      send: (message) => sendEmail({ ...email, ...message }),
     });
-  } else {
-    await boss.unschedule(OWNER_ALERTS_QUEUE);
-  }
+  });
 
   console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media, clips and publishing enabled`);
 }

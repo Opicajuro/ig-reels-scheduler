@@ -12,7 +12,11 @@ Instagram accounts through the Meta Graph API.
   into YouTube Studio by hand.
 - **Scheduling.** Schedule a clip to a connected Instagram account. The post publishes 45 minutes before its
   time, with retries, a per-account lock and Meta's rate-limit pauses.
-- **Dashboard.** Scheduled and failed posts, with cancel and retry.
+- **Start screen.** The next posts, what needs attention (failed posts, accounts to reconnect, rate-limit pauses)
+  and the latest clip projects.
+- **Scheduled.** Upcoming, publishing, published, failed and canceled posts, with cancel and retry; each post has a
+  page with its video, publish steps and insights.
+- **Settings.** The Meta app, failure emails and caption language are set in the app, not in `.env`.
 
 ## Stack
 
@@ -34,8 +38,8 @@ included `docker-compose.yml` starts Postgres and MinIO.
     pnpm worker                 # in a second terminal: background jobs
 
 Create the storage bucket once: open the MinIO console at http://localhost:9001 (user `minio`,
-password `minio12345`), create a bucket named `ig-reels`. Failure emails (optional) need `RESEND_API_KEY` and
-`EMAIL_FROM` in `.env`. There is no sign-in: the app belongs to the first user row and only answers on this PC.
+password `minio12345`), create a bucket named `ig-reels`. The Meta app and failure emails (optional) are set on
+the Settings page. There is no sign-in: the app belongs to the first user row and only answers on this PC.
 
 Optional, for links and captions: `yt-dlp` on the worker's PATH for clips made from a link, and
 `CHROME_PATH`, `WHISPER_BIN` and `WHISPER_MODEL` for captions.

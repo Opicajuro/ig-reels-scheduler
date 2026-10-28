@@ -4,10 +4,19 @@ import { MetaApiError } from "./meta-errors";
 import type { InsightQueue } from "./queues";
 
 const METRICS = ["views", "reach", "likes", "comments", "shares", "saved", "total_interactions"];
+const METRIC_LABELS: Record<string, string> = {
+  views: "Views",
+  reach: "Accounts reached",
+  likes: "Likes",
+  comments: "Comments",
+  shares: "Shares",
+  saved: "Saves",
+  total_interactions: "All interactions",
+};
 const PULLS = [
-  { label: "1h", offsetMs: 60 * 60 * 1000 },
-  { label: "24h", offsetMs: 24 * 60 * 60 * 1000 },
-  { label: "7d", offsetMs: 7 * 24 * 60 * 60 * 1000 },
+  { label: "1h", title: "After 1 h", offsetMs: 60 * 60 * 1000 },
+  { label: "24h", title: "After 24 h", offsetMs: 24 * 60 * 60 * 1000 },
+  { label: "7d", title: "After 7 d", offsetMs: 7 * 24 * 60 * 60 * 1000 },
 ];
 
 type Metric = { metric: string; value: number };
@@ -70,4 +79,25 @@ export async function pullInsights({
       data: { postId, metric: metric.metric, value: metric.value, fetchedAt: now },
     });
   }
+}
+
+export type InsightTable = {
+  pulls: string[];
+  rows: Array<{ metric: string; label: string; values: Array<number | null> }>;
+};
+
+// The stored insight rows as a table for the post page: a column per pull (oldest first), a row per metric. Each
+// pull stores all its metrics with the same fetchedAt, so rows are grouped by it.
+export function insightTable(insights: Array<{ metric: string; value: number; fetchedAt: Date }>): InsightTable {
+  const times = [...new Set(insights.map((insight) => insight.fetchedAt.getTime()))].sort((a, b) => a - b);
+  const pulls = times.map((_, index) => PULLS[index]?.title ?? `Pull ${index + 1}`);
+  const metrics = METRICS.filter((metric) => insights.some((insight) => insight.metric === metric));
+  const rows = metrics.map((metric) => ({
+    metric,
+    label: METRIC_LABELS[metric],
+    values: times.map(
+      (time) => insights.find((insight) => insight.metric === metric && insight.fetchedAt.getTime() === time)?.value ?? null,
+    ),
+  }));
+  return { pulls, rows };
 }

@@ -146,7 +146,7 @@ export async function scheduleClipAction(_previous: ActionResult, formData: Form
       now: new Date(),
     });
     revalidatePath(`/clips/${text(formData, "projectId")}`);
-    revalidatePath("/dashboard");
+    revalidatePath("/scheduled");
     return "Scheduled 1 clip";
   });
 }
@@ -167,7 +167,7 @@ export async function bulkScheduleClipsAction(_previous: ActionResult, formData:
       now: new Date(),
     });
     revalidatePath(`/clips/${text(formData, "projectId")}`);
-    revalidatePath("/dashboard");
+    revalidatePath("/scheduled");
     return `Scheduled ${posts.length} ${posts.length === 1 ? "clip" : "clips"}`;
   });
 }

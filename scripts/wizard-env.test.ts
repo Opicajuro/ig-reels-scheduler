@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { assertPlainValue, fillGeneratedSecrets, missingKeys, parseEnv, renderEnv } from "./wizard-env";
+import { assertPlainValue, fillGeneratedSecrets, parseEnv, renderEnv } from "./wizard-env";
 
 const TEMPLATE = [
   "# Settings for the scheduler",
@@ -44,14 +44,6 @@ describe("renderEnv and parseEnv", () => {
     const text = renderEnv('A="1"\n', { A: "1", B: "2" });
 
     expect(parseEnv(text)).toEqual({ A: "1", B: "2" });
-  });
-});
-
-describe("missingKeys", () => {
-  it("lists the keys that are still empty", () => {
-    const values = { RESEND_API_KEY: "", EMAIL_FROM: "Scheduler <a@example.com>" };
-
-    expect(missingKeys(values, ["RESEND_API_KEY", "EMAIL_FROM"])).toEqual(["RESEND_API_KEY"]);
   });
 });
 

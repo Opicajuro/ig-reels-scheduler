@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
-import { getInsights, parseInsights, pullInsights, scheduleInsightPulls } from "./insights";
+import { getInsights, insightTable, parseInsights, pullInsights, scheduleInsightPulls } from "./insights";
 import type { InsightQueue } from "./queues";
 
 const HOUR = 60 * 60 * 1000;
@@ -83,5 +83,24 @@ describe("pullInsights", () => {
       { postId: "post-1", metric: "views", value: 1200, fetchedAt: NOW },
       { postId: "post-1", metric: "reach", value: 900, fetchedAt: NOW },
     ]);
+  });
+});
+
+describe("insightTable", () => {
+  it("makes a column per pull, oldest first, and a row per metric with a readable label", () => {
+    const first = new Date(NOW.getTime() + HOUR);
+    const second = new Date(NOW.getTime() + 24 * HOUR);
+    const table = insightTable([
+      { metric: "views", value: 900, fetchedAt: second },
+      { metric: "saved", value: 3, fetchedAt: second },
+      { metric: "views", value: 120, fetchedAt: first },
+    ]);
+    expect(table).toEqual({
+      pulls: ["After 1 h", "After 24 h"],
+      rows: [
+        { metric: "views", label: "Views", values: [120, 900] },
+        { metric: "saved", label: "Saves", values: [null, 3] },
+      ],
+    });
   });
 });
