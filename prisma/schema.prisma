@@ -167,6 +167,7 @@ model ClipProject {
   sourceKey       String?
   status          ClipProjectStatus @default(awaiting_source)
   error           String?
+  renderStep      String?
   durationSeconds Int?
   clipSeconds     Int               @default(30)
   clipCount       Int?

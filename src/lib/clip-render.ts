@@ -41,11 +41,15 @@ export async function renderClipProject({
   if (!project) throw new Error(`clip project ${projectId} not found`);
   if (project.status !== "rendering") throw new Error(`clip project ${projectId} is not rendering`);
 
+  // Tells the project page what is happening now, one write per step.
+  const step = (renderStep: string) => db.clipProject.update({ where: { id: projectId }, data: { renderStep } });
+
   try {
     const previous = await db.clip.findMany({ where: { projectId }, select: { storageKey: true } });
     for (const clip of previous) await store.remove(clip.storageKey);
     await db.clip.deleteMany({ where: { projectId } });
 
+    await step("Downloading the video");
     const sourcePath = path.join(workDir, "source.mp4");
     if (project.sourceKey) {
       await store.downloadTo(project.sourceKey, sourcePath);
@@ -64,6 +68,7 @@ export async function renderClipProject({
     await db.clipProject.update({ where: { id: projectId }, data: { durationSeconds } });
 
     const clipCount = resolveClipCount(project.clipCount, durationSeconds, project.clipSeconds);
+    await step(project.withCaptions ? "Analysing motion and sound and transcribing" : "Analysing motion and sound");
     // Each of these reads the whole video in its own process, so they run at the same time.
     const [motion, audio, captions] = await Promise.all([
       motionPerSecond(motionFrames(sourcePath), durationSeconds),
@@ -82,9 +87,11 @@ export async function renderClipProject({
     );
 
     // Each caption is drawn once as a PNG, all from one Remotion bundle, then laid over its clip by ffmpeg.
+    if (captions) await step("Drawing captions");
     const overlays = captions ? await captionOverlays(captions, highlights, path.join(workDir, "captions"), project) : null;
 
     for (const [index, highlight] of highlights.entries()) {
+      await step(`Making clip ${index + 1} of ${highlights.length}`);
       const { clipId } = highlight;
       const output = path.join(workDir, `${clipId}.mp4`);
       await renderClip({
@@ -109,10 +116,10 @@ export async function renderClipProject({
       });
     }
 
-    await db.clipProject.update({ where: { id: projectId }, data: { status: "done", error: null } });
+    await db.clipProject.update({ where: { id: projectId }, data: { status: "done", error: null, renderStep: null } });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await db.clipProject.update({ where: { id: projectId }, data: { status: "failed", error: message } });
+    await db.clipProject.update({ where: { id: projectId }, data: { status: "failed", error: message, renderStep: null } });
     throw err;
   }
 }

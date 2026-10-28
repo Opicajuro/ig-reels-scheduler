@@ -19,7 +19,7 @@ import {
   startRenderAction,
 } from "../actions";
 import { ConfirmForm } from "../confirm-form";
-import { RefreshWhileRendering } from "../refresh-while-rendering";
+import { RenderProgress } from "../render-progress";
 import styles from "../clips.module.css";
 import { ClipGrid } from "./clip-grid";
 
@@ -123,6 +123,7 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
           <Alert tone="error">{summary}</Alert>
         </div>
       ) : null}
+      {busy ? <RenderProgress projectId={project.id} initialStep={project.renderStep} /> : null}
 
       <div className={styles.project}>
         <Card>
@@ -203,7 +204,6 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
           />
         </section>
       </div>
-      {busy ? <RefreshWhileRendering /> : null}
     </main>
   );
 }

@@ -34,11 +34,12 @@ afterAll(async () => {
 type Row = Record<string, unknown>;
 
 function fakeDb(project: Row) {
-  const state = { project: { ...project }, clips: [] as Row[] };
+  const state = { project: { ...project }, clips: [] as Row[], steps: [] as string[] };
   const db = {
     clipProject: {
       findUnique: async () => ({ ...state.project }),
       update: async ({ data }: { data: Row }) => {
+        if (typeof data.renderStep === "string") state.steps.push(data.renderStep);
         Object.assign(state.project, data);
         return state.project;
       },
@@ -117,6 +118,21 @@ describe("renderClipProject", () => {
     expect(bucket.uploaded).toHaveLength(2);
   });
 
+  it("records each step in order and clears it when done", async () => {
+    const work = await mkdtemp(path.join(workRoot, "run-"));
+    const deps = fakeDb(renderingProject());
+
+    await renderClipProject({ db: deps.db, store: bucketStore(root).store, projectId: "p1", workDir: work });
+
+    expect(deps.state.steps).toEqual([
+      "Downloading the video",
+      "Analysing motion and sound",
+      "Making clip 1 of 2",
+      "Making clip 2 of 2",
+    ]);
+    expect(deps.state.project.renderStep).toBeNull();
+  });
+
   it("caps the clip count at what the video length allows", async () => {
     const work = await mkdtemp(path.join(workRoot, "run-"));
     const deps = fakeDb(renderingProject({ clipCount: 10 }));
@@ -148,6 +164,7 @@ describe("renderClipProject", () => {
 
     expect(deps.state.project.status).toBe("failed");
     expect(String(deps.state.project.error)).not.toBe("");
+    expect(deps.state.project.renderStep).toBeNull();
   });
 
   it("refuses a project that is not in the rendering state", async () => {

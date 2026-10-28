@@ -345,3 +345,12 @@
   align-items: flex-end;
   gap: 10px;
 }
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-5);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
