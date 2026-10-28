@@ -66,22 +66,55 @@ export async function probeDuration(file) {
   return parseProbeDuration(JSON.parse(stdout));
 }
 
-// A finished clip, as it is uploaded. Each overlay is a full-frame transparent PNG shown from start to end, in
-// seconds from the start of the clip. The PNGs are extra inputs so no path ends up inside the filter graph.
-export async function renderClip({ input, output, start, length, overlays }) {
-  const filters = [`[0:v]${VERTICAL_FILTER}[v0]`];
-  overlays.forEach((overlay, index) => {
-    filters.push(`[v${index}][${index + 1}:v]overlay=enable='between(t,${overlay.start},${overlay.end})'[v${index + 1}]`);
-  });
+// The transparent frame shown between captions.
+export async function renderBlankOverlay(output) {
+  await run("ffmpeg", [
+    "-y",
+    "-v", "error",
+    "-f", "lavfi",
+    "-i", "color=c=black@0:s=1080x1920,format=rgba",
+    "-frames:v", "1",
+    output,
+  ]);
+}
+
+// An ffconcat list that shows each overlay image from start to end (seconds from the start of the clip) and the
+// blank image everywhere else, so the whole clip is one timed overlay stream.
+export function overlayList({ overlays, blank, length }) {
+  const lines = ["ffconcat version 1.0"];
+  // An image's timestamps count in frames of its frame rate (25 by default); 1000 makes them exact to the ms.
+  const show = (image, duration) =>
+    lines.push(`file ${quoteConcatPath(image)}`, "option framerate 1000", `duration ${duration.toFixed(3)}`);
+  let cursor = 0;
+  for (const overlay of overlays) {
+    if (overlay.start < cursor) throw new Error(`overlay at ${overlay.start}s overlaps the one before it`);
+    if (overlay.start > cursor) show(blank, overlay.start - cursor);
+    show(overlay.image, overlay.end - overlay.start);
+    cursor = overlay.end;
+  }
+  if (cursor < length) show(blank, length - cursor);
+  // The demuxer only honours the last duration if the last file is listed once more.
+  lines.push(...lines.slice(-3, -1));
+  return lines.join("\n") + "\n";
+}
+
+function quoteConcatPath(file) {
+  return `'${file.replaceAll("'", "'\\''")}'`;
+}
+
+// A finished clip, as it is uploaded. overlay is an ffconcat list from overlayList, or null for no overlay.
+export async function renderClip({ input, output, start, length, overlay }) {
+  const video = overlay
+    ? ["-f", "concat", "-safe", "0", "-i", overlay, "-filter_complex", `[0:v]${VERTICAL_FILTER}[v];[v][1:v]overlay[out]`]
+    : ["-filter_complex", `[0:v]${VERTICAL_FILTER}[out]`];
   await run("ffmpeg", [
     "-y",
     "-v", "error",
     "-ss", String(start),
     "-i", input,
-    ...overlays.flatMap((overlay) => ["-i", overlay.image]),
+    ...video,
     "-t", String(length),
-    "-filter_complex", filters.join(";"),
-    "-map", `[v${overlays.length}]`,
+    "-map", "[out]",
     "-map", "0:a?",
     "-c:v", "libx264",
     "-preset", "veryfast",

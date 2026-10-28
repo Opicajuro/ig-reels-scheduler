@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ClipProject, PrismaClient } from "@/generated/prisma/client";
 import { requireEnv } from "./env";
@@ -8,7 +8,14 @@ import type { ClipStore } from "./clip-store";
 import type { Caption } from "@remotion/captions";
 import { captionsForClip } from "@/clip-engine/captions-timing.js";
 import { downloadVideo } from "@/clip-engine/download.js";
-import { audioSamples, motionFrames, probeDuration, renderClip } from "@/clip-engine/ffmpeg.js";
+import {
+  audioSamples,
+  motionFrames,
+  overlayList,
+  probeDuration,
+  renderBlankOverlay,
+  renderClip,
+} from "@/clip-engine/ffmpeg.js";
 import { loudnessPerSecond, motionPerSecond } from "@/clip-engine/analysis.js";
 import { combineScores, MIN_SEGMENT_SECONDS, pickHighlights, resolveClipCount } from "@/clip-engine/helpers.js";
 import { bundleCaptions, renderCaptionStills } from "@/clip-engine/render-captions.js";
@@ -85,7 +92,7 @@ export async function renderClipProject({
         output,
         start: highlight.start,
         length: highlight.length,
-        overlays: overlays?.get(clipId) ?? [],
+        overlay: overlays?.get(clipId) ?? null,
       });
 
       const storageKey = buildClipKey(projectId, clipId);
@@ -110,33 +117,44 @@ export async function renderClipProject({
   }
 }
 
+// Draws every caption of the project and returns, per clip, the ffconcat list that times its captions.
 async function captionOverlays(
   captions: Caption[],
   highlights: { clipId: string; start: number; length: number }[],
   dir: string,
   look: Pick<ClipProject, "captionPreset" | "captionPosition" | "captionUppercase">,
-): Promise<Map<string, { image: string; start: number; end: number }[]>> {
+): Promise<Map<string, string>> {
   await mkdir(dir, { recursive: true });
-  const overlays = new Map(
-    highlights.map((highlight) => [
-      highlight.clipId,
-      captionsForClip(captions, highlight.start * 1000, (highlight.start + highlight.length) * 1000).map(
-        (caption: Caption, index: number) => ({
-          text: caption.text,
-          image: path.join(dir, `${highlight.clipId}-${index}.png`),
-          start: caption.startMs / 1000,
-          end: caption.endMs / 1000,
-        }),
-      ),
-    ]),
-  );
+  const clips = highlights.map((highlight) => {
+    const clipCaptions: Caption[] = captionsForClip(
+      captions,
+      highlight.start * 1000,
+      (highlight.start + highlight.length) * 1000,
+    );
+    const overlays = clipCaptions.map((caption, index) => ({
+      text: caption.text,
+      image: path.join(dir, `${highlight.clipId}-${index}.png`),
+      start: caption.startMs / 1000,
+      end: caption.endMs / 1000,
+    }));
+    return { ...highlight, overlays };
+  });
   await renderCaptionStills({
     serveUrl: await bundleCaptions(),
-    stills: [...overlays.values()].flat().map(({ text, image }) => ({ text, output: image })),
+    stills: clips.flatMap((clip) => clip.overlays.map(({ text, image }) => ({ text, output: image }))),
     chromePath: requireEnv("CHROME_PATH"),
     preset: look.captionPreset,
     position: look.captionPosition,
     uppercase: look.captionUppercase,
   });
-  return overlays;
+  const blank = path.join(dir, "blank.png");
+  await renderBlankOverlay(blank);
+
+  const lists = new Map<string, string>();
+  for (const clip of clips) {
+    const list = path.join(dir, `${clip.clipId}.ffconcat`);
+    await writeFile(list, overlayList({ overlays: clip.overlays, blank, length: clip.length }));
+    lists.set(clip.clipId, list);
+  }
+  return lists;
 }

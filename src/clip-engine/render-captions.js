@@ -1,3 +1,4 @@
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
 import { openBrowser, renderStill, selectComposition } from "@remotion/renderer";
@@ -25,8 +26,11 @@ export async function renderCaptionStills({
 
   const browser = await openBrowser("chrome", { browserExecutable: chromePath });
   try {
-    await Promise.all(
-      stills.map(async ({ text, output }) => {
+    // One page per core at a time; each loop takes the next still until none are left.
+    let next = 0;
+    const renderNext = async () => {
+      while (next < stills.length) {
+        const { text, output } = stills[next++];
         const inputProps = { text, preset, position, uppercase };
         const composition = await selectComposition({
           serveUrl,
@@ -35,8 +39,9 @@ export async function renderCaptionStills({
           puppeteerInstance: browser,
         });
         await renderStill({ composition, serveUrl, output, imageFormat: "png", inputProps, puppeteerInstance: browser });
-      }),
-    );
+      }
+    };
+    await Promise.all(Array.from({ length: os.cpus().length }, renderNext));
   } finally {
     await browser.close({ silent: true });
   }
