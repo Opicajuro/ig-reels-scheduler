@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { getOwnerId } from "@/lib/owner";
@@ -6,6 +7,12 @@ import { prisma } from "@/lib/prisma";
 import { cancelScheduledPost } from "@/lib/posts";
 import { retryFailedPost } from "@/lib/post-retry";
 import { getPublishQueue } from "@/lib/queues";
+import { Button } from "@/components/button";
+import { EmptyState } from "@/components/empty-state";
+import { LocalTime } from "@/components/local-time";
+import { PageHeader } from "@/components/page-header";
+
+export const metadata: Metadata = { title: "Dashboard" };
 
 async function Dashboard() {
   await connection();
@@ -50,11 +57,11 @@ async function Dashboard() {
 
   return (
     <main>
-      <h1>Dashboard</h1>
+      <PageHeader title="Dashboard" />
 
       <h2>Accounts</h2>
       {accounts.length === 0 ? (
-        <p>No accounts connected yet.</p>
+        <EmptyState>No accounts connected yet.</EmptyState>
       ) : (
         <ul>
           {accounts.map((account) => (
@@ -67,15 +74,15 @@ async function Dashboard() {
 
       <h2>Failed posts</h2>
       {failed.length === 0 ? (
-        <p>Nothing failed.</p>
+        <EmptyState>Nothing failed.</EmptyState>
       ) : (
         <ul>
           {failed.map((post) => (
             <li key={post.id}>
-              {post.scheduledAt.toISOString()} · {post.lastError ?? "unknown error"}
+              <LocalTime date={post.scheduledAt} /> · {post.lastError ?? "unknown error"}
               <form action={retry}>
                 <input type="hidden" name="postId" value={post.id} />
-                <button type="submit">Retry</button>
+                <Button type="submit">Retry</Button>
               </form>
             </li>
           ))}
@@ -84,15 +91,15 @@ async function Dashboard() {
 
       <h2>Scheduled</h2>
       {scheduled.length === 0 ? (
-        <p>Nothing scheduled.</p>
+        <EmptyState>Nothing scheduled.</EmptyState>
       ) : (
         <ul>
           {scheduled.map((post) => (
             <li key={post.id}>
-              {post.scheduledAt.toISOString()} · {post.caption.slice(0, 60)}
+              <LocalTime date={post.scheduledAt} /> · {post.caption.slice(0, 60)}
               <form action={cancel}>
                 <input type="hidden" name="postId" value={post.id} />
-                <button type="submit">Cancel</button>
+                <Button type="submit">Cancel</Button>
               </form>
             </li>
           ))}

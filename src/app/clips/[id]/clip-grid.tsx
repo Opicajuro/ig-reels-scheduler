@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { Button, ButtonLink } from "@/components/button";
+import { EmptyState } from "@/components/empty-state";
+import { Field } from "@/components/field";
 import { copyClipAction, deleteClipAction, renameClipAction, saveClipDetailsAction } from "../actions";
 import { ConfirmForm } from "../confirm-form";
 import { ExportForm } from "./export-form";
@@ -56,7 +59,7 @@ export function ClipGrid({
   return (
     <>
       {clips.length === 0 ? (
-        <p className={styles.muted}>No clips yet. Choose the settings and make clips.</p>
+        <EmptyState>No clips yet. Choose the settings and make clips.</EmptyState>
       ) : (
         <div className={styles.clips}>
           {clips.map((clip) => (
@@ -80,45 +83,43 @@ export function ClipGrid({
                 <form action={copyClipAction}>
                   <input type="hidden" name="clipId" value={clip.id} />
                   <input type="hidden" name="projectId" value={projectId} />
-                  <button type="submit" disabled={busy}>
+                  <Button type="submit" size="sm" disabled={busy}>
                     Copy
-                  </button>
+                  </Button>
                 </form>
                 <ConfirmForm
                   action={deleteClipAction}
                   message={`Delete ${clip.name}?`}
                   fields={{ clipId: clip.id, projectId }}
                   disabled={busy}
+                  size="sm"
                 >
                   Delete
                 </ConfirmForm>
-                <a href={clip.downloadUrl} download>
+                <ButtonLink href={clip.downloadUrl} download size="sm">
                   Download
-                </a>
+                </ButtonLink>
               </div>
               <details className={styles.details}>
                 <summary>Posting and safe-clip rights</summary>
                 <form action={saveClipDetailsAction}>
                   <input type="hidden" name="clipId" value={clip.id} />
                   <input type="hidden" name="projectId" value={projectId} />
-                  <label className={styles.label}>
-                    Title (YouTube, up to 100 characters)
+                  <Field label="Title (YouTube, up to 100 characters)">
                     <input type="text" name="title" maxLength={100} defaultValue={clip.title ?? clip.name} />
-                  </label>
-                  <label className={styles.label}>
-                    Description (with hashtags)
+                  </Field>
+                  <Field label="Description (with hashtags)">
                     <textarea name="description" rows={4} maxLength={5000} defaultValue={clip.description ?? ""} />
-                  </label>
-                  <button type="submit">Save title and description</button>
+                  </Field>
+                  <Button type="submit">Save title and description</Button>
                 </form>
                 <form action={renameClipAction}>
                   <input type="hidden" name="clipId" value={clip.id} />
                   <input type="hidden" name="projectId" value={projectId} />
-                  <label className={styles.label}>
-                    Clip name
+                  <Field label="Clip name">
                     <input type="text" name="name" maxLength={60} defaultValue={clip.name} required />
-                  </label>
-                  <button type="submit">Rename</button>
+                  </Field>
+                  <Button type="submit">Rename</Button>
                 </form>
                 <ScheduleForm
                   clipId={clip.id}

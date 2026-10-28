@@ -1,7 +1,12 @@
+import type { Metadata } from "next";
+import { PageHeader } from "@/components/page-header";
+
+export const metadata: Metadata = { title: "Privacy policy" };
+
 export default function PrivacyPage() {
   return (
     <main>
-      <h1>Privacy policy</h1>
+      <PageHeader title="Privacy policy" />
       <p>
         <strong>Draft:</strong> replace this text and the contact details before submitting the app for Meta App
         Review.
