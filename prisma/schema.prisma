@@ -34,7 +34,9 @@ model IgAccount {
   accountType String
   timezone    String        @default("UTC")
   status      AccountStatus @default(active)
-  pausedUntil DateTime?
+  // pausedUntil is a pause the owner chose; rateLimitedUntil is a pause Meta's rate limit asked for.
+  pausedUntil      DateTime?
+  rateLimitedUntil DateTime?
   lockedUntil DateTime?
   createdAt   DateTime      @default(now())
   token       IgToken?
@@ -190,4 +192,16 @@ model Clip {
   title       String?
   description String?
   createdAt   DateTime    @default(now())
+}
+
+// The app's settings, edited on /settings: one row, id 1. The Meta app secret and the Resend API key are sealed with
+// TOKEN_ENC_KEY (src/lib/settings.ts).
+model Setting {
+  id              Int     @id @default(1)
+  metaAppId       String?
+  metaAppSecret   String?
+  alertEmail      String?
+  resendApiKey    String?
+  emailFrom       String?
+  captionLanguage String  @default("auto")
 }

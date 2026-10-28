@@ -39,16 +39,15 @@ Set these on both the web and the worker service, unless noted.
 | `S3_SECRET_KEY` | R2 secret access key |
 | `TOKEN_ENC_KEY` | 32-byte base64 key from section 1 |
 | `AUTH_SECRET` | Random secret from section 1 (web only) |
-| `RESEND_API_KEY` | Resend API key |
-| `EMAIL_FROM` | Sender address, for example `Scheduler <alerts@your-domain.com>` |
-| `IG_APP_ID` | Meta app ID |
-| `IG_APP_SECRET` | Meta app secret (keep it out of logs and screenshots) |
 | `IG_REDIRECT_URI` | `https://<your-domain>/api/ig/callback` |
 | `APP_URL` | `https://<your-domain>` |
 | `AUTH_URL` | `https://<your-domain>`. Sign-in fails with "Host must be trusted" if this is missing. |
 | `CHROME_PATH` | Chrome or Chrome headless shell binary. Needed only for clips with captions. |
 | `WHISPER_BIN` | whisper.cpp `whisper-cli` binary. Needed only for clips with captions. |
 | `WHISPER_MODEL` | Path to a whisper.cpp model file, for example `ggml-base.bin`. Needed only for captions. |
+
+The Meta app ID and secret and the failure-email settings (address, Resend API key, sender) are not environment
+variables: set them on the app's Settings page after the first deploy.
 
 The worker also needs `ffmpeg` and `ffprobe` on its PATH for every clip, and `yt-dlp` on its PATH for clips made from a link.
 
@@ -95,13 +94,13 @@ Run these in order and fix anything that fails before you move on.
 
 1. Sign in with your email from the sign-in link.
 2. Connect a test Business or Creator account on the Accounts page.
-3. Upload a short video and wait for "ready" on the Dashboard.
+3. Upload a short video and wait for "ready" on the Scheduled page.
 4. Schedule the video for about 50 minutes ahead. Check that its job is in the `pgboss.job` table with a start time 45 minutes before publish time.
 5. After publishing, open the post page and check the permalink. Wait for the 1-hour insights.
 
 ## 8. Operations
 
-- **Logs:** check the web and worker logs in Render. Failed posts show their error on the Dashboard as well.
+- **Logs:** check the web and worker logs in Render. Failed posts show their error on the Scheduled page as well.
 - **Token expiry:** the daily job refreshes tokens within 10 days of expiry. Accounts whose token has expired or was revoked are marked "needs to be reconnected", and the owner gets an email.
 - **Rotating secrets:** rotating `AUTH_SECRET` signs everyone out. Rotating `TOKEN_ENC_KEY` makes stored tokens unreadable, so do not rotate it without re-encrypting every token first.
 - **Backups:** back up Postgres daily, and keep the `TOKEN_ENC_KEY` in a password manager.

@@ -47,9 +47,9 @@ describe("pauseAccount", () => {
     ]);
   });
 
-  it("rejects a pause length that is not a whole number of minutes in range", async () => {
+  it("rejects a pause length other than 1 hour, 1 day or 1 week", async () => {
     const deps = fakeDeps();
-    for (const minutes of [Number.NaN, 0, -5, 1.5, 7 * 24 * 60 + 1]) {
+    for (const minutes of [Number.NaN, 0, -5, 1.5, 30, 7 * 24 * 60 + 1]) {
       await expect(pauseAccount(deps.db, { ownerId: "user-1", accountId: "acc-1", minutes, now: NOW })).rejects.toThrow(
         "pause must be",
       );

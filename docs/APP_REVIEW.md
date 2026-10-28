@@ -13,7 +13,7 @@ Request the three Instagram Login permissions below. Do not request anything els
 | Permission | Why we need it | Where the user sees it |
 | --- | --- | --- |
 | `instagram_business_basic` | Read the account's ID, username and account type, so we can show which account is connected and reject personal accounts. | Accounts page |
-| `instagram_business_content_publish` | Create and publish the Reels the user scheduled. | Schedule page, Dashboard |
+| `instagram_business_content_publish` | Create and publish the Reels the user scheduled. | Schedule page, Scheduled page |
 | `instagram_business_manage_insights` | Read the views, reach, likes, comments, shares, saves and total interactions for the user's own posts. | Post page (insights) |
 
 Justification text to paste into each permission field:
@@ -29,7 +29,7 @@ Record one continuous screen capture, about three minutes, at 1080p or higher. N
 1. **Sign in.** Open the app's login page. Enter the reviewer's email. Show the sign-in email arriving and click the link. *Narrate: "The operator signs in with a magic link. No Instagram password is ever stored."*
 2. **Connect an account.** Open Accounts and click "Connect an Instagram account". Show the Instagram consent screen listing the three permissions. Approve. Show the account appearing in the list with its username and type. *Narrate: "We only accept Business or Creator accounts."*
 3. **Upload.** Open the editor, choose the connected account, and upload a video. Wait for "ready". *Narrate: "The video is converted to the Reel format, and the user can see its length and resolution."*
-4. **Schedule.** Pick the video, write a caption, choose a time 30 minutes ahead, and click Schedule. Show the post in the Dashboard's Scheduled list. *Narrate: "The post waits until its publish time."*
+4. **Schedule.** Pick the video, write a caption, choose a time 30 minutes ahead, and click Schedule. Show the post under Upcoming on the Scheduled page. *Narrate: "The post waits until its publish time."*
 5. **Publish.** Wait for the publish time, or use the reviewer test publish. Show the post's status change to published and its permalink open on Instagram. *Narrate: "The Reel is now live on the user's own account."*
 6. **Insights.** Open the post page and show the insights list after the first pull. *Narrate: "Only this user's post numbers are shown."*
 7. **Disconnect.** In Instagram's app settings, remove the app's access. Show the account in the app change to revoked. *Narrate: "Removing access stops publishing for the account."*

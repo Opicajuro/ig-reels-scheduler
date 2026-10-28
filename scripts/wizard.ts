@@ -1,17 +1,7 @@
 import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { copyFile, readFile, writeFile } from "node:fs/promises";
-import { createInterface, type Interface } from "node:readline/promises";
-import {
-  assertPlainValue,
-  fillGeneratedSecrets,
-  missingKeys,
-  OPTIONAL_KEYS,
-  parseEnv,
-  renderEnv,
-  REQUIRED_KEYS,
-  type EnvValues,
-} from "./wizard-env";
+import { assertPlainValue, fillGeneratedSecrets, parseEnv, renderEnv, type EnvValues } from "./wizard-env";
 import { ensureBucket, storageClient } from "./wizard-storage";
 import { ensureOwner } from "./local-setup";
 
@@ -20,13 +10,6 @@ const ENV_EXAMPLE = ".env.example";
 const DEFAULT_APP_URL = "http://localhost:3000";
 const WAIT_ATTEMPTS = 30;
 const WAIT_MS = 2000;
-
-const PROMPTS: Record<string, string> = {
-  RESEND_API_KEY: "Resend API key (starts with re_): ",
-  EMAIL_FROM: "Sender address, for example Scheduler <alerts@your-domain.com>: ",
-  IG_APP_ID: "Meta app ID (press Enter to skip; needed only to connect Instagram): ",
-  IG_APP_SECRET: "Meta app secret (press Enter to skip): ",
-};
 
 function run(command: string): boolean {
   try {
@@ -53,14 +36,6 @@ function checkPrerequisites(): void {
   if (!run("docker compose version")) throw new Error("Docker Compose is missing. Update Docker Desktop, then run pnpm wizard again.");
 }
 
-async function ask(rl: Interface, key: string, required: boolean): Promise<string> {
-  for (;;) {
-    const answer = (await rl.question(PROMPTS[key])).trim();
-    if (answer || !required) return answer;
-    console.log(`${key} is required.`);
-  }
-}
-
 async function prepareEnv(): Promise<EnvValues> {
   const exists = await readFile(ENV_FILE, "utf8").then(
     () => true,
@@ -74,14 +49,6 @@ async function prepareEnv(): Promise<EnvValues> {
   const template = await readFile(ENV_FILE, "utf8");
   const values = fillGeneratedSecrets(parseEnv(template), () => randomBytes(32).toString("base64"));
   if (!values.APP_URL) values.APP_URL = DEFAULT_APP_URL;
-
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    for (const key of missingKeys(values, REQUIRED_KEYS)) values[key] = await ask(rl, key, true);
-    for (const key of missingKeys(values, OPTIONAL_KEYS)) values[key] = await ask(rl, key, false);
-  } finally {
-    rl.close();
-  }
 
   for (const [key, value] of Object.entries(values)) assertPlainValue(key, value);
   await writeFile(ENV_FILE, renderEnv(template, values));
@@ -130,7 +97,7 @@ async function main(): Promise<void> {
   await prepareBucket(values);
   prepareDatabase();
   // Localirs has no sign-in; the app belongs to the first user row, created here.
-  await ensureOwner(values.DATABASE_URL, "");
+  await ensureOwner(values.DATABASE_URL);
   console.log(`
 Setup complete.
 
@@ -138,6 +105,7 @@ Setup complete.
   2. Open ${values.APP_URL} in your browser.
   3. Optional, in a second Git Bash window: pnpm worker
      (transcodes uploaded videos and publishes scheduled posts)
+  4. Optional: add the Meta app and failure emails on the Settings page.
 `);
 }
 

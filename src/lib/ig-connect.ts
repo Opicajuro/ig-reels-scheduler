@@ -1,3 +1,5 @@
+import type { Settings } from "./settings";
+
 const SCOPES = [
   "instagram_business_basic",
   "instagram_business_content_publish",
@@ -20,10 +22,14 @@ export type ConnectedAccount = {
   expiresInSeconds: number;
 };
 
-// Connecting Instagram needs a Meta app. Setup lets the person skip it, and the installer builds with IG_APP_ID "0",
-// so a missing value or "0" means it is not set up.
-export function metaAppConfigured(env: Record<string, string | undefined>): boolean {
-  return Boolean(env.IG_APP_ID && env.IG_APP_ID !== "0" && env.IG_APP_SECRET && env.IG_REDIRECT_URI);
+// Connecting Instagram needs a Meta app: its ID and secret are saved on /settings, the redirect address is in .env.
+// Null until all three are there.
+export function metaAppConfig(
+  settings: Pick<Settings, "metaAppId" | "metaAppSecret">,
+  redirectUri: string | undefined,
+): Omit<OAuthConfig, "fetchFn"> | null {
+  if (!settings.metaAppId || !settings.metaAppSecret || !redirectUri) return null;
+  return { appId: settings.metaAppId, appSecret: settings.metaAppSecret, redirectUri };
 }
 
 export function buildAuthorizeUrl({

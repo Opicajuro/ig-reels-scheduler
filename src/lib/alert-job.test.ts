@@ -5,63 +5,51 @@ import { sendOwnerAlerts } from "./alert-job";
 const NOW = new Date("2026-10-12T08:00:00Z");
 const DAY = 24 * 60 * 60 * 1000;
 
-function fakeDb() {
-  const users = [
-    {
-      id: "user-a",
-      email: "owner-a@example.com",
-      accounts: [
-        {
-          username: "streamer",
-          status: "reauth_required",
-          token: { expiresAt: new Date(NOW.getTime() + 30 * DAY) },
-        },
-      ],
-      failedPosts: [{ id: "post-1", lastError: "video too large" }],
-    },
-    {
-      id: "user-b",
-      email: "owner-b@example.com",
-      accounts: [
-        {
-          username: "other",
-          status: "active",
-          token: { expiresAt: new Date(NOW.getTime() + 30 * DAY) },
-        },
-      ],
-      failedPosts: [],
-    },
-  ];
+function fakeDb({ failedPosts, status }: { failedPosts: Array<{ id: string; lastError: string }>; status: string }) {
   const db = {
-    user: {
-      findMany: async () => users.map((user) => ({ id: user.id, email: user.email, accounts: user.accounts })),
-    },
-    post: {
-      findMany: async ({ where }: { where: { account: { ownerId: string } } }) =>
-        users.find((user) => user.id === where.account.ownerId)?.failedPosts ?? [],
+    post: { findMany: async () => failedPosts },
+    igAccount: {
+      findMany: async () => [
+        { username: "streamer", status, token: { expiresAt: new Date(NOW.getTime() + 30 * DAY) } },
+      ],
     },
   };
   return db as unknown as PrismaClient;
 }
 
 describe("sendOwnerAlerts", () => {
-  it("emails each owner who has problems and skips owners who do not", async () => {
-    const sent: Array<{ to: string; subject: string; text: string }> = [];
-    const count = await sendOwnerAlerts({
-      db: fakeDb(),
+  it("emails the owner a list of the problems", async () => {
+    const sent: Array<{ subject: string; text: string }> = [];
+    const result = await sendOwnerAlerts({
+      db: fakeDb({ failedPosts: [{ id: "post-1", lastError: "video too large" }], status: "reauth_required" }),
+      ownerId: "owner-1",
       now: NOW,
       send: async (message) => {
         sent.push(message);
       },
     });
 
-    expect(count).toBe(1);
+    expect(result).toBe(true);
     expect(sent).toEqual([
       {
-        to: "owner-a@example.com",
         subject: "Scheduler alerts (2)",
         text: "Post post-1 failed: video too large\n@streamer needs to be reconnected",
       },
     ]);
+  });
+
+  it("sends nothing when everything is healthy", async () => {
+    const sent: unknown[] = [];
+    const result = await sendOwnerAlerts({
+      db: fakeDb({ failedPosts: [], status: "active" }),
+      ownerId: "owner-1",
+      now: NOW,
+      send: async (message) => {
+        sent.push(message);
+      },
+    });
+
+    expect(result).toBe(false);
+    expect(sent).toEqual([]);
   });
 });

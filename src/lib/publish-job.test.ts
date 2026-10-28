@@ -20,7 +20,7 @@ type PostRow = {
   attempts: number;
   lastError: string | null;
   media: { reelKey: string | null };
-  account: { igUserId: string; status: string; pausedUntil: Date | null };
+  account: { igUserId: string; status: string; pausedUntil: Date | null; rateLimitedUntil: Date | null };
 };
 
 function makePost(overrides: Partial<PostRow> = {}): PostRow {
@@ -38,7 +38,7 @@ function makePost(overrides: Partial<PostRow> = {}): PostRow {
     attempts: 0,
     lastError: null,
     media: { reelKey: "reels/media-1.mp4" },
-    account: { igUserId: "17841", status: "active", pausedUntil: null },
+    account: { igUserId: "17841", status: "active", pausedUntil: null, rateLimitedUntil: null },
     ...overrides,
   };
 }
@@ -150,17 +150,25 @@ describe("publishPost (spec section 7)", () => {
   });
 
   it("throws when the account is not active", async () => {
-    const { db } = fakeDb(makePost({ account: { igUserId: "1", status: "revoked", pausedUntil: null } }));
+    const { db } = fakeDb(makePost({ account: { igUserId: "1", status: "revoked", pausedUntil: null, rateLimitedUntil: null } }));
     await expect(run(db, fakeMeta())).rejects.toThrow("account is not active");
   });
 
   it("defers until the pause ends when the account is paused", async () => {
     const pausedUntil = new Date(NOW.getTime() + 60_000);
-    const { db } = fakeDb(makePost({ account: { igUserId: "1", status: "active", pausedUntil } }));
+    const { db } = fakeDb(makePost({ account: { igUserId: "1", status: "active", pausedUntil, rateLimitedUntil: null } }));
     const meta = fakeMeta();
     await expect(run(db, meta)).rejects.toBeInstanceOf(Deferred);
     expect(deferrals).toEqual([pausedUntil]);
     expect(meta.calls).toEqual([]);
+  });
+
+  it("defers until the later of the owner's pause and Meta's rate-limit pause", async () => {
+    const pausedUntil = new Date(NOW.getTime() + 60_000);
+    const rateLimitedUntil = new Date(NOW.getTime() + 900_000);
+    const { db } = fakeDb(makePost({ account: { igUserId: "1", status: "active", pausedUntil, rateLimitedUntil } }));
+    await expect(run(db, fakeMeta())).rejects.toBeInstanceOf(Deferred);
+    expect(deferrals).toEqual([rateLimitedUntil]);
   });
 
   it("defers for a minute when another job holds this account's lock", async () => {
@@ -305,9 +313,9 @@ describe("publishPost (spec section 7)", () => {
 
     await expect(run(db, meta)).rejects.toBeInstanceOf(Deferred);
 
-    const pausedUntil = new Date(NOW.getTime() + 900_000);
-    expect(accountUpdates).toEqual([{ pausedUntil }]);
-    expect(deferrals).toEqual([pausedUntil]);
+    const rateLimitedUntil = new Date(NOW.getTime() + 900_000);
+    expect(accountUpdates).toEqual([{ rateLimitedUntil }]);
+    expect(deferrals).toEqual([rateLimitedUntil]);
     expect(meta.calls).not.toContain("publish");
   });
 });

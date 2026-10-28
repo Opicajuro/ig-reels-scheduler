@@ -62,7 +62,7 @@ type Post = {
   scheduledAt: Date;
   containerId: string | null;
   igMediaId: string | null;
-  account: { igUserId: string; status: string; pausedUntil: Date | null };
+  account: { igUserId: string; status: string; pausedUntil: Date | null; rateLimitedUntil: Date | null };
   media: { reelKey: string | null };
 };
 
@@ -92,9 +92,9 @@ async function failAndStop(deps: PublishDeps, post: Post, message: string): Prom
 // Stores a Business Use Case pause on the account so later steps of this run and later runs wait.
 async function applyPause(deps: PublishDeps, post: Post, seconds: number) {
   if (seconds <= 0) return;
-  const pausedUntil = new Date(deps.now.getTime() + seconds * 1000);
-  post.account.pausedUntil = pausedUntil;
-  await deps.db.igAccount.update({ where: { id: post.accountId }, data: { pausedUntil } });
+  const rateLimitedUntil = new Date(deps.now.getTime() + seconds * 1000);
+  post.account.rateLimitedUntil = rateLimitedUntil;
+  await deps.db.igAccount.update({ where: { id: post.accountId }, data: { rateLimitedUntil } });
 }
 
 // Runs one Meta call with the retry rules from section 7. The call is logged when a step name is given.
@@ -130,10 +130,10 @@ async function callMeta<T>(
   return result;
 }
 
-// Ends the run while the account is paused by Meta's rate limit.
+// Ends the run while the account is paused, by its owner or by Meta's rate limit, until the later pause ends.
 async function guardPause(deps: PublishDeps, post: Post) {
-  const pausedUntil = post.account.pausedUntil;
-  if (pausedUntil && pausedUntil.getTime() > deps.now.getTime()) await deps.deferUntil(pausedUntil);
+  const until = Math.max(post.account.pausedUntil?.getTime() ?? 0, post.account.rateLimitedUntil?.getTime() ?? 0);
+  if (until > deps.now.getTime()) await deps.deferUntil(new Date(until));
 }
 
 type ContainerState = "ready" | "error" | "expired" | "published";

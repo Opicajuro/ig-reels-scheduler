@@ -1,16 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { requireEnv } from "@/lib/env";
-import { buildAuthorizeUrl, metaAppConfigured } from "@/lib/ig-connect";
+import { buildAuthorizeUrl, metaAppConfig } from "@/lib/ig-connect";
+import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 
 export async function GET() {
+  const app = metaAppConfig(await getSettings(prisma), process.env.IG_REDIRECT_URI);
   // The accounts page explains this instead of linking here; this answers anyone who opens the address directly.
-  if (!metaAppConfigured(process.env)) {
-    return new Response(
-      "Connecting Instagram needs a Meta app. Set IG_APP_ID, IG_APP_SECRET and IG_REDIRECT_URI, then restart Localirs.",
-      { status: 400 },
-    );
+  if (!app) {
+    return new Response("Connecting Instagram needs a Meta app. Add its app ID and secret on the Settings page.", {
+      status: 400,
+    });
   }
 
   const state = randomUUID();
@@ -23,11 +24,5 @@ export async function GET() {
     maxAge: 600,
   });
 
-  redirect(
-    buildAuthorizeUrl({
-      appId: requireEnv("IG_APP_ID"),
-      redirectUri: requireEnv("IG_REDIRECT_URI"),
-      state,
-    }),
-  );
+  redirect(buildAuthorizeUrl({ appId: app.appId, redirectUri: app.redirectUri, state }));
 }

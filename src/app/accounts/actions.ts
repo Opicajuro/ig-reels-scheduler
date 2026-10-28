@@ -34,8 +34,9 @@ export async function disconnectAccountAction(_previous: ActionResult, formData:
       ownerId: await getOwnerId(),
       accountId: String(formData.get("accountId") ?? ""),
     });
+    revalidatePath("/");
     revalidatePath("/accounts");
-    revalidatePath("/dashboard");
+    revalidatePath("/scheduled");
     return "Disconnected";
   });
 }

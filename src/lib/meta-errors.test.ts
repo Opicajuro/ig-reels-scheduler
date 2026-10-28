@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyMetaError, MetaApiError } from "./meta-errors";
+import { classifyMetaError, describePostError, MetaApiError } from "./meta-errors";
 
 describe("classifyMetaError", () => {
   it("retries 5xx responses", () => {
@@ -22,5 +22,19 @@ describe("classifyMetaError", () => {
 
   it("fails other 4xx responses immediately", () => {
     expect(classifyMetaError(new MetaApiError(400, 100, "bad param"))).toBe("fail");
+  });
+});
+
+describe("describePostError", () => {
+  it("puts a known Meta error code in plain words", () => {
+    expect(describePostError("Error validating access token", 190)).toBe(
+      "Instagram no longer accepts this account's login. Reconnect it on the Accounts page.",
+    );
+  });
+
+  it("shows the stored message for an unknown code or no code", () => {
+    expect(describePostError("container ERROR", 12345)).toBe("container ERROR");
+    expect(describePostError("media has no reel", null)).toBe("media has no reel");
+    expect(describePostError(null, null)).toBe("Failed for an unknown reason.");
   });
 });

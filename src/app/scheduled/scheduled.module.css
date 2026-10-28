@@ -1,0 +1,47 @@
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+
+/* The tabs are links; this beats the base link colour. */
+.tabs a {
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: -1px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+
+.tabs a:hover {
+  color: var(--text);
+}
+
+.tabs a.active {
+  color: var(--text);
+  border-bottom-color: var(--link);
+}
+
+.count {
+  margin-left: var(--space-1);
+  padding: 0 6px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  background: var(--surface-raised);
+  border-radius: var(--radius-full);
+}
+
+.error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger-text);
+  font-size: var(--text-sm);
+}
+
+.permalink {
+  flex-basis: 100%;
+  font-size: var(--text-sm);
+}
