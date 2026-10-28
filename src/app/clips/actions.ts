@@ -2,19 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getOwnerId } from "@/lib/owner";
 import * as clips from "@/lib/clip-projects";
 import { s3ClipStore } from "@/lib/clip-store";
 import { parseAudioSource } from "@/lib/rights";
 import { prisma } from "@/lib/prisma";
 import { getClipQueue, getPublishQueue } from "@/lib/queues";
-
-// Every action checks the session and the owner of what it touches, since any action can be called directly.
-async function ownerId(): Promise<string> {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
-  return session.user.id;
-}
 
 function text(formData: FormData, name: string): string {
   return String(formData.get(name) ?? "");
@@ -23,7 +16,7 @@ function text(formData: FormData, name: string): string {
 export async function createLinkProjectAction(formData: FormData) {
   const project = await clips.createLinkProject({
     db: prisma,
-    ownerId: await ownerId(),
+    ownerId: await getOwnerId(),
     name: text(formData, "name"),
     url: text(formData, "url"),
   });
@@ -32,7 +25,7 @@ export async function createLinkProjectAction(formData: FormData) {
 
 export async function markSourceUploadedAction(formData: FormData) {
   const projectId = text(formData, "projectId");
-  await clips.markSourceUploaded({ db: prisma, ownerId: await ownerId(), projectId });
+  await clips.markSourceUploaded({ db: prisma, ownerId: await getOwnerId(), projectId });
   revalidatePath("/clips");
 }
 
@@ -41,7 +34,7 @@ export async function startRenderAction(formData: FormData) {
   await clips.startRender({
     db: prisma,
     queue: getClipQueue(),
-    ownerId: await ownerId(),
+    ownerId: await getOwnerId(),
     projectId,
     clipSeconds: Number(text(formData, "clipSeconds")),
     clipCount: text(formData, "clipCount") === "auto" ? null : Number(text(formData, "clipCount")),
@@ -55,7 +48,7 @@ export async function startRenderAction(formData: FormData) {
 
 export async function renameProjectAction(formData: FormData) {
   const projectId = text(formData, "projectId");
-  await clips.renameProject({ db: prisma, ownerId: await ownerId(), projectId, name: text(formData, "name") });
+  await clips.renameProject({ db: prisma, ownerId: await getOwnerId(), projectId, name: text(formData, "name") });
   revalidatePath(`/clips/${projectId}`);
   revalidatePath("/clips");
 }
@@ -64,7 +57,7 @@ export async function copyProjectAction(formData: FormData) {
   const copy = await clips.copyProject({
     db: prisma,
     store: s3ClipStore,
-    ownerId: await ownerId(),
+    ownerId: await getOwnerId(),
     projectId: text(formData, "projectId"),
   });
   revalidatePath("/clips");
@@ -75,7 +68,7 @@ export async function deleteProjectAction(formData: FormData) {
   await clips.deleteProject({
     db: prisma,
     store: s3ClipStore,
-    ownerId: await ownerId(),
+    ownerId: await getOwnerId(),
     projectId: text(formData, "projectId"),
   });
   revalidatePath("/clips");
@@ -84,19 +77,19 @@ export async function deleteProjectAction(formData: FormData) {
 
 export async function renameClipAction(formData: FormData) {
   const projectId = text(formData, "projectId");
-  await clips.renameClip({ db: prisma, ownerId: await ownerId(), clipId: text(formData, "clipId"), name: text(formData, "name") });
+  await clips.renameClip({ db: prisma, ownerId: await getOwnerId(), clipId: text(formData, "clipId"), name: text(formData, "name") });
   revalidatePath(`/clips/${projectId}`);
 }
 
 export async function copyClipAction(formData: FormData) {
   const projectId = text(formData, "projectId");
-  await clips.copyClip({ db: prisma, store: s3ClipStore, ownerId: await ownerId(), clipId: text(formData, "clipId") });
+  await clips.copyClip({ db: prisma, store: s3ClipStore, ownerId: await getOwnerId(), clipId: text(formData, "clipId") });
   revalidatePath(`/clips/${projectId}`);
 }
 
 export async function deleteClipAction(formData: FormData) {
   const projectId = text(formData, "projectId");
-  await clips.deleteClip({ db: prisma, store: s3ClipStore, ownerId: await ownerId(), clipId: text(formData, "clipId") });
+  await clips.deleteClip({ db: prisma, store: s3ClipStore, ownerId: await getOwnerId(), clipId: text(formData, "clipId") });
   revalidatePath(`/clips/${projectId}`);
 }
 
@@ -104,7 +97,7 @@ export async function saveClipDetailsAction(formData: FormData) {
   const projectId = text(formData, "projectId");
   await clips.setClipDetails({
     db: prisma,
-    ownerId: await ownerId(),
+    ownerId: await getOwnerId(),
     clipId: text(formData, "clipId"),
     title: text(formData, "title"),
     description: text(formData, "description"),
@@ -117,7 +110,7 @@ export async function scheduleClipAction(formData: FormData) {
     db: prisma,
     store: s3ClipStore,
     queue: getPublishQueue(),
-    ownerId: await ownerId(),
+    ownerId: await getOwnerId(),
     clipId: text(formData, "clipId"),
     accountId: text(formData, "accountId"),
     caption: text(formData, "caption"),
@@ -135,7 +128,7 @@ export async function bulkScheduleClipsAction(formData: FormData) {
     db: prisma,
     store: s3ClipStore,
     queue: getPublishQueue(),
-    ownerId: await ownerId(),
+    ownerId: await getOwnerId(),
     clipIds: formData.getAll("clipId").map(String),
     accountId: text(formData, "accountId"),
     firstScheduledAt: text(formData, "scheduledAt"),

@@ -1,13 +1,12 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getOwnerId } from "@/lib/owner";
 import { saveConnectedAccount } from "@/lib/accounts";
 import { requireEnv } from "@/lib/env";
 import { connectAccount } from "@/lib/ig-connect";
 
 export async function GET(request: Request) {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
+  const ownerId = await getOwnerId();
 
   const url = new URL(request.url);
   const store = await cookies();
@@ -23,7 +22,7 @@ export async function GET(request: Request) {
       state: url.searchParams.get("state") ?? "",
       expectedState,
     });
-    await saveConnectedAccount(session.user.id, account);
+    await saveConnectedAccount(ownerId, account);
   } catch (err) {
     const message = err instanceof Error ? err.message : "connection failed";
     return new Response(message, { status: 400 });

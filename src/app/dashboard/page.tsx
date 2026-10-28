@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { auth } from "@/auth";
+import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
 import { cancelScheduledPost } from "@/lib/posts";
 import { retryFailedPost } from "@/lib/post-retry";
@@ -9,9 +9,7 @@ import { getPublishQueue } from "@/lib/queues";
 
 async function Dashboard() {
   await connection();
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
-  const ownerId = session.user.id;
+  const ownerId = await getOwnerId();
 
   const [accounts, scheduled, failed] = await Promise.all([
     prisma.igAccount.findMany({ where: { ownerId }, orderBy: { createdAt: "asc" } }),
@@ -27,12 +25,11 @@ async function Dashboard() {
 
   async function retry(formData: FormData) {
     "use server";
-    const current = await auth();
-    if (!current?.user?.id) redirect("/login");
+    const ownerId = await getOwnerId();
     await retryFailedPost({
       db: prisma,
       queue: getPublishQueue(),
-      ownerId: current.user.id,
+      ownerId: ownerId,
       postId: String(formData.get("postId")),
       now: new Date(),
     });
@@ -41,12 +38,11 @@ async function Dashboard() {
 
   async function cancel(formData: FormData) {
     "use server";
-    const current = await auth();
-    if (!current?.user?.id) redirect("/login");
+    const ownerId = await getOwnerId();
     await cancelScheduledPost({
       db: prisma,
       queue: getPublishQueue(),
-      ownerId: current.user.id,
+      ownerId: ownerId,
       postId: String(formData.get("postId")),
     });
     redirect("/dashboard");

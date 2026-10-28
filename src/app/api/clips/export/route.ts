@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { auth } from "@/auth";
+import { getOwnerId } from "@/lib/owner";
 import { writePostingZip } from "@/lib/clip-export";
 import { s3ClipStore } from "@/lib/clip-store";
 import { prisma } from "@/lib/prisma";
@@ -19,8 +19,7 @@ function validTimeZone(value: string): boolean {
 
 // Builds a ZIP with the chosen clips and a sheet giving each one's post time, title and description.
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return new Response("sign in required", { status: 401 });
+  const ownerId = await getOwnerId();
 
   const body = (await request.json()) as {
     projectId?: string;
@@ -37,7 +36,7 @@ export async function POST(request: Request) {
   if (times.some((time) => Number.isNaN(time.getTime()))) return new Response("every clip needs a valid post time", { status: 400 });
 
   const ids = picks.map((pick) => pick.clipId ?? "");
-  const project = await prisma.clipProject.findFirst({ where: { id: body.projectId, ownerId: session.user.id } });
+  const project = await prisma.clipProject.findFirst({ where: { id: body.projectId, ownerId: ownerId } });
   if (!project) return new Response("project not found", { status: 404 });
   const rows = await prisma.clip.findMany({ where: { id: { in: ids }, projectId: project.id } });
   if (rows.length !== ids.length) return new Response("clip not found", { status: 404 });

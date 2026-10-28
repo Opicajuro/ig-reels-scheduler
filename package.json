@@ -15,7 +15,6 @@
     "email:test": "tsx --env-file-if-exists=.env scripts/send-test-email.ts"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "2.11.3",
     "@aws-sdk/client-s3": "3.1148.0",
     "@aws-sdk/s3-request-presigner": "3.1148.0",
     "@prisma/adapter-pg": "7.10.0",
@@ -25,7 +24,6 @@
     "@remotion/renderer": "^4.0.534",
     "archiver": "^7.0.1",
     "next": "16.4.0",
-    "next-auth": "5.0.0-beta.32",
     "pg": "^8.23.1",
     "pg-boss": "^12.37.1",
     "react": "19.3.0",

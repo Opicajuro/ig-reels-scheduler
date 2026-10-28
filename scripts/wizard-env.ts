@@ -1,11 +1,10 @@
 import { parse } from "dotenv";
 
 // Created by the wizard with random values, so nobody has to type them.
-export const GENERATED_KEYS = ["TOKEN_ENC_KEY", "AUTH_SECRET"] as const;
-// The app reads these when it loads, so it won't start without them.
-export const REQUIRED_KEYS = ["RESEND_API_KEY", "EMAIL_FROM"] as const;
-// Only needed to connect Instagram accounts.
-export const OPTIONAL_KEYS = ["IG_APP_ID", "IG_APP_SECRET"] as const;
+export const GENERATED_KEYS = ["TOKEN_ENC_KEY"] as const;
+// The app starts without any of these: Resend is only for failure emails, the Meta app only to connect Instagram.
+export const REQUIRED_KEYS = [] as const;
+export const OPTIONAL_KEYS = ["RESEND_API_KEY", "EMAIL_FROM", "IG_APP_ID", "IG_APP_SECRET"] as const;
 
 export type EnvValues = Record<string, string>;
 

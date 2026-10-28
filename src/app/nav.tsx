@@ -2,19 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOutAction } from "./auth-actions";
 
 export const SECTIONS = [
   { href: "/clips", label: "Clips" },
   { href: "/dashboard", label: "Scheduled" },
-  { href: "/posts/new", label: "New post" },
   { href: "/accounts", label: "Accounts" },
 ] as const;
 
-// The menu bar on every signed-in screen. The sign-in page has no menu, since nothing behind it works yet.
+// The menu bar on every screen.
 export function Nav() {
   const pathname = usePathname();
-  if (pathname === "/login") return null;
 
   return (
     <header className="topbar">
@@ -35,11 +32,6 @@ export function Nav() {
             );
           })}
         </ul>
-        <form action={signOutAction}>
-          <button type="submit" className="ghost">
-            Sign out
-          </button>
-        </form>
       </nav>
     </header>
   );

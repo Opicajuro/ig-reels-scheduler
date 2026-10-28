@@ -7,6 +7,7 @@ const install: LocalInstall = {
   storageSecret: "storage-secret",
   resendApiKey: "re_test",
   emailFrom: "Scheduler <alerts@example.test>",
+  alertEmail: "me@example.test",
   chromePath: "C:\\Localirs\\tools\\chrome\\chrome.exe",
   whisperBin: "C:\\Localirs\\tools\\whisper\\whisper-cli.exe",
   whisperModel: "C:\\Localirs\\tools\\whisper\\ggml-base.bin",
@@ -19,16 +20,14 @@ describe("buildLocalValues", () => {
     expect(values.S3_ENDPOINT).toBe("http://127.0.0.1:9000");
     expect(values.S3_BUCKET).toBe("ig-reels");
     expect(values.S3_SECRET_KEY).toBe("storage-secret");
-    expect(values.AUTH_TRUST_HOST).toBe("true");
   });
 
-  it("uses the tool paths and generates the two app secrets", () => {
+  it("uses the tool paths and generates the token key", () => {
     const values = buildLocalValues(install, () => "generated");
     expect(values.CHROME_PATH).toBe(install.chromePath);
     expect(values.WHISPER_BIN).toBe(install.whisperBin);
     expect(values.WHISPER_MODEL).toBe(install.whisperModel);
     expect(values.TOKEN_ENC_KEY).toBe("generated");
-    expect(values.AUTH_SECRET).toBe("generated");
   });
 });
 

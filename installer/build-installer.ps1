@@ -118,7 +118,7 @@ $placeholders = @{
   S3_ENDPOINT = "http://127.0.0.1:9000"; S3_BUCKET = "build"; S3_ACCESS_KEY = "build"; S3_SECRET_KEY = "build-secret"
   TOKEN_ENC_KEY = [Convert]::ToBase64String((1..32 | ForEach-Object { [byte]$_ }))
   IG_APP_ID = "0"; IG_APP_SECRET = "build"; IG_REDIRECT_URI = "http://localhost:3000/api/ig/callback"
-  AUTH_SECRET = "build-secret"; RESEND_API_KEY = "re_build"; EMAIL_FROM = "build@example.test"; APP_URL = "http://localhost:3000"
+  APP_URL = "http://localhost:3000"
 }
 foreach ($key in $placeholders.Keys) { Set-Item -Path "Env:$key" -Value $placeholders[$key] }
 corepack enable

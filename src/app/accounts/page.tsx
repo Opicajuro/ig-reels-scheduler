@@ -1,7 +1,6 @@
 import { Suspense } from "react";
-import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { auth } from "@/auth";
+import { getOwnerId } from "@/lib/owner";
 import { mockConnectEnabled } from "@/lib/mock-accounts";
 import { ConfirmForm } from "../clips/confirm-form";
 import { disconnectAccountAction, pauseAccountAction, resumeAccountAction } from "./actions";
@@ -9,11 +8,10 @@ import { prisma } from "@/lib/prisma";
 
 async function AccountList() {
   await connection();
-  const session = await auth();
-  if (!session?.user) redirect("/login");
+  const ownerId = await getOwnerId();
 
   const accounts = await prisma.igAccount.findMany({
-    where: { ownerId: session.user.id },
+    where: { ownerId: ownerId },
     orderBy: { createdAt: "asc" },
   });
   const now = new Date();

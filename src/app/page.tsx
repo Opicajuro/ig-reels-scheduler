@@ -1,8 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { auth } from "@/auth";
 
 // Where each part of the app is, in the order it's usually used. Clips come first: they work without a Meta app.
 const DESTINATIONS = [
@@ -19,12 +17,6 @@ const DESTINATIONS = [
     cta: "Open schedule",
   },
   {
-    href: "/posts/new",
-    title: "New post",
-    text: "Schedule a processed video as a Reel on one of your accounts.",
-    cta: "Schedule a Reel",
-  },
-  {
     href: "/accounts",
     title: "Accounts",
     text: "Connect Instagram accounts, and pause, resume or disconnect them.",
@@ -32,15 +24,12 @@ const DESTINATIONS = [
   },
 ];
 
-async function SignedInHome() {
+async function HomeContent() {
   await connection();
-  const session = await auth();
-  if (!session?.user) redirect("/login");
 
   return (
     <main className="home">
       <section className="hero">
-        <p className="eyebrow">Signed in as {session.user.email}</p>
         <h1>What do you want to do?</h1>
       </section>
       <ul className="cards">
@@ -61,7 +50,7 @@ async function SignedInHome() {
 export default function Home() {
   return (
     <Suspense fallback={<main className="home">Loading…</main>}>
-      <SignedInHome />
+      <HomeContent />
     </Suspense>
   );
 }

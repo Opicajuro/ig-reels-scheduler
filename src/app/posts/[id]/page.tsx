@@ -1,17 +1,15 @@
 import { Suspense } from "react";
-import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { auth } from "@/auth";
+import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
 
 async function PostDetail({ params }: { params: Promise<{ id: string }> }) {
   await connection();
   const { id } = await params;
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const ownerId = await getOwnerId();
 
   const post = await prisma.post.findFirst({
-    where: { id, account: { ownerId: session.user.id } },
+    where: { id, account: { ownerId: ownerId } },
     include: { insights: { orderBy: { fetchedAt: "desc" } } },
   });
   if (!post) return <main>Post not found.</main>;

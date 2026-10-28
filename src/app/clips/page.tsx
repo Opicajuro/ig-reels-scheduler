@@ -1,8 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { auth } from "@/auth";
+import { getOwnerId } from "@/lib/owner";
 import { describeClipProject } from "@/lib/clip-status";
 import { prisma } from "@/lib/prisma";
 import { createLinkProjectAction } from "./actions";
@@ -11,11 +10,10 @@ import { UploadForm } from "./upload-form";
 
 async function ClipProjects() {
   await connection();
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const ownerId = await getOwnerId();
 
   const projects = await prisma.clipProject.findMany({
-    where: { ownerId: session.user.id },
+    where: { ownerId: ownerId },
     orderBy: { createdAt: "desc" },
     include: { _count: { select: { clips: true } } },
   });

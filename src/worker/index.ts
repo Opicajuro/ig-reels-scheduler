@@ -50,10 +50,15 @@ async function main() {
   await boss.work(PUBLISH_QUEUE, createPublishProcessor());
   await boss.work(INSIGHTS_QUEUE, processInsightsJob);
 
-  await boss.schedule(OWNER_ALERTS_QUEUE, DAILY_AT_08_UTC, {}, { tz: "UTC" });
-  await boss.work(OWNER_ALERTS_QUEUE, async () => {
-    await sendOwnerAlerts({ db: prisma, now: new Date(), send: sendEmail });
-  });
+  // Failure emails are optional: they run only when setup was given a Resend key and sender.
+  if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
+    await boss.schedule(OWNER_ALERTS_QUEUE, DAILY_AT_08_UTC, {}, { tz: "UTC" });
+    await boss.work(OWNER_ALERTS_QUEUE, async () => {
+      await sendOwnerAlerts({ db: prisma, now: new Date(), send: sendEmail });
+    });
+  } else {
+    await boss.unschedule(OWNER_ALERTS_QUEUE);
+  }
 
   console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media, clips and publishing enabled`);
 }

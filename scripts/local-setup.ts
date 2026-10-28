@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -11,8 +11,10 @@ import { ensureBucket, storageClient } from "./wizard-storage";
 export type LocalInstall = {
   postgresPassword: string;
   storageSecret: string;
+  /** optional: failure emails are sent only when all three are set */
   resendApiKey: string;
   emailFrom: string;
+  alertEmail: string;
   chromePath: string;
   whisperBin: string;
   whisperModel: string;
@@ -27,9 +29,6 @@ export function buildLocalValues(install: LocalInstall, generate: () => string):
       S3_ACCESS_KEY: "localirs",
       S3_SECRET_KEY: install.storageSecret,
       APP_URL: "http://localhost:3000",
-      // The installed app runs under `next start`, where Auth.js rejects every sign-in as UntrustedHost unless told
-      // to trust the host. It only listens on this PC.
-      AUTH_TRUST_HOST: "true",
       IG_REDIRECT_URI: "http://localhost:3000/api/ig/callback",
       RESEND_API_KEY: install.resendApiKey,
       EMAIL_FROM: install.emailFrom,
@@ -57,6 +56,23 @@ export async function prepareDatabase(adminUrl: string, appPassword: string): Pr
   }
 }
 
+// Localirs has no sign-in; everything belongs to the first user row (src/lib/owner.ts). A new install gets that row
+// here. Its email is where failure emails go, so a new address from setup replaces the old one.
+export async function ensureOwner(databaseUrl: string, alertEmail: string): Promise<void> {
+  const db = new pg.Client({ connectionString: databaseUrl });
+  await db.connect();
+  try {
+    const owner = await db.query('SELECT id FROM "User" ORDER BY "createdAt" LIMIT 1');
+    if (owner.rowCount === 0) {
+      await db.query('INSERT INTO "User" (id, email) VALUES ($1, $2)', [randomUUID(), alertEmail || "owner@localhost"]);
+    } else if (alertEmail) {
+      await db.query('UPDATE "User" SET email = $1 WHERE id = $2', [alertEmail, owner.rows[0].id]);
+    }
+  } finally {
+    await db.end();
+  }
+}
+
 function requireInstallValue(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} must be set by the installer`);
@@ -67,8 +83,9 @@ async function main() {
   const install: LocalInstall = {
     postgresPassword: requireInstallValue("LOCALIRS_DB_PASSWORD"),
     storageSecret: requireInstallValue("LOCALIRS_STORAGE_SECRET"),
-    resendApiKey: requireInstallValue("LOCALIRS_RESEND_API_KEY"),
-    emailFrom: requireInstallValue("LOCALIRS_EMAIL_FROM"),
+    resendApiKey: process.env.LOCALIRS_RESEND_API_KEY ?? "",
+    emailFrom: process.env.LOCALIRS_EMAIL_FROM ?? "",
+    alertEmail: process.env.LOCALIRS_ALERT_EMAIL ?? "",
     chromePath: requireInstallValue("LOCALIRS_CHROME_PATH"),
     whisperBin: requireInstallValue("LOCALIRS_WHISPER_BIN"),
     whisperModel: requireInstallValue("LOCALIRS_WHISPER_MODEL"),
@@ -80,7 +97,7 @@ async function main() {
   const template = await readFile(".env.example", "utf8");
   const existing = await readFile(".env", "utf8").then(parseEnv).catch(() => ({} as EnvValues));
   // Secrets already in .env are kept, so running setup again does not lock out stored tokens.
-  const written = renderEnv(template, { ...values, ...Object.fromEntries(Object.entries(existing).filter(([key]) => key === "TOKEN_ENC_KEY" || key === "AUTH_SECRET")) });
+  const written = renderEnv(template, { ...values, ...Object.fromEntries(Object.entries(existing).filter(([key]) => key === "TOKEN_ENC_KEY")) });
   await writeFile(".env", written);
 
   await prepareDatabase(requireInstallValue("LOCALIRS_POSTGRES_ADMIN_URL"), install.postgresPassword);
@@ -99,7 +116,8 @@ async function main() {
 
   // Runs Prisma through Node, so the install needs no pnpm on the PC.
   execFileSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], { stdio: "inherit" });
-  console.log("local setup finished: .env written, database and bucket ready, migrations applied");
+  await ensureOwner(values.DATABASE_URL, install.alertEmail);
+  console.log("local setup finished: .env written, database and bucket ready, migrations applied, owner ready");
 }
 
 // True when this module is the script node was started with. A plain `file://` + path comparison fails on Windows

@@ -1,8 +1,8 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { connection } from "next/server";
-import { auth } from "@/auth";
+import { getOwnerId } from "@/lib/owner";
 import { describeClipProject } from "@/lib/clip-status";
 import { prisma } from "@/lib/prisma";
 import { presignDownload } from "@/lib/storage";
@@ -32,9 +32,7 @@ const CAPTION_POSITIONS = [
 
 async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
   await connection();
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
-  const ownerId = session.user.id;
+  const ownerId = await getOwnerId();
   const { id } = await params;
 
   const project = await prisma.clipProject.findFirst({
