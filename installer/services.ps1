@@ -14,19 +14,6 @@ function Test-LocalPort([int]$port) {
   }
 }
 
-# The Server header of whatever answers on the port, so another program on 9000 is not mistaken for SeaweedFS.
-function Get-ServerHeader([int]$port) {
-  $request = [System.Net.HttpWebRequest]::Create("http://127.0.0.1:$port/")
-  $request.Timeout = 2000
-  try {
-    $response = $request.GetResponse()
-  } catch [System.Net.WebException] {
-    $response = $_.Exception.Response
-  }
-  if ($null -eq $response) { return "" }
-  try { return [string]$response.Headers["Server"] } finally { $response.Close() }
-}
-
 # Every process Localirs starts writes its id to data\run\<name>.pid, so a second start skips it and Quit can stop it.
 function Get-PidFile([string]$data, [string]$name) {
   $run = Join-Path $data "run"
@@ -88,9 +75,10 @@ function Stop-Database([string]$pgBin, [string]$data) {
 }
 
 function Start-Storage([string]$tools, [string]$data) {
+  # Only storage this folder started is reused: another SeaweedFS (from an earlier install) has other keys.
+  if (Test-RunningFromPidFile $data "storage") { return }
   if (Test-LocalPort 9000) {
-    if ((Get-ServerHeader 9000) -like "SeaweedFS*") { return }
-    throw "Port 9000 is used by another program. Close it, then try again."
+    throw "Port 9000 is used by another program, probably file storage from an earlier Localirs install. Restart the PC, then try again."
   }
   Start-HiddenProcess $data "storage" (Join-Path $tools "weed.exe") $tools @(
     "server", "-dir=`"$(Join-Path $data "seaweedfs")`"", "-s3", "-s3.port=9000",
