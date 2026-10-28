@@ -16,6 +16,7 @@ import {
   setClipDetails,
   startRender,
 } from "./clip-projects";
+import { UserError } from "./user-error";
 
 type Row = Record<string, unknown> & { id: string };
 
@@ -87,7 +88,17 @@ function fakeDb(
     post: model("post"),
     auditLog: model("auditLog"),
   };
-  return { db: db as unknown as PrismaClient, tables };
+  // An interactive transaction: a throw inside it puts every table back as it was.
+  const $transaction = async <T>(work: (tx: typeof db) => Promise<T>) => {
+    const before = structuredClone(tables);
+    try {
+      return await work(db);
+    } catch (err) {
+      Object.assign(tables, before);
+      throw err;
+    }
+  };
+  return { db: { ...db, $transaction } as unknown as PrismaClient, tables };
 }
 
 function fakeStore() {
@@ -388,6 +399,76 @@ describe("scheduleClips", () => {
     expect(tables.post).toEqual([]);
     expect(tables.media).toEqual([]);
   });
+
+  it("creates nothing when a later clip's caption breaks the Instagram limits", async () => {
+    const hashtags = Array.from({ length: 31 }, (_, index) => `#tag${index}`).join(" ");
+    const { db, tables } = fakeDb({
+      projects: [project()],
+      clips: [clip({ id: "c1" }), clip({ id: "c2", name: "clip-002", description: hashtags })],
+      accounts: [account],
+    });
+    const files = fakeStore();
+    const queued: string[] = [];
+    await expect(
+      scheduleClips({
+        db,
+        store: files.store,
+        queue: { send: async (postId) => (queued.push(postId), "job"), cancel: async () => {} },
+        ...owned,
+        clipIds: ["c1", "c2"],
+        accountId: "acc-1",
+        firstScheduledAt: new Date(Date.now() + 3 * HOUR).toISOString(),
+        gapHours: 24,
+        rightsConfirmed: true,
+        audioSource: "original",
+        now: new Date(),
+      }),
+    ).rejects.toThrow("clip-002: caption may have at most 30 hashtags");
+
+    expect(files.copies).toEqual([]);
+    expect(queued).toEqual([]);
+    expect(tables.post).toEqual([]);
+  });
+
+  it("rolls back every post, cancels the jobs and removes the copies when a later clip fails", async () => {
+    const { db, tables } = fakeDb({
+      projects: [project()],
+      clips: [clip({ id: "c1" }), clip({ id: "c2", storageKey: "clips/p1/c2.mp4" })],
+      accounts: [account],
+    });
+    const created = db.post.create;
+    let calls = 0;
+    db.post.create = (async (args: Parameters<typeof created>[0]) => {
+      calls += 1;
+      if (calls === 2) throw new Error("connection lost");
+      return created(args);
+    }) as unknown as typeof created;
+    const files = fakeStore();
+    const canceled: string[] = [];
+    let job = 0;
+    await expect(
+      scheduleClips({
+        db,
+        store: files.store,
+        queue: { send: async () => `job-${++job}`, cancel: async (jobId) => void canceled.push(jobId) },
+        ...owned,
+        clipIds: ["c1", "c2"],
+        accountId: "acc-1",
+        firstScheduledAt: new Date(Date.now() + 3 * HOUR).toISOString(),
+        gapHours: 24,
+        rightsConfirmed: true,
+        audioSource: "original",
+        now: new Date(),
+      }),
+    ).rejects.toThrow("connection lost");
+
+    expect(tables.post).toEqual([]);
+    expect(tables.media).toEqual([]);
+    expect(tables.auditLog).toEqual([]);
+    expect(canceled).toEqual(["job-1", "job-2"]);
+    expect(files.removed).toEqual(files.copies.map(([, to]) => to));
+    expect(files.removed).toHaveLength(2);
+  });
 });
 
 describe("scheduleClip", () => {
@@ -419,7 +500,7 @@ describe("scheduleClip", () => {
     expect(queued).toHaveLength(1);
   });
 
-  it("removes the copy and the media when the post cannot be scheduled", async () => {
+  it("refuses a caption Instagram would reject, and copies or creates nothing", async () => {
     const { db, tables } = fakeDb({ projects: [project()], clips: [clip()], accounts: [account] });
     const files = fakeStore();
     await expect(
@@ -439,7 +520,28 @@ describe("scheduleClip", () => {
     ).rejects.toThrow("caption must be at most 2200 characters");
 
     expect(tables.media).toEqual([]);
-    expect(files.removed).toHaveLength(1);
+    expect(files.copies).toEqual([]);
+  });
+
+  it("refuses a publish time that is not in the future", async () => {
+    const { db, tables } = fakeDb({ projects: [project()], clips: [clip()], accounts: [account] });
+    const now = new Date();
+    await expect(
+      scheduleClip({
+        db,
+        store: fakeStore().store,
+        queue: { send: async () => "x", cancel: async () => {} },
+        ...owned,
+        clipId: "c1",
+        accountId: "acc-1",
+        caption: "Wait for it",
+        scheduledAt: now.toISOString(),
+        rightsConfirmed: true,
+        audioSource: "original",
+        now,
+      }),
+    ).rejects.toThrow(UserError);
+    expect(tables.post).toEqual([]);
   });
 
   it("refuses to schedule without the rights confirmation, and copies or creates nothing", async () => {

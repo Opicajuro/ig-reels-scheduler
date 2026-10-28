@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { PublishQueue } from "./queues";
 import { schedulePost } from "./scheduling";
+import { UserError } from "./user-error";
 
 export async function retryFailedPost({
   db,
@@ -16,8 +17,8 @@ export async function retryFailedPost({
   now: Date;
 }) {
   const post = await db.post.findFirst({ where: { id: postId, account: { ownerId } } });
-  if (!post) throw new Error("post not found");
-  if (post.status !== "failed") throw new Error("only failed posts can be retried");
+  if (!post) throw new UserError("post not found");
+  if (post.status !== "failed") throw new UserError("only failed posts can be retried");
 
   // A failed container cannot be reused, so the next run creates a new one.
   await db.post.update({

@@ -1,10 +1,10 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import { UserError } from "../lib/user-error";
 import {
   assertHttpUrl,
   clipFileName,
   combineScores,
-  HttpError,
   maxClipCount,
   parseClipCount,
   parseClipSeconds,
@@ -94,7 +94,7 @@ test("parseClipCount rejects counts the video cannot fit, and values that are no
   for (const value of [0, 3, 2.5, "many", undefined]) {
     assert.throws(
       () => parseClipCount(value, 40, 15),
-      (err) => err instanceof HttpError && err.status === 400,
+      UserError,
     );
   }
   assert.throws(() => parseClipCount(3, 40, 15), /from 1 to 2/);
@@ -107,7 +107,7 @@ test("parseClipSeconds accepts whole numbers in range", () => {
 
 test("parseClipSeconds rejects values out of range or not whole", () => {
   for (const value of [14, 181, 30.5, "abc", undefined]) {
-    assert.throws(() => parseClipSeconds(value), HttpError);
+    assert.throws(() => parseClipSeconds(value), UserError);
   }
 });
 
@@ -118,7 +118,7 @@ test("assertHttpUrl accepts http and https links", () => {
 
 test("assertHttpUrl rejects other schemes and non-URLs", () => {
   for (const value of ["file:///etc/passwd", "javascript:alert(1)", "not a url", undefined]) {
-    assert.throws(() => assertHttpUrl(value), HttpError);
+    assert.throws(() => assertHttpUrl(value), UserError);
   }
 });
 
@@ -137,14 +137,14 @@ test("parseProbeDuration throws when no duration is present", () => {
 
 test("parseUploadTitle trims the title and enforces YouTube's 100-character limit", () => {
   assert.equal(parseUploadTitle("  Price check  "), "Price check");
-  assert.throws(() => parseUploadTitle("   "), (err) => err.status === 400);
-  assert.throws(() => parseUploadTitle("x".repeat(101)), (err) => err.status === 400);
+  assert.throws(() => parseUploadTitle("   "), UserError);
+  assert.throws(() => parseUploadTitle("x".repeat(101)), UserError);
   assert.equal(parseUploadTitle("x".repeat(100)), "x".repeat(100));
 });
 
 test("parseUploadDescription enforces YouTube's 5000-byte limit and keeps the text", () => {
   assert.equal(parseUploadDescription("Line one\n#shorts"), "Line one\n#shorts");
   assert.equal(parseUploadDescription(""), "");
-  assert.throws(() => parseUploadDescription("é".repeat(2501)), (err) => err.status === 400);
-  assert.throws(() => parseUploadDescription(undefined), (err) => err.status === 400);
+  assert.throws(() => parseUploadDescription("é".repeat(2501)), UserError);
+  assert.throws(() => parseUploadDescription(undefined), UserError);
 });

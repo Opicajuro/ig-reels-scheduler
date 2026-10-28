@@ -1,8 +1,7 @@
-import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
-import { Button } from "@/components/button";
+import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Card } from "@/components/card";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
@@ -15,7 +14,7 @@ import { UploadForm } from "./upload-form";
 
 export const metadata: Metadata = { title: "Clips" };
 
-async function ClipProjects() {
+export default async function ClipsPage() {
   await connection();
   const ownerId = await getOwnerId();
 
@@ -31,15 +30,15 @@ async function ClipProjects() {
       <div className={styles.grid2}>
         <UploadForm />
         <Card>
-          <form className={styles.panel} action={createLinkProjectAction}>
+          <ActionForm className={styles.panel} action={createLinkProjectAction}>
             <h2>Or paste a video link</h2>
             <p className={styles.muted}>Works with links yt-dlp can download. Only use videos you have the rights to.</p>
             <input type="text" name="name" placeholder="Project name" maxLength={120} required />
             <input type="url" name="url" placeholder="https://…" required />
-            <Button type="submit" variant="primary">
+            <SubmitButton variant="primary" pendingLabel="Creating…">
               Create project from link
-            </Button>
-          </form>
+            </SubmitButton>
+          </ActionForm>
         </Card>
       </div>
 
@@ -61,13 +60,5 @@ async function ClipProjects() {
         </ul>
       )}
     </main>
-  );
-}
-
-export default function ClipsPage() {
-  return (
-    <Suspense fallback={<main>Loading…</main>}>
-      <ClipProjects />
-    </Suspense>
   );
 }

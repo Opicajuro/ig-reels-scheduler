@@ -1,7 +1,8 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import { UserError } from "../lib/user-error";
 import { CAPTION_POSITION_NAMES, CAPTION_PRESET_NAMES, captionPlacement, captionPreset } from "./remotion/caption-presets.js";
-import { HttpError, parseCaptionPosition, parseCaptionPreset } from "./helpers.js";
+import { parseCaptionPosition, parseCaptionPreset } from "./helpers.js";
 
 test("there are three caption presets, and each one has a text color", () => {
   assert.deepEqual(CAPTION_PRESET_NAMES, ["classic", "yellow", "box"]);
@@ -23,14 +24,14 @@ test("there are three caption positions, and each one places the captions", () =
   assert.throws(() => captionPlacement("left"), /Unknown caption position "left"/);
   assert.throws(
     () => parseCaptionPosition("left"),
-    (err) => err instanceof HttpError && err.status === 400,
+    UserError,
   );
 });
 
-test("parseCaptionPreset accepts a preset name and rejects anything else with a 400", () => {
+test("parseCaptionPreset accepts a preset name and rejects anything else as a UserError", () => {
   assert.equal(parseCaptionPreset("yellow"), "yellow");
   assert.throws(
     () => parseCaptionPreset("neon"),
-    (err) => err instanceof HttpError && err.status === 400,
+    UserError,
   );
 });

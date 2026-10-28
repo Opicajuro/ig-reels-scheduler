@@ -1,20 +1,16 @@
-import { Suspense } from "react";
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
-import { cancelScheduledPost } from "@/lib/posts";
-import { retryFailedPost } from "@/lib/post-retry";
-import { getPublishQueue } from "@/lib/queues";
-import { Button } from "@/components/button";
+import { ActionForm, SubmitButton } from "@/components/action-form";
 import { EmptyState } from "@/components/empty-state";
 import { LocalTime } from "@/components/local-time";
 import { PageHeader } from "@/components/page-header";
+import { cancelPostAction, retryPostAction } from "./actions";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
-async function Dashboard() {
+export default async function DashboardPage() {
   await connection();
   const ownerId = await getOwnerId();
 
@@ -29,31 +25,6 @@ async function Dashboard() {
       orderBy: { scheduledAt: "desc" },
     }),
   ]);
-
-  async function retry(formData: FormData) {
-    "use server";
-    const ownerId = await getOwnerId();
-    await retryFailedPost({
-      db: prisma,
-      queue: getPublishQueue(),
-      ownerId: ownerId,
-      postId: String(formData.get("postId")),
-      now: new Date(),
-    });
-    redirect("/dashboard");
-  }
-
-  async function cancel(formData: FormData) {
-    "use server";
-    const ownerId = await getOwnerId();
-    await cancelScheduledPost({
-      db: prisma,
-      queue: getPublishQueue(),
-      ownerId: ownerId,
-      postId: String(formData.get("postId")),
-    });
-    redirect("/dashboard");
-  }
 
   return (
     <main>
@@ -80,10 +51,10 @@ async function Dashboard() {
           {failed.map((post) => (
             <li key={post.id}>
               <LocalTime date={post.scheduledAt} /> · {post.lastError ?? "unknown error"}
-              <form action={retry}>
+              <ActionForm action={retryPostAction}>
                 <input type="hidden" name="postId" value={post.id} />
-                <Button type="submit">Retry</Button>
-              </form>
+                <SubmitButton pendingLabel="Retrying…">Retry</SubmitButton>
+              </ActionForm>
             </li>
           ))}
         </ul>
@@ -97,22 +68,19 @@ async function Dashboard() {
           {scheduled.map((post) => (
             <li key={post.id}>
               <LocalTime date={post.scheduledAt} /> · {post.caption.slice(0, 60)}
-              <form action={cancel}>
+              <ActionForm
+                action={cancelPostAction}
+                confirm={{ message: "Cancel this post? It will not be published.", confirmLabel: "Cancel post" }}
+              >
                 <input type="hidden" name="postId" value={post.id} />
-                <Button type="submit">Cancel</Button>
-              </form>
+                <SubmitButton variant="danger" pendingLabel="Canceling…">
+                  Cancel
+                </SubmitButton>
+              </ActionForm>
             </li>
           ))}
         </ul>
       )}
     </main>
-  );
-}
-
-export default function DashboardPage() {
-  return (
-    <Suspense fallback={<main>Loading…</main>}>
-      <Dashboard />
-    </Suspense>
   );
 }

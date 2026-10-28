@@ -1,5 +1,5 @@
-import { Suspense } from "react";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/status-badge";
 
 export const metadata: Metadata = { title: "Post" };
 
-async function PostDetail({ params }: { params: Promise<{ id: string }> }) {
+export default async function PostPage({ params }: { params: Promise<{ id: string }> }) {
   await connection();
   const { id } = await params;
   const ownerId = await getOwnerId();
@@ -19,7 +19,7 @@ async function PostDetail({ params }: { params: Promise<{ id: string }> }) {
     where: { id, account: { ownerId: ownerId } },
     include: { insights: { orderBy: { fetchedAt: "desc" } } },
   });
-  if (!post) return <main>Post not found.</main>;
+  if (!post) notFound();
 
   const latest = new Map<string, number>();
   for (const insight of post.insights) {
@@ -51,13 +51,5 @@ async function PostDetail({ params }: { params: Promise<{ id: string }> }) {
         </ul>
       )}
     </main>
-  );
-}
-
-export default function PostPage({ params }: { params: Promise<{ id: string }> }) {
-  return (
-    <Suspense fallback={<main>Loading…</main>}>
-      <PostDetail params={params} />
-    </Suspense>
   );
 }

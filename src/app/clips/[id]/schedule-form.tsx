@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { scheduleClipAction } from "../actions";
-import { Button } from "@/components/button";
+import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Field } from "@/components/field";
 import styles from "../clips.module.css";
 
@@ -29,7 +29,7 @@ export function ScheduleForm({
   const scheduledAt = when ? new Date(when).toISOString() : "";
 
   return (
-    <form action={scheduleClipAction}>
+    <ActionForm action={scheduleClipAction}>
       <input type="hidden" name="clipId" value={clipId} />
       <input type="hidden" name="projectId" value={projectId} />
       {accounts.length === 0 ? (
@@ -71,9 +71,9 @@ export function ScheduleForm({
       <label className={styles.rights}>
         <input type="checkbox" name="rightsConfirmed" required /> I own or hold a license to this clip&apos;s video and audio
       </label>
-      <Button type="submit" disabled={!scheduledAt || accounts.length === 0}>
+      <SubmitButton disabled={!scheduledAt || accounts.length === 0} pendingLabel="Scheduling…">
         Schedule on Instagram
-      </Button>
-    </form>
+      </SubmitButton>
+    </ActionForm>
   );
 }

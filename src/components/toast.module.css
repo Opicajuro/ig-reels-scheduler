@@ -1,0 +1,22 @@
+/* Above the page and the clips dock, under the menu bar. */
+.region {
+  position: fixed;
+  top: 72px;
+  right: var(--space-4);
+  z-index: 20;
+  display: grid;
+  gap: var(--space-2);
+  justify-items: end;
+  pointer-events: none;
+}
+
+.toast {
+  max-width: 320px;
+  padding: 10px 14px;
+  color: var(--success-text);
+  background: var(--surface-raised);
+  border: 1px solid rgba(74, 222, 128, 0.35);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: var(--text-sm);
+}

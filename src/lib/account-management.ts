@@ -1,12 +1,13 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import { revokeAccount } from "./meta-callbacks";
 import type { PublishQueue } from "./queues";
+import { UserError } from "./user-error";
 
 const MAX_PAUSE_MINUTES = 7 * 24 * 60;
 
 async function ownedAccount(db: PrismaClient, ownerId: string, accountId: string) {
   const account = await db.igAccount.findFirst({ where: { id: accountId, ownerId } });
-  if (!account) throw new Error("account not found");
+  if (!account) throw new UserError("account not found");
   return account;
 }
 
@@ -16,7 +17,7 @@ export async function pauseAccount(
   { ownerId, accountId, minutes, now }: { ownerId: string; accountId: string; minutes: number; now: Date },
 ) {
   if (!Number.isInteger(minutes) || minutes < 1 || minutes > MAX_PAUSE_MINUTES) {
-    throw new Error(`pause must be a whole number of minutes from 1 to ${MAX_PAUSE_MINUTES}`);
+    throw new UserError(`pause must be a whole number of minutes from 1 to ${MAX_PAUSE_MINUTES}`);
   }
   await ownedAccount(db, ownerId, accountId);
   await db.igAccount.update({ where: { id: accountId }, data: { pausedUntil: new Date(now.getTime() + minutes * 60_000) } });
