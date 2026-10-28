@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
@@ -6,6 +7,11 @@ import { getOwnerId } from "@/lib/owner";
 import { describeClipProject } from "@/lib/clip-status";
 import { prisma } from "@/lib/prisma";
 import { presignDownload } from "@/lib/storage";
+import { Alert } from "@/components/alert";
+import { Button } from "@/components/button";
+import { Card } from "@/components/card";
+import { Field } from "@/components/field";
+import { PageHeader } from "@/components/page-header";
 import {
   copyProjectAction,
   deleteProjectAction,
@@ -16,6 +22,8 @@ import { ConfirmForm } from "../confirm-form";
 import { RefreshWhileRendering } from "../refresh-while-rendering";
 import styles from "../clips.module.css";
 import { ClipGrid } from "./clip-grid";
+
+export const metadata: Metadata = { title: "Clip project" };
 
 const CLIP_LENGTHS = [15, 30, 60, 90, 120];
 const CLIP_COUNTS = Array.from({ length: 10 }, (_, index) => index + 1);
@@ -69,35 +77,35 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
   const busy = project.status === "rendering";
   const waiting = project.status === "awaiting_source";
   const preset = project.captionPreset ?? "classic";
+  const failed = project.status === "failed";
+  const summary = describeClipProject({ status: project.status, error: project.error, clipCount: clips.length });
+  const sourceLength = project.durationSeconds
+    ? `Source ${Math.floor(project.durationSeconds / 60)}:${String(project.durationSeconds % 60).padStart(2, "0")}`
+    : null;
 
   return (
-    <div className={styles.page}>
-      <div className={styles.wrap}>
-        <Link href="/clips" className={styles.back}>
-          ← All projects
-        </Link>
+    <main className={styles.page}>
+      <Link href="/clips" className={styles.back}>
+        ← All projects
+      </Link>
 
-        <div className={styles.head}>
-          <div>
-            <h1>{project.name}</h1>
-            <p className={styles.meta}>
-              {project.durationSeconds ? `Source ${Math.floor(project.durationSeconds / 60)}:${String(project.durationSeconds % 60).padStart(2, "0")} · ` : ""}
-              {describeClipProject({ status: project.status, error: project.error, clipCount: clips.length })}
-            </p>
-          </div>
-          <div className={styles.actions}>
+      <PageHeader
+        title={project.name}
+        description={failed ? sourceLength : [sourceLength, summary].filter(Boolean).join(" · ")}
+        actions={
+          <>
             <form action={renameProjectAction} className={styles.actions}>
               <input type="hidden" name="projectId" value={project.id} />
               <input type="text" name="name" defaultValue={project.name} maxLength={120} required disabled={busy} />
-              <button type="submit" disabled={busy}>
+              <Button type="submit" disabled={busy}>
                 Rename
-              </button>
+              </Button>
             </form>
             <form action={copyProjectAction}>
               <input type="hidden" name="projectId" value={project.id} />
-              <button type="submit" disabled={busy || waiting}>
+              <Button type="submit" disabled={busy || waiting}>
                 Copy
-              </button>
+              </Button>
             </form>
             <ConfirmForm
               action={deleteProjectAction}
@@ -107,10 +115,17 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
             >
               Delete
             </ConfirmForm>
-          </div>
+          </>
+        }
+      />
+      {failed ? (
+        <div className={styles.failure}>
+          <Alert tone="error">{summary}</Alert>
         </div>
+      ) : null}
 
-        <div className={styles.project}>
+      <div className={styles.project}>
+        <Card>
           <form className={styles.panel} action={startRenderAction}>
             <input type="hidden" name="projectId" value={project.id} />
             <h2>Make clips</h2>
@@ -123,18 +138,19 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
                 </label>
               ))}
             </div>
-            <span className={styles.label}>Number of clips</span>
-            <select name="clipCount" defaultValue={project.clipCount ?? "auto"}>
-              <option value="auto">Auto</option>
-              {CLIP_COUNTS.map((count) => (
-                <option key={count} value={count}>
-                  {count}
-                </option>
-              ))}
-            </select>
-            <p className={styles.muted}>
-              Auto makes as many clips as the video allows. Each clip ends on a quiet moment, so it can run a little longer than the length you pick. Fewer clips are made if the video is short.
-            </p>
+            <Field
+              label="Number of clips"
+              hint="Auto makes as many clips as the video allows. Each clip ends on a quiet moment, so it can run a little longer than the length you pick. Fewer clips are made if the video is short."
+            >
+              <select name="clipCount" defaultValue={project.clipCount ?? "auto"}>
+                <option value="auto">Auto</option>
+                {CLIP_COUNTS.map((count) => (
+                  <option key={count} value={count}>
+                    {count}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <label className={styles.toggle}>
               <span>Burn in captions</span>
               <input type="checkbox" name="withCaptions" defaultChecked={project.withCaptions} />
@@ -170,25 +186,25 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
               <span>All capitals</span>
               <input type="checkbox" name="captionUppercase" defaultChecked={project.captionUppercase} />
             </label>
-            <button type="submit" className={styles.primary} disabled={busy || waiting}>
+            <Button type="submit" variant="primary" disabled={busy || waiting}>
               Make clips
-            </button>
+            </Button>
           </form>
+        </Card>
 
-          <section>
-            <h2>Clips</h2>
-            <ClipGrid
-              projectId={project.id}
-              busy={busy}
-              clips={clips}
-              accounts={accounts.map((account) => ({ id: account.id, username: account.username }))}
-              alreadyScheduledTo={alreadyScheduledTo}
-            />
-          </section>
-        </div>
-        {busy ? <RefreshWhileRendering /> : null}
+        <section>
+          <h2>Clips</h2>
+          <ClipGrid
+            projectId={project.id}
+            busy={busy}
+            clips={clips}
+            accounts={accounts.map((account) => ({ id: account.id, username: account.username }))}
+            alreadyScheduledTo={alreadyScheduledTo}
+          />
+        </section>
       </div>
-    </div>
+      {busy ? <RefreshWhileRendering /> : null}
+    </main>
   );
 }
 

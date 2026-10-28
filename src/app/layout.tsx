@@ -15,7 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Localirs",
+  // Each page sets its own title; the home page shows the default.
+  title: { template: "%s · Localirs", default: "Localirs" },
   description: "Cut long videos into clips and schedule them to Instagram Reels.",
 };
 

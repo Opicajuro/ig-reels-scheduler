@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/button";
+import { Field } from "@/components/field";
 import styles from "../clips.module.css";
 
 export type PickedClip = { id: string; name: string };
@@ -51,12 +53,10 @@ export function ExportForm({ projectId, clips }: { projectId: string; clips: Pic
 
   return (
     <form className={styles.exportForm} onSubmit={handleSubmit}>
-      <label className={styles.label}>
-        First post at (your time)
+      <Field label="First post at (your time)">
         <input type="datetime-local" value={firstAt} onChange={(event) => setFirstAt(event.target.value)} required />
-      </label>
-      <label className={styles.label}>
-        Then every (hours)
+      </Field>
+      <Field label="Then every (hours)">
         <input
           type="number"
           min={1}
@@ -65,10 +65,10 @@ export function ExportForm({ projectId, clips }: { projectId: string; clips: Pic
           onChange={(event) => setEveryHours(Number(event.target.value))}
           required
         />
-      </label>
-      <button type="submit" className={styles.primary} disabled={!ready}>
+      </Field>
+      <Button type="submit" variant="primary" disabled={!ready}>
         Download for posting
-      </button>
+      </Button>
       {status ? <span className={styles.muted}>{status}</span> : null}
     </form>
   );

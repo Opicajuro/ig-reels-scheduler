@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { Button } from "@/components/button";
+import { Card } from "@/components/card";
 import { markSourceUploadedAction } from "./actions";
 import styles from "./clips.module.css";
 
@@ -52,14 +54,16 @@ export function UploadForm() {
   }
 
   return (
-    <form className={styles.panel} onSubmit={handleSubmit}>
-      <h2>Upload a video</h2>
-      <p className={styles.muted}>Pick a file from this computer. It goes straight to storage.</p>
-      <input ref={input} type="file" accept="video/*" />
-      <button type="submit" className={styles.primary} disabled={busy}>
-        Upload video
-      </button>
-      <p className={styles.notice}>{status}</p>
-    </form>
+    <Card>
+      <form className={styles.panel} onSubmit={handleSubmit}>
+        <h2>Upload a video</h2>
+        <p className={styles.muted}>Pick a file from this computer. It goes straight to storage.</p>
+        <input ref={input} type="file" accept="video/*" />
+        <Button type="submit" variant="primary" disabled={busy}>
+          Upload video
+        </Button>
+        <p className={styles.notice}>{status}</p>
+      </form>
+    </Card>
   );
 }

@@ -1,7 +1,14 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { connection } from "next/server";
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
+import { EmptyState } from "@/components/empty-state";
+import { LocalTime } from "@/components/local-time";
+import { PageHeader } from "@/components/page-header";
+import { StatusBadge } from "@/components/status-badge";
+
+export const metadata: Metadata = { title: "Post" };
 
 async function PostDetail({ params }: { params: Promise<{ id: string }> }) {
   await connection();
@@ -21,9 +28,10 @@ async function PostDetail({ params }: { params: Promise<{ id: string }> }) {
 
   return (
     <main>
-      <h1>Post</h1>
-      <p>Status: {post.status}</p>
-      <p>Publish time: {post.scheduledAt.toISOString()}</p>
+      <PageHeader title="Post" actions={<StatusBadge status={post.status} />} />
+      <p>
+        Publish time: <LocalTime date={post.scheduledAt} />
+      </p>
       <p>Caption: {post.caption}</p>
       {post.permalink ? (
         <p>
@@ -32,7 +40,7 @@ async function PostDetail({ params }: { params: Promise<{ id: string }> }) {
       ) : null}
       <h2>Insights</h2>
       {latest.size === 0 ? (
-        <p>No insights yet. They are pulled 1 hour, 24 hours and 7 days after publishing.</p>
+        <EmptyState>No insights yet. They are pulled 1 hour, 24 hours and 7 days after publishing.</EmptyState>
       ) : (
         <ul>
           {[...latest.entries()].map(([metric, value]) => (

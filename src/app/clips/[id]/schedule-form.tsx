@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { scheduleClipAction } from "../actions";
+import { Button } from "@/components/button";
+import { Field } from "@/components/field";
 import styles from "../clips.module.css";
 
 export type AccountChoice = { id: string; username: string };
@@ -33,8 +35,7 @@ export function ScheduleForm({
       {accounts.length === 0 ? (
         <p className={styles.muted}>Connect an Instagram account to schedule this clip. You can confirm the rights below now.</p>
       ) : null}
-      <label className={styles.label}>
-        Instagram account
+      <Field label="Instagram account">
         <select name="accountId" required disabled={accounts.length === 0}>
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
@@ -42,25 +43,22 @@ export function ScheduleForm({
             </option>
           ))}
         </select>
-      </label>
-      <label className={styles.label}>
-        Publish at (your local time)
+      </Field>
+      <Field label="Publish at (your local time)">
         <input type="datetime-local" value={when} onChange={(event) => setWhen(event.target.value)} required />
-      </label>
+      </Field>
       <input type="hidden" name="scheduledAt" value={scheduledAt} />
-      <label className={styles.label}>
-        Caption
+      <Field label="Caption">
         <textarea name="caption" rows={3} maxLength={2200} defaultValue={defaultCaption} required />
-      </label>
-      <label className={styles.label}>
-        Audio source
+      </Field>
+      <Field label="Audio source">
         <select name="audioSource" value={audioSource} onChange={(event) => setAudioSource(event.target.value)}>
           <option value="unknown">Unknown</option>
           <option value="original">Original (my voiceover or my own footage)</option>
           <option value="licensed">Licensed music or track</option>
           <option value="from_source">From the source video</option>
         </select>
-      </label>
+      </Field>
       {audioSource === "from_source" ? (
         <p className={styles.warning}>Audio from the source video can get the Reel claimed if you don&apos;t own that video.</p>
       ) : null}
@@ -70,15 +68,12 @@ export function ScheduleForm({
           down-ranks duplicate content.
         </p>
       ) : null}
-      <label className={styles.label}>
-        <span>
-          <input type="checkbox" name="rightsConfirmed" required /> I own or hold a license to this clip&apos;s video and
-          audio
-        </span>
+      <label className={styles.rights}>
+        <input type="checkbox" name="rightsConfirmed" required /> I own or hold a license to this clip&apos;s video and audio
       </label>
-      <button type="submit" disabled={!scheduledAt || accounts.length === 0}>
+      <Button type="submit" disabled={!scheduledAt || accounts.length === 0}>
         Schedule on Instagram
-      </button>
+      </Button>
     </form>
   );
 }

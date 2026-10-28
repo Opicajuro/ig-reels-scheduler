@@ -1,10 +1,17 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { connection } from "next/server";
 import { getOwnerId } from "@/lib/owner";
 import { mockConnectEnabled } from "@/lib/mock-accounts";
 import { ConfirmForm } from "../clips/confirm-form";
 import { disconnectAccountAction, pauseAccountAction, resumeAccountAction } from "./actions";
 import { prisma } from "@/lib/prisma";
+import { Button, ButtonLink } from "@/components/button";
+import { EmptyState } from "@/components/empty-state";
+import { LocalTime } from "@/components/local-time";
+import { PageHeader } from "@/components/page-header";
+
+export const metadata: Metadata = { title: "Accounts" };
 
 async function AccountList() {
   await connection();
@@ -18,9 +25,9 @@ async function AccountList() {
 
   return (
     <main>
-      <h1>Accounts</h1>
+      <PageHeader title="Accounts" />
       {accounts.length === 0 ? (
-        <p>No accounts connected yet.</p>
+        <EmptyState>No accounts connected yet.</EmptyState>
       ) : (
         <ul>
           {accounts.map((account) => (
@@ -29,17 +36,17 @@ async function AccountList() {
               {account.pausedUntil && account.pausedUntil > now ? (
                 <>
                   {" "}
-                  · paused until {account.pausedUntil.toISOString().slice(0, 16).replace("T", " ")} UTC
+                  · paused until <LocalTime date={account.pausedUntil} />
                   <form action={resumeAccountAction}>
                     <input type="hidden" name="accountId" value={account.id} />
-                    <button type="submit">Resume</button>
+                    <Button type="submit">Resume</Button>
                   </form>
                 </>
               ) : (
                 <form action={pauseAccountAction}>
                   <input type="hidden" name="accountId" value={account.id} />
                   <input type="hidden" name="minutes" value="60" />
-                  <button type="submit">Pause 1h</button>
+                  <Button type="submit">Pause 1h</Button>
                 </form>
               )}
               {account.status === "active" ? (
@@ -55,10 +62,12 @@ async function AccountList() {
           ))}
         </ul>
       )}
-      <a href="/api/ig/connect">Connect an Instagram account</a>
+      <ButtonLink href="/api/ig/connect" variant="primary">
+        Connect an Instagram account
+      </ButtonLink>
       {mockConnectEnabled(process.env) ? (
         <form method="post" action="/api/ig/dev-connect">
-          <button type="submit">Add a mock account (IG_MOCK)</button>
+          <Button type="submit">Add a mock account (IG_MOCK)</Button>
         </form>
       ) : null}
     </main>

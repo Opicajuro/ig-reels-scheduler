@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import styles from "./clips.module.css";
+import { Button } from "@/components/button";
 
 // A form whose button asks for confirmation first. Used for deletes.
 export function ConfirmForm({
@@ -9,12 +9,14 @@ export function ConfirmForm({
   message,
   fields,
   disabled,
+  size,
   children,
 }: {
   action: (formData: FormData) => Promise<void>;
   message: string;
   fields: Record<string, string>;
   disabled?: boolean;
+  size?: "md" | "sm";
   children: ReactNode;
 }) {
   return (
@@ -27,9 +29,9 @@ export function ConfirmForm({
       {Object.entries(fields).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}
-      <button type="submit" className={styles.danger} disabled={disabled}>
+      <Button type="submit" variant="danger" size={size} disabled={disabled}>
         {children}
-      </button>
+      </Button>
     </form>
   );
 }
