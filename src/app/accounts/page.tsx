@@ -1,11 +1,12 @@
-import { Suspense } from "react";
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { getOwnerId } from "@/lib/owner";
+import { metaAppConfigured } from "@/lib/ig-connect";
 import { mockConnectEnabled } from "@/lib/mock-accounts";
-import { ConfirmForm } from "../clips/confirm-form";
 import { disconnectAccountAction, pauseAccountAction, resumeAccountAction } from "./actions";
 import { prisma } from "@/lib/prisma";
+import { ActionForm, SubmitButton } from "@/components/action-form";
+import { Alert } from "@/components/alert";
 import { Button, ButtonLink } from "@/components/button";
 import { EmptyState } from "@/components/empty-state";
 import { LocalTime } from "@/components/local-time";
@@ -13,7 +14,7 @@ import { PageHeader } from "@/components/page-header";
 
 export const metadata: Metadata = { title: "Accounts" };
 
-async function AccountList() {
+export default async function AccountsPage() {
   await connection();
   const ownerId = await getOwnerId();
 
@@ -37,47 +38,51 @@ async function AccountList() {
                 <>
                   {" "}
                   · paused until <LocalTime date={account.pausedUntil} />
-                  <form action={resumeAccountAction}>
+                  <ActionForm action={resumeAccountAction}>
                     <input type="hidden" name="accountId" value={account.id} />
-                    <Button type="submit">Resume</Button>
-                  </form>
+                    <SubmitButton pendingLabel="Resuming…">Resume</SubmitButton>
+                  </ActionForm>
                 </>
               ) : (
-                <form action={pauseAccountAction}>
+                <ActionForm action={pauseAccountAction}>
                   <input type="hidden" name="accountId" value={account.id} />
                   <input type="hidden" name="minutes" value="60" />
-                  <Button type="submit">Pause 1h</Button>
-                </form>
+                  <SubmitButton pendingLabel="Pausing…">Pause 1h</SubmitButton>
+                </ActionForm>
               )}
               {account.status === "active" ? (
-                <ConfirmForm
+                <ActionForm
                   action={disconnectAccountAction}
-                  message={`Disconnect @${account.username}? Its scheduled posts will be canceled.`}
-                  fields={{ accountId: account.id }}
+                  confirm={{
+                    message: `Disconnect @${account.username}? Its scheduled posts will be canceled.`,
+                    confirmLabel: "Disconnect",
+                  }}
                 >
-                  Disconnect
-                </ConfirmForm>
+                  <input type="hidden" name="accountId" value={account.id} />
+                  <SubmitButton variant="danger" pendingLabel="Disconnecting…">
+                    Disconnect
+                  </SubmitButton>
+                </ActionForm>
               ) : null}
             </li>
           ))}
         </ul>
       )}
-      <ButtonLink href="/api/ig/connect" variant="primary">
-        Connect an Instagram account
-      </ButtonLink>
+      {metaAppConfigured(process.env) ? (
+        <ButtonLink href="/api/ig/connect" variant="primary">
+          Connect an Instagram account
+        </ButtonLink>
+      ) : (
+        <Alert tone="info">
+          Connecting Instagram needs a Meta app, and none is set up yet. Add its IG_APP_ID, IG_APP_SECRET and
+          IG_REDIRECT_URI to the .env file and restart Localirs. Making and downloading clips works without one.
+        </Alert>
+      )}
       {mockConnectEnabled(process.env) ? (
         <form method="post" action="/api/ig/dev-connect">
           <Button type="submit">Add a mock account (IG_MOCK)</Button>
         </form>
       ) : null}
     </main>
-  );
-}
-
-export default function AccountsPage() {
-  return (
-    <Suspense fallback={<main>Loading…</main>}>
-      <AccountList />
-    </Suspense>
   );
 }

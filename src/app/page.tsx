@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
 
@@ -24,7 +23,7 @@ const DESTINATIONS = [
   },
 ];
 
-async function HomeContent() {
+export default async function Home() {
   await connection();
 
   return (
@@ -44,13 +43,5 @@ async function HomeContent() {
         ))}
       </ul>
     </main>
-  );
-}
-
-export default function Home() {
-  return (
-    <Suspense fallback={<main className="home">Loading…</main>}>
-      <HomeContent />
-    </Suspense>
   );
 }

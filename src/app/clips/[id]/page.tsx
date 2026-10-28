@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,7 +7,7 @@ import { describeClipProject } from "@/lib/clip-status";
 import { prisma } from "@/lib/prisma";
 import { presignDownload } from "@/lib/storage";
 import { Alert } from "@/components/alert";
-import { Button } from "@/components/button";
+import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Card } from "@/components/card";
 import { Field } from "@/components/field";
 import { PageHeader } from "@/components/page-header";
@@ -18,7 +17,6 @@ import {
   renameProjectAction,
   startRenderAction,
 } from "../actions";
-import { ConfirmForm } from "../confirm-form";
 import { RenderProgress } from "../render-progress";
 import styles from "../clips.module.css";
 import { ClipGrid } from "./clip-grid";
@@ -38,7 +36,7 @@ const CAPTION_POSITIONS = [
   { value: "top", label: "Top" },
 ];
 
-async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
+export default async function ClipProjectPage({ params }: { params: Promise<{ id: string }> }) {
   await connection();
   const ownerId = await getOwnerId();
   const { id } = await params;
@@ -94,27 +92,31 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
         description={failed ? sourceLength : [sourceLength, summary].filter(Boolean).join(" · ")}
         actions={
           <>
-            <form action={renameProjectAction} className={styles.actions}>
+            <ActionForm action={renameProjectAction} className={styles.actions}>
               <input type="hidden" name="projectId" value={project.id} />
               <input type="text" name="name" defaultValue={project.name} maxLength={120} required disabled={busy} />
-              <Button type="submit" disabled={busy}>
+              <SubmitButton disabled={busy} pendingLabel="Renaming…">
                 Rename
-              </Button>
-            </form>
-            <form action={copyProjectAction}>
+              </SubmitButton>
+            </ActionForm>
+            <ActionForm action={copyProjectAction}>
               <input type="hidden" name="projectId" value={project.id} />
-              <Button type="submit" disabled={busy || waiting}>
+              <SubmitButton disabled={busy || waiting} pendingLabel="Copying…">
                 Copy
-              </Button>
-            </form>
-            <ConfirmForm
+              </SubmitButton>
+            </ActionForm>
+            <ActionForm
               action={deleteProjectAction}
-              message={`Delete "${project.name}" and all its clips? This cannot be undone.`}
-              fields={{ projectId: project.id }}
-              disabled={busy}
+              confirm={{
+                message: `Delete "${project.name}" and all its clips? This cannot be undone.`,
+                confirmLabel: "Delete project",
+              }}
             >
-              Delete
-            </ConfirmForm>
+              <input type="hidden" name="projectId" value={project.id} />
+              <SubmitButton variant="danger" disabled={busy} pendingLabel="Deleting…">
+                Delete
+              </SubmitButton>
+            </ActionForm>
           </>
         }
       />
@@ -127,7 +129,18 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
 
       <div className={styles.project}>
         <Card>
-          <form className={styles.panel} action={startRenderAction}>
+          <ActionForm
+            className={styles.panel}
+            action={startRenderAction}
+            confirm={
+              clips.length > 0
+                ? {
+                    message: `Making clips again replaces ${clips.length === 1 ? "the current clip" : `the ${clips.length} current clips`} and the titles and descriptions you edited. Continue?`,
+                    confirmLabel: "Replace clips",
+                  }
+                : undefined
+            }
+          >
             <input type="hidden" name="projectId" value={project.id} />
             <h2>Make clips</h2>
             <span className={styles.label}>Clip length (seconds)</span>
@@ -187,10 +200,10 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
               <span>All capitals</span>
               <input type="checkbox" name="captionUppercase" defaultChecked={project.captionUppercase} />
             </label>
-            <Button type="submit" variant="primary" disabled={busy || waiting}>
+            <SubmitButton variant="primary" disabled={busy || waiting} pendingLabel="Starting…">
               Make clips
-            </Button>
-          </form>
+            </SubmitButton>
+          </ActionForm>
         </Card>
 
         <section>
@@ -205,13 +218,5 @@ async function ProjectView({ params }: { params: Promise<{ id: string }> }) {
         </section>
       </div>
     </main>
-  );
-}
-
-export default function ClipProjectPage({ params }: { params: Promise<{ id: string }> }) {
-  return (
-    <Suspense fallback={<main>Loading…</main>}>
-      <ProjectView params={params} />
-    </Suspense>
   );
 }

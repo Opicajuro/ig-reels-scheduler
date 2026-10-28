@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { bulkScheduleClipsAction } from "../actions";
-import { Button } from "@/components/button";
+import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Card } from "@/components/card";
 import { Field } from "@/components/field";
 import { LocalTime } from "@/components/local-time";
@@ -14,10 +14,12 @@ export type SelectedClip = { id: string; name: string };
 // Schedules every selected clip to one account, spaced by a gap, under one rights confirmation.
 // A datetime-local value has no timezone, so the browser turns it into an absolute time before it is sent.
 export function BulkScheduleForm({
+  projectId,
   clips,
   accounts,
   alreadyScheduledTo,
 }: {
+  projectId: string;
   clips: SelectedClip[];
   accounts: AccountChoice[];
   /** accounts that already have a live post from this project, such as ["@foo"] */
@@ -33,8 +35,9 @@ export function BulkScheduleForm({
 
   return (
     <Card>
-      <form action={bulkScheduleClipsAction} className={styles.panel}>
+      <ActionForm action={bulkScheduleClipsAction} className={styles.panel}>
         <h2>Schedule the selected clips</h2>
+        <input type="hidden" name="projectId" value={projectId} />
         {clips.map((clip) => (
           <input key={clip.id} type="hidden" name="clipId" value={clip.id} />
         ))}
@@ -94,10 +97,10 @@ export function BulkScheduleForm({
         <label className={styles.rights}>
           <input type="checkbox" name="rightsConfirmed" required /> I own or hold a license to these clips&apos; video and audio
         </label>
-        <Button type="submit" disabled={!scheduledAt || accounts.length === 0}>
+        <SubmitButton disabled={!scheduledAt || accounts.length === 0} pendingLabel="Scheduling…">
           Schedule {clips.length} {clips.length === 1 ? "clip" : "clips"} on Instagram
-        </Button>
-      </form>
+        </SubmitButton>
+      </ActionForm>
     </Card>
   );
 }

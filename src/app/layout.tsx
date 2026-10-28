@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ToastProvider } from "@/components/toast";
 import "./globals.css";
 import { Nav } from "./nav";
 
@@ -24,11 +25,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
-        {/* The menu reads the current address, which is only known per request. */}
-        <Suspense fallback={null}>
-          <Nav />
-        </Suspense>
-        {children}
+        <ToastProvider>
+          {/* The menu reads the current address, which is only known per request. */}
+          <Suspense fallback={null}>
+            <Nav />
+          </Suspense>
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

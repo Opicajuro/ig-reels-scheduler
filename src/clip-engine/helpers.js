@@ -1,3 +1,4 @@
+import { UserError } from "../lib/user-error";
 import { CAPTION_POSITION_NAMES, CAPTION_PRESET_NAMES } from "./remotion/caption-presets.js";
 
 export const MIN_CLIP_SECONDS = 15;
@@ -13,36 +14,30 @@ export const AUDIO_SAMPLE_RATE = 8000;
 export const AUDIO_WEIGHT = 0.6;
 export const MOTION_WEIGHT = 0.4;
 
-export class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
 
 export function assertHttpUrl(value) {
   let url;
   try {
     url = new URL(value);
   } catch {
-    throw new HttpError(400, "link must be a valid URL");
+    throw new UserError("link must be a valid URL");
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new HttpError(400, "link must start with http:// or https://");
+    throw new UserError("link must start with http:// or https://");
   }
   return url.href;
 }
 
 export function parseCaptionPreset(value) {
   if (!CAPTION_PRESET_NAMES.includes(value)) {
-    throw new HttpError(400, `captionPreset must be one of ${CAPTION_PRESET_NAMES.join(", ")}`);
+    throw new UserError(`captionPreset must be one of ${CAPTION_PRESET_NAMES.join(", ")}`);
   }
   return value;
 }
 
 export function parseCaptionPosition(value) {
   if (!CAPTION_POSITION_NAMES.includes(value)) {
-    throw new HttpError(400, `captionPosition must be one of ${CAPTION_POSITION_NAMES.join(", ")}`);
+    throw new UserError(`captionPosition must be one of ${CAPTION_POSITION_NAMES.join(", ")}`);
   }
   return value;
 }
@@ -50,7 +45,7 @@ export function parseCaptionPosition(value) {
 export function parseClipSeconds(value) {
   const seconds = Number(value);
   if (!Number.isInteger(seconds) || seconds < MIN_CLIP_SECONDS || seconds > MAX_CLIP_SECONDS) {
-    throw new HttpError(400, `clipSeconds must be an integer from ${MIN_CLIP_SECONDS} to ${MAX_CLIP_SECONDS}`);
+    throw new UserError(`clipSeconds must be an integer from ${MIN_CLIP_SECONDS} to ${MAX_CLIP_SECONDS}`);
   }
   return seconds;
 }
@@ -69,7 +64,7 @@ export function parseClipCount(value, durationSeconds, clipSeconds) {
   const count = Number(value);
   const max = maxClipCount(durationSeconds, clipSeconds);
   if (!Number.isInteger(count) || count < 1 || count > max) {
-    throw new HttpError(400, `clipCount must be a whole number from 1 to ${max} for this video and clip length`);
+    throw new UserError(`clipCount must be a whole number from 1 to ${max} for this video and clip length`);
   }
   return count;
 }
@@ -158,7 +153,7 @@ const PROJECT_NAME_MAX = 120;
 export function parseProjectName(value) {
   const name = typeof value === "string" ? value.trim() : "";
   if (name.length === 0 || name.length > PROJECT_NAME_MAX) {
-    throw new HttpError(400, `name must be 1 to ${PROJECT_NAME_MAX} characters`);
+    throw new UserError(`name must be 1 to ${PROJECT_NAME_MAX} characters`);
   }
   return name;
 }
@@ -171,14 +166,14 @@ export const UPLOAD_DESCRIPTION_MAX_BYTES = 5000;
 export function parseUploadTitle(value) {
   const title = typeof value === "string" ? value.trim() : "";
   if (title.length === 0 || title.length > UPLOAD_TITLE_MAX) {
-    throw new HttpError(400, `title must be 1 to ${UPLOAD_TITLE_MAX} characters`);
+    throw new UserError(`title must be 1 to ${UPLOAD_TITLE_MAX} characters`);
   }
   return title;
 }
 
 export function parseUploadDescription(value) {
   if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > UPLOAD_DESCRIPTION_MAX_BYTES) {
-    throw new HttpError(400, `description must be at most ${UPLOAD_DESCRIPTION_MAX_BYTES} bytes`);
+    throw new UserError(`description must be at most ${UPLOAD_DESCRIPTION_MAX_BYTES} bytes`);
   }
   return value;
 }
@@ -188,7 +183,7 @@ export const CLIP_NAME_MAX = 60;
 export function parseClipName(value) {
   const name = typeof value === "string" ? value.trim() : "";
   if (name.length === 0 || name.length > CLIP_NAME_MAX) {
-    throw new HttpError(400, `clip name must be 1 to ${CLIP_NAME_MAX} characters`);
+    throw new UserError(`clip name must be 1 to ${CLIP_NAME_MAX} characters`);
   }
   return name;
 }

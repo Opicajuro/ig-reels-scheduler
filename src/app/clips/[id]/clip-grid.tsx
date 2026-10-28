@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Button, ButtonLink } from "@/components/button";
+import { ActionForm, SubmitButton } from "@/components/action-form";
+import { ButtonLink } from "@/components/button";
 import { EmptyState } from "@/components/empty-state";
 import { Field } from "@/components/field";
 import { copyClipAction, deleteClipAction, renameClipAction, saveClipDetailsAction } from "../actions";
-import { ConfirmForm } from "../confirm-form";
 import { ExportForm } from "./export-form";
 import { ScheduleForm } from "./schedule-form";
 import { BulkScheduleForm } from "./bulk-schedule-form";
@@ -43,6 +43,8 @@ export function ClipGrid({
   alreadyScheduledTo: string[];
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  // Read through the current clips, so a clip deleted or replaced since it was picked drops out of the selection.
+  const selected = clips.filter((clip) => picked.has(clip.id)).map((clip) => ({ id: clip.id, name: clip.name }));
 
   function togglePick(clipId: string, on: boolean) {
     setPicked((current) => {
@@ -80,29 +82,30 @@ export function ClipGrid({
                   />
                   Select
                 </label>
-                <form action={copyClipAction}>
+                <ActionForm action={copyClipAction}>
                   <input type="hidden" name="clipId" value={clip.id} />
                   <input type="hidden" name="projectId" value={projectId} />
-                  <Button type="submit" size="sm" disabled={busy}>
+                  <SubmitButton size="sm" disabled={busy} pendingLabel="Copying…">
                     Copy
-                  </Button>
-                </form>
-                <ConfirmForm
+                  </SubmitButton>
+                </ActionForm>
+                <ActionForm
                   action={deleteClipAction}
-                  message={`Delete ${clip.name}?`}
-                  fields={{ clipId: clip.id, projectId }}
-                  disabled={busy}
-                  size="sm"
+                  confirm={{ message: `Delete ${clip.name}? This cannot be undone.`, confirmLabel: "Delete clip" }}
                 >
-                  Delete
-                </ConfirmForm>
+                  <input type="hidden" name="clipId" value={clip.id} />
+                  <input type="hidden" name="projectId" value={projectId} />
+                  <SubmitButton variant="danger" size="sm" disabled={busy} pendingLabel="Deleting…">
+                    Delete
+                  </SubmitButton>
+                </ActionForm>
                 <ButtonLink href={clip.downloadUrl} download size="sm">
                   Download
                 </ButtonLink>
               </div>
               <details className={styles.details}>
                 <summary>Posting and safe-clip rights</summary>
-                <form action={saveClipDetailsAction}>
+                <ActionForm action={saveClipDetailsAction}>
                   <input type="hidden" name="clipId" value={clip.id} />
                   <input type="hidden" name="projectId" value={projectId} />
                   <Field label="Title (YouTube, up to 100 characters)">
@@ -111,16 +114,16 @@ export function ClipGrid({
                   <Field label="Description (with hashtags)">
                     <textarea name="description" rows={4} maxLength={5000} defaultValue={clip.description ?? ""} />
                   </Field>
-                  <Button type="submit">Save title and description</Button>
-                </form>
-                <form action={renameClipAction}>
+                  <SubmitButton pendingLabel="Saving…">Save title and description</SubmitButton>
+                </ActionForm>
+                <ActionForm action={renameClipAction}>
                   <input type="hidden" name="clipId" value={clip.id} />
                   <input type="hidden" name="projectId" value={projectId} />
                   <Field label="Clip name">
                     <input type="text" name="name" maxLength={60} defaultValue={clip.name} required />
                   </Field>
-                  <Button type="submit">Rename</Button>
-                </form>
+                  <SubmitButton pendingLabel="Renaming…">Rename</SubmitButton>
+                </ActionForm>
                 <ScheduleForm
                   clipId={clip.id}
                   projectId={projectId}
@@ -134,9 +137,10 @@ export function ClipGrid({
         </div>
       )}
 
-      {picked.size > 0 ? (
+      {selected.length > 0 ? (
         <BulkScheduleForm
-          clips={clips.filter((clip) => picked.has(clip.id)).map((clip) => ({ id: clip.id, name: clip.name }))}
+          projectId={projectId}
+          clips={selected}
           accounts={accounts}
           alreadyScheduledTo={alreadyScheduledTo}
         />
@@ -145,12 +149,9 @@ export function ClipGrid({
       <div className={styles.dock}>
         <div className={styles.dockInner}>
           <span className={styles.muted}>
-            {picked.size} {picked.size === 1 ? "clip" : "clips"} selected
+            {selected.length} {selected.length === 1 ? "clip" : "clips"} selected
           </span>
-          <ExportForm
-            projectId={projectId}
-            clips={clips.filter((clip) => picked.has(clip.id)).map((clip) => ({ id: clip.id, name: clip.name }))}
-          />
+          <ExportForm projectId={projectId} clips={selected} />
         </div>
       </div>
     </>
