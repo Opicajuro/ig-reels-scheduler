@@ -29,7 +29,7 @@ export function ScheduleForm({
   const scheduledAt = when ? new Date(when).toISOString() : "";
 
   return (
-    <ActionForm action={scheduleClipAction}>
+    <ActionForm action={scheduleClipAction} className={styles.panel}>
       <input type="hidden" name="clipId" value={clipId} />
       <input type="hidden" name="projectId" value={projectId} />
       {accounts.length === 0 ? (

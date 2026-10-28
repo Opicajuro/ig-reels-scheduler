@@ -169,37 +169,39 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
               <span>Burn in captions</span>
               <input type="checkbox" name="withCaptions" defaultChecked={project.withCaptions} />
             </label>
-            <span className={styles.label}>Caption style</span>
-            <div className={styles.choice}>
-              {CAPTION_STYLES.map((style) => (
-                <label key={style.value} className={styles.card}>
-                  <input type="radio" name="captionPreset" value={style.value} defaultChecked={style.value === preset} />
-                  <span className={`${styles.swatch} ${style.value === "yellow" ? styles.yellow : ""} ${style.value === "box" ? styles.box : ""}`}>Aa</span>
-                  <div>
-                    <span>{style.label}</span>
-                    <small>{style.hint}</small>
-                  </div>
-                </label>
-              ))}
+            <div className={styles.captionOptions}>
+              <span className={styles.label}>Caption style</span>
+              <div className={styles.choice}>
+                {CAPTION_STYLES.map((style) => (
+                  <label key={style.value} className={styles.card}>
+                    <input type="radio" name="captionPreset" value={style.value} defaultChecked={style.value === preset} />
+                    <span className={`${styles.swatch} ${style.value === "yellow" ? styles.yellow : ""} ${style.value === "box" ? styles.box : ""}`}>Aa</span>
+                    <div>
+                      <span>{style.label}</span>
+                      <small>{style.hint}</small>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <span className={styles.label}>Caption position</span>
+              <div className={styles.choice}>
+                {CAPTION_POSITIONS.map((position) => (
+                  <label key={position.value} className={styles.pill}>
+                    <input
+                      type="radio"
+                      name="captionPosition"
+                      value={position.value}
+                      defaultChecked={position.value === project.captionPosition}
+                    />
+                    <span>{position.label}</span>
+                  </label>
+                ))}
+              </div>
+              <label className={styles.toggle}>
+                <span>All capitals</span>
+                <input type="checkbox" name="captionUppercase" defaultChecked={project.captionUppercase} />
+              </label>
             </div>
-            <span className={styles.label}>Caption position</span>
-            <div className={styles.choice}>
-              {CAPTION_POSITIONS.map((position) => (
-                <label key={position.value} className={styles.pill}>
-                  <input
-                    type="radio"
-                    name="captionPosition"
-                    value={position.value}
-                    defaultChecked={position.value === project.captionPosition}
-                  />
-                  <span>{position.label}</span>
-                </label>
-              ))}
-            </div>
-            <label className={styles.toggle}>
-              <span>All capitals</span>
-              <input type="checkbox" name="captionUppercase" defaultChecked={project.captionUppercase} />
-            </label>
             <SubmitButton variant="primary" disabled={busy || waiting} pendingLabel="Starting…">
               Make clips
             </SubmitButton>

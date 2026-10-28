@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ActionForm, SubmitButton } from "@/components/action-form";
-import { ButtonLink } from "@/components/button";
+import { Button } from "@/components/button";
+import { Drawer } from "@/components/drawer";
 import { EmptyState } from "@/components/empty-state";
-import { Field } from "@/components/field";
-import { copyClipAction, deleteClipAction, renameClipAction, saveClipDetailsAction } from "../actions";
+import { Tabs } from "@/components/tabs";
+import { ClipDetails } from "./clip-details";
 import { ExportForm } from "./export-form";
 import { ScheduleForm } from "./schedule-form";
 import { BulkScheduleForm } from "./bulk-schedule-form";
@@ -28,7 +28,13 @@ function formatTime(seconds: number): string {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }
 
-// Clips of one project, with picking for the upload sheet. Every change is a form posting to a server action.
+// What a clip is posted with on Instagram, the same fallback the server uses.
+function captionOf(clip: ClipView): string {
+  return clip.description || clip.title || clip.name;
+}
+
+// Clips of one project. A clip opens in a drawer for its details and scheduling; picked clips get a bar to download
+// or schedule them together. Every change is a form posting to a server action.
 export function ClipGrid({
   projectId,
   busy,
@@ -43,8 +49,13 @@ export function ClipGrid({
   alreadyScheduledTo: string[];
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  // Read through the current clips, so a clip deleted or replaced since it was picked drops out of the selection.
-  const selected = clips.filter((clip) => picked.has(clip.id)).map((clip) => ({ id: clip.id, name: clip.name }));
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [panel, setPanel] = useState<"export" | "schedule" | null>(null);
+  // Read through the current clips, so a clip deleted or replaced since it was picked or opened drops out.
+  const selected = clips.filter((clip) => picked.has(clip.id));
+  const openClip = clips.find((clip) => clip.id === openId) ?? null;
+  // A panel for an empty selection closes, so it does not open again by itself on the next pick.
+  if (panel !== null && selected.length === 0) setPanel(null);
 
   function togglePick(clipId: string, on: boolean) {
     setPicked((current) => {
@@ -77,83 +88,85 @@ export function ClipGrid({
                 <label className={styles.pick}>
                   <input
                     type="checkbox"
+                    aria-label={`Select ${clip.name}`}
                     checked={picked.has(clip.id)}
                     onChange={(event) => togglePick(clip.id, event.target.checked)}
                   />
                   Select
                 </label>
-                <ActionForm action={copyClipAction}>
-                  <input type="hidden" name="clipId" value={clip.id} />
-                  <input type="hidden" name="projectId" value={projectId} />
-                  <SubmitButton size="sm" disabled={busy} pendingLabel="Copying…">
-                    Copy
-                  </SubmitButton>
-                </ActionForm>
-                <ActionForm
-                  action={deleteClipAction}
-                  confirm={{ message: `Delete ${clip.name}? This cannot be undone.`, confirmLabel: "Delete clip" }}
-                >
-                  <input type="hidden" name="clipId" value={clip.id} />
-                  <input type="hidden" name="projectId" value={projectId} />
-                  <SubmitButton variant="danger" size="sm" disabled={busy} pendingLabel="Deleting…">
-                    Delete
-                  </SubmitButton>
-                </ActionForm>
-                <ButtonLink href={clip.downloadUrl} download size="sm">
-                  Download
-                </ButtonLink>
+                <Button type="button" aria-label={`Open ${clip.name}`} onClick={() => setOpenId(clip.id)}>
+                  Open
+                </Button>
               </div>
-              <details className={styles.details}>
-                <summary>Posting and safe-clip rights</summary>
-                <ActionForm action={saveClipDetailsAction}>
-                  <input type="hidden" name="clipId" value={clip.id} />
-                  <input type="hidden" name="projectId" value={projectId} />
-                  <Field label="Title (YouTube, up to 100 characters)">
-                    <input type="text" name="title" maxLength={100} defaultValue={clip.title ?? clip.name} />
-                  </Field>
-                  <Field label="Description (with hashtags)">
-                    <textarea name="description" rows={4} maxLength={5000} defaultValue={clip.description ?? ""} />
-                  </Field>
-                  <SubmitButton pendingLabel="Saving…">Save title and description</SubmitButton>
-                </ActionForm>
-                <ActionForm action={renameClipAction}>
-                  <input type="hidden" name="clipId" value={clip.id} />
-                  <input type="hidden" name="projectId" value={projectId} />
-                  <Field label="Clip name">
-                    <input type="text" name="name" maxLength={60} defaultValue={clip.name} required />
-                  </Field>
-                  <SubmitButton pendingLabel="Renaming…">Rename</SubmitButton>
-                </ActionForm>
-                <ScheduleForm
-                  clipId={clip.id}
-                  projectId={projectId}
-                  accounts={accounts}
-                  defaultCaption={clip.description || clip.title || clip.name}
-                  alreadyScheduledTo={alreadyScheduledTo}
-                />
-              </details>
             </article>
           ))}
         </div>
       )}
 
       {selected.length > 0 ? (
+        <div className={styles.dock} role="region" aria-label="Selected clips">
+          <div className={styles.dockInner}>
+            <div className={styles.dockCount}>
+              <strong>
+                {selected.length} {selected.length === 1 ? "clip" : "clips"} selected
+              </strong>
+              <Button type="button" size="sm" onClick={() => setPicked(new Set())}>
+                Clear
+              </Button>
+            </div>
+            <div className={styles.dockActions}>
+              <Button type="button" onClick={() => setPanel("export")}>
+                Download for posting (ZIP)
+              </Button>
+              <Button type="button" variant="primary" onClick={() => setPanel("schedule")}>
+                Schedule on Instagram
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <Drawer open={openClip !== null} title={openClip?.name} onClose={() => setOpenId(null)}>
+        {openClip ? (
+          <Tabs
+            key={openClip.id}
+            label="Clip"
+            tabs={[
+              {
+                id: "details",
+                label: "Details",
+                content: <ClipDetails clip={openClip} projectId={projectId} busy={busy} />,
+              },
+              {
+                id: "instagram",
+                label: "Instagram",
+                content: (
+                  <ScheduleForm
+                    clipId={openClip.id}
+                    projectId={projectId}
+                    accounts={accounts}
+                    defaultCaption={captionOf(openClip)}
+                    alreadyScheduledTo={alreadyScheduledTo}
+                  />
+                ),
+              },
+            ]}
+          />
+        ) : null}
+      </Drawer>
+
+      <Drawer open={panel === "export"} title="Download for posting" onClose={() => setPanel(null)}>
+        <ExportForm projectId={projectId} clips={selected} />
+      </Drawer>
+
+      <Drawer open={panel === "schedule"} title="Schedule on Instagram" onClose={() => setPanel(null)}>
         <BulkScheduleForm
           projectId={projectId}
-          clips={selected}
+          clips={selected.map((clip) => ({ id: clip.id, name: clip.name, caption: captionOf(clip) }))}
           accounts={accounts}
           alreadyScheduledTo={alreadyScheduledTo}
         />
-      ) : null}
-
-      <div className={styles.dock}>
-        <div className={styles.dockInner}>
-          <span className={styles.muted}>
-            {selected.length} {selected.length === 1 ? "clip" : "clips"} selected
-          </span>
-          <ExportForm projectId={projectId} clips={selected} />
-        </div>
-      </div>
+      </Drawer>
     </>
   );
 }

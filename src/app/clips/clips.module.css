@@ -186,6 +186,16 @@
   font-size: 0.9rem;
 }
 
+/* The caption controls only matter when captions are burned in. Hidden, not removed, so their values stay. */
+.captionOptions {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.panel:has(input[name="withCaptions"]:not(:checked)) .captionOptions {
+  display: none;
+}
+
 .projects {
   display: grid;
   gap: var(--space-2);
@@ -226,6 +236,13 @@
   align-content: start;
 }
 
+/* Two clips side by side on a phone, so a preview is not a whole screen tall. */
+@media (max-width: 480px) {
+  .clips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .clip {
   display: grid;
   align-content: start;
@@ -260,47 +277,101 @@
 }
 
 .clipActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 10px var(--space-3);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-3);
 }
 
-.clipActions form {
-  display: contents;
+@media (max-width: 480px) {
+  .clipActions {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .pick {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: var(--space-1) 9px;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 7px 10px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  font-size: var(--text-xs);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  font-size: var(--text-sm);
+  font-weight: 600;
   cursor: pointer;
 }
 
 .pick input {
-  width: 14px;
-  height: 14px;
+  flex: none;
 }
 
-.details {
-  padding: 0 var(--space-3) var(--space-3);
+.pick:has(input:checked) {
+  border-color: var(--link);
+  box-shadow: inset 0 0 0 1px var(--link);
 }
 
-.details summary {
-  color: var(--muted);
-  font-size: var(--text-xs);
-  cursor: pointer;
+/* A clip's download, copy and delete, in its drawer. */
+.clipTools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
 }
 
-.details form {
+.clipTools form {
+  display: contents;
+}
+
+/* The description counter once it passes Instagram's caption limit. */
+.over {
+  color: var(--warning-text);
+}
+
+/* What a bulk schedule will post: each clip, its time and its caption. */
+.preview {
   display: grid;
-  gap: 6px;
-  margin-top: var(--space-2);
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.preview li {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 10px var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.previewHead {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+}
+
+.previewHead strong {
+  min-width: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.caption {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .rights {
@@ -312,14 +383,17 @@
   vertical-align: middle;
 }
 
+/* The bar for the picked clips, shown only while at least one is picked. */
 .dock {
   position: fixed;
   right: 0;
   bottom: 0;
   left: 0;
+  z-index: 5;
   padding: var(--space-3) var(--space-4);
   background: var(--surface);
   border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.3);
 }
 
 .dockInner {
@@ -332,18 +406,40 @@
   gap: var(--space-3);
 }
 
+.dockCount,
+.dockActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+@media (max-width: 760px) {
+  .dockInner,
+  .dockCount {
+    flex: 1 1 100%;
+  }
+
+  .dockCount {
+    justify-content: space-between;
+  }
+
+  .dockActions {
+    display: grid;
+    flex: 1 1 100%;
+  }
+
+  /* Room to scroll the last clips above the taller bar. */
+  .page {
+    padding-bottom: 180px;
+  }
+}
+
 .notice {
   margin: 0;
   min-height: 1.5em;
   color: var(--muted);
   font-size: 0.9rem;
-}
-
-.exportForm {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
 }
 
 .progress {
