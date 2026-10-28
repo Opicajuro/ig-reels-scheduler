@@ -21,6 +21,8 @@ export type LocalInstall = {
   chromePath: string;
   whisperBin: string;
   whisperModel: string;
+  /** the install's data folder; the AI video engine goes in its ai folder */
+  dataDir: string;
 };
 
 export function buildLocalValues(install: LocalInstall, generate: () => string): EnvValues {
@@ -36,6 +38,7 @@ export function buildLocalValues(install: LocalInstall, generate: () => string):
       CHROME_PATH: install.chromePath,
       WHISPER_BIN: install.whisperBin,
       WHISPER_MODEL: install.whisperModel,
+      LOCALIRS_DATA_DIR: install.dataDir,
     },
     generate,
   );
@@ -100,6 +103,7 @@ async function main() {
     chromePath: requireInstallValue("LOCALIRS_CHROME_PATH"),
     whisperBin: requireInstallValue("LOCALIRS_WHISPER_BIN"),
     whisperModel: requireInstallValue("LOCALIRS_WHISPER_MODEL"),
+    dataDir: requireInstallValue("LOCALIRS_DATA_DIR"),
   };
   const generate = () => randomBytes(32).toString("base64");
   const values = buildLocalValues(install, generate);

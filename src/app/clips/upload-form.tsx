@@ -9,7 +9,7 @@ import { markSourceUploadedAction } from "./actions";
 import styles from "./clips.module.css";
 
 // Sends the file with XMLHttpRequest, because fetch cannot report upload progress.
-function putFile(url: string, file: File, contentType: string, onProgress: (percent: number) => void): Promise<void> {
+export function putFile(url: string, file: File, contentType: string, onProgress: (percent: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("PUT", url);

@@ -44,6 +44,9 @@ the Settings page. There is no sign-in: the app belongs to the first user row an
 Optional, for links and captions: `yt-dlp` on the worker's PATH for clips made from a link, and
 `CHROME_PATH`, `WHISPER_BIN` and `WHISPER_MODEL` for captions.
 
+Optional, for AI videos on `/ai` (Windows with an NVIDIA card of 12 GB or more): `LOCALIRS_DATA_DIR` (the engine
+goes in its `ai` folder) and `7zr` on the worker's PATH. The engine's downloads are pinned in `src/lib/ai-engine.json`.
+
 ## Tests and checks
 
     CHROME_PATH=/path/to/chrome pnpm test   # CHROME_PATH is needed by the caption render test

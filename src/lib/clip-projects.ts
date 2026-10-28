@@ -231,6 +231,7 @@ export async function copyProject({
         storageKey,
         title: clip.title,
         description: clip.description,
+        aiGenerated: clip.aiGenerated,
       },
     });
   }
@@ -279,6 +280,7 @@ export async function copyClip({ db, store, ownerId, clipId }: { db: PrismaClien
       storageKey,
       title: clip.title,
       description: clip.description,
+      aiGenerated: clip.aiGenerated,
     },
   });
 }

@@ -51,6 +51,7 @@ $ffmpegZip = Get-Tool "ffmpeg" $manifest.ffmpeg "ffmpeg.zip"
 $ytDlp = Get-Tool "yt-dlp" $manifest.ytDlp "yt-dlp.exe"
 $whisperZip = Get-Tool "whisper.cpp" $manifest.whisperCpp "whisper.zip"
 $whisperModel = Get-Tool "Whisper model" $manifest.whisperModel "ggml-base.bin"
+$sevenZip = Get-Tool "7-Zip (7zr)" $manifest.sevenZip "7zr.exe"
 $chromeZip = Get-Tool "Chrome headless shell" $manifest.chromeHeadlessShell "chrome-headless-shell.zip"
 $pgZip = Get-Tool "PostgreSQL" $manifest.postgres "postgres.zip"
 
@@ -63,6 +64,8 @@ Copy-Item -Force (Get-ChildItem (Join-Path $tools "ffmpeg-unzip") -Recurse -Filt
 Copy-Item -Force (Get-ChildItem (Join-Path $tools "ffmpeg-unzip") -Recurse -Filter ffprobe.exe | Select-Object -First 1).FullName (Join-Path $tools "ffprobe.exe")
 Remove-Item -Recurse -Force (Join-Path $tools "ffmpeg-unzip")
 Copy-Item -Force $ytDlp (Join-Path $tools "yt-dlp.exe")
+# The AI video engine (ComfyUI) comes as a .7z, which Windows cannot unpack; the worker uses this.
+Copy-Item -Force $sevenZip (Join-Path $tools "7zr.exe")
 
 Expand-Archive -Force $whisperZip (Join-Path $tools "whisper")
 Copy-Item -Force $whisperModel (Join-Path $tools "whisper\ggml-base.bin")

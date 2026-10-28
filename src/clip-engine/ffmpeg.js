@@ -126,3 +126,27 @@ export async function renderClip({ input, output, start, length, overlay }) {
     output,
   ]);
 }
+
+// An AI video, as it is uploaded: 1080×1920 at 30 fps in H.264, with a silent AAC track, because Instagram wants an
+// audio stream and the model makes none.
+export async function convertAiVideo({ input, output }) {
+  await run("ffmpeg", [
+    "-y",
+    "-v", "error",
+    "-i", input,
+    "-f", "lavfi",
+    "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+    "-filter_complex", `[0:v]${VERTICAL_FILTER},fps=30,format=yuv420p[out]`,
+    "-map", "[out]",
+    "-map", "1:a",
+    "-shortest",
+    "-c:v", "libx264",
+    "-profile:v", "high",
+    "-preset", "medium",
+    "-crf", "20",
+    "-c:a", "aac",
+    "-b:a", "128k",
+    "-movflags", "+faststart",
+    output,
+  ]);
+}

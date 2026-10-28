@@ -18,6 +18,7 @@ export type ClipView = {
   length: number;
   title: string | null;
   description: string | null;
+  aiGenerated: boolean;
   downloadUrl: string;
 };
 
@@ -80,6 +81,11 @@ export function ClipGrid({
               <video src={clip.downloadUrl} controls playsInline preload="metadata" />
               <div className={styles.clipBody}>
                 <strong>{clip.name}</strong>
+                {clip.aiGenerated ? (
+                  <span className={styles.aiBadge} title="Made with AI">
+                    AI
+                  </span>
+                ) : null}
                 <span className={styles.meta}>
                   {formatTime(clip.start)} – {formatTime(clip.start + clip.length)}
                 </span>

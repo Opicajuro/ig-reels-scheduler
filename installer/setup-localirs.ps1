@@ -90,6 +90,7 @@ try {
   $env:LOCALIRS_CHROME_PATH = Join-Path $tools "chrome\chrome-headless-shell.exe"
   $env:LOCALIRS_WHISPER_BIN = Join-Path $tools "whisper\Release\whisper-cli.exe"
   $env:LOCALIRS_WHISPER_MODEL = Join-Path $tools "whisper\ggml-base.bin"
+  $env:LOCALIRS_DATA_DIR = $data
   $env:PATH = "$tools;$env:PATH"
 
   Push-Location $app

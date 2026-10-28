@@ -44,6 +44,11 @@ export function buildClipKey(projectId: string, clipId: string): string {
   return `clips/${projectId}/${clipId}.mp4`;
 }
 
+// The start picture of an AI video, uploaded from /ai.
+export function buildAiInputKey(id: string, extension: string): string {
+  return `ai-inputs/${id}${extension.toLowerCase()}`;
+}
+
 export async function presignUpload(key: string, contentType: string): Promise<string> {
   return getSignedUrl(
     client(),

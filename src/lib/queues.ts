@@ -1,4 +1,6 @@
 import { PgBoss } from "pg-boss";
+import type { AiEngineQueue } from "./ai-engine";
+import type { AiVideoQueue } from "./ai-video";
 import { requireEnv } from "./env";
 
 export const MEDIA_QUEUE = "media-process";
@@ -7,6 +9,8 @@ export const INSIGHTS_QUEUE = "insights";
 export const TOKEN_REFRESH_QUEUE = "token-refresh";
 export const OWNER_ALERTS_QUEUE = "owner-alerts";
 export const CLIP_QUEUE = "clip-project";
+export const AI_ENGINE_QUEUE = "ai-engine";
+export const AI_VIDEO_QUEUE = "ai-video";
 
 // A publish job runs up to 5 times: the first try, then 4 retries 60 seconds apart, doubling each time.
 export const PUBLISH_RETRY_LIMIT = 4;
@@ -47,7 +51,7 @@ async function startBoss(): Promise<PgBoss> {
   const keyed = { policy: "short" as const };
   await instance.createQueue(MEDIA_QUEUE, keyed);
   await instance.createQueue(INSIGHTS_QUEUE, keyed);
-  for (const name of [PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE]) {
+  for (const name of [PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE, AI_ENGINE_QUEUE, AI_VIDEO_QUEUE]) {
     await instance.createQueue(name);
   }
   return instance;
@@ -73,6 +77,29 @@ export function getClipQueue(): ClipQueue {
     async send(projectId) {
       const jobId = await (await getBoss()).send(CLIP_QUEUE, { projectId }, { retryLimit: 0, expireInSeconds: 6 * 60 * 60 });
       if (jobId === null) throw new Error(`clip job for project ${projectId} was not queued`);
+      return jobId;
+    },
+  };
+}
+
+// Installing the AI engine downloads about 20 GB, which can take many hours on a slow line; it gets a day. A video
+// takes minutes on a 16 GB card, and much longer the first time Windows reads the model files; it gets 2 hours.
+// Neither is retried: the failure is shown on /ai, and the person starts it again.
+export function getAiEngineQueue(): AiEngineQueue {
+  return {
+    async send() {
+      const jobId = await (await getBoss()).send(AI_ENGINE_QUEUE, {}, { retryLimit: 0, expireInSeconds: 24 * 60 * 60 });
+      if (jobId === null) throw new Error("the AI engine install was not queued");
+      return jobId;
+    },
+  };
+}
+
+export function getAiVideoQueue(): AiVideoQueue {
+  return {
+    async send(aiVideoJobId) {
+      const jobId = await (await getBoss()).send(AI_VIDEO_QUEUE, { aiVideoJobId }, { retryLimit: 0, expireInSeconds: 2 * 60 * 60 });
+      if (jobId === null) throw new Error(`AI video job ${aiVideoJobId} was not queued`);
       return jobId;
     },
   };

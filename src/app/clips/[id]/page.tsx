@@ -68,6 +68,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       length: clip.length,
       title: clip.title,
       description: clip.description,
+      aiGenerated: clip.aiGenerated,
       downloadUrl: await presignDownload(clip.storageKey, 3600),
     })),
   );
@@ -99,12 +100,14 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
                 Rename
               </SubmitButton>
             </ActionForm>
-            <ActionForm action={copyProjectAction}>
-              <input type="hidden" name="projectId" value={project.id} />
-              <SubmitButton disabled={busy || waiting} pendingLabel="Copying…">
-                Copy
-              </SubmitButton>
-            </ActionForm>
+            {project.aiVideos ? null : (
+              <ActionForm action={copyProjectAction}>
+                <input type="hidden" name="projectId" value={project.id} />
+                <SubmitButton disabled={busy || waiting} pendingLabel="Copying…">
+                  Copy
+                </SubmitButton>
+              </ActionForm>
+            )}
             <ActionForm
               action={deleteProjectAction}
               confirm={{
@@ -127,86 +130,89 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       ) : null}
       {busy ? <RenderProgress projectId={project.id} initialStep={project.renderStep} /> : null}
 
-      <div className={styles.project}>
-        <Card>
-          <ActionForm
-            className={styles.panel}
-            action={startRenderAction}
-            confirm={
-              clips.length > 0
-                ? {
-                    message: `Making clips again replaces ${clips.length === 1 ? "the current clip" : `the ${clips.length} current clips`} and the titles and descriptions you edited. Continue?`,
-                    confirmLabel: "Replace clips",
-                  }
-                : undefined
-            }
-          >
-            <input type="hidden" name="projectId" value={project.id} />
-            <h2>Make clips</h2>
-            <span className={styles.label}>Clip length (seconds)</span>
-            <div className={styles.choice}>
-              {CLIP_LENGTHS.map((seconds) => (
-                <label key={seconds} className={styles.pill}>
-                  <input type="radio" name="clipSeconds" value={seconds} defaultChecked={seconds === project.clipSeconds} />
-                  <span>{seconds} s</span>
-                </label>
-              ))}
-            </div>
-            <Field
-              label="Number of clips"
-              hint="Auto makes as many clips as the video allows. Each clip ends on a quiet moment, so it can run a little longer than the length you pick. Fewer clips are made if the video is short."
+      {/* The AI videos project has no source video to make clips from: its clips come from /ai. */}
+      <div className={`${styles.project} ${project.aiVideos ? styles.single : ""}`}>
+        {project.aiVideos ? null : (
+          <Card>
+            <ActionForm
+              className={styles.panel}
+              action={startRenderAction}
+              confirm={
+                clips.length > 0
+                  ? {
+                      message: `Making clips again replaces ${clips.length === 1 ? "the current clip" : `the ${clips.length} current clips`} and the titles and descriptions you edited. Continue?`,
+                      confirmLabel: "Replace clips",
+                    }
+                  : undefined
+              }
             >
-              <select name="clipCount" defaultValue={project.clipCount ?? "auto"}>
-                <option value="auto">Auto</option>
-                {CLIP_COUNTS.map((count) => (
-                  <option key={count} value={count}>
-                    {count}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <label className={styles.toggle}>
-              <span>Burn in captions</span>
-              <input type="checkbox" name="withCaptions" defaultChecked={project.withCaptions} />
-            </label>
-            <div className={styles.captionOptions}>
-              <span className={styles.label}>Caption style</span>
+              <input type="hidden" name="projectId" value={project.id} />
+              <h2>Make clips</h2>
+              <span className={styles.label}>Clip length (seconds)</span>
               <div className={styles.choice}>
-                {CAPTION_STYLES.map((style) => (
-                  <label key={style.value} className={styles.card}>
-                    <input type="radio" name="captionPreset" value={style.value} defaultChecked={style.value === preset} />
-                    <span className={`${styles.swatch} ${style.value === "yellow" ? styles.yellow : ""} ${style.value === "box" ? styles.box : ""}`}>Aa</span>
-                    <div>
-                      <span>{style.label}</span>
-                      <small>{style.hint}</small>
-                    </div>
+                {CLIP_LENGTHS.map((seconds) => (
+                  <label key={seconds} className={styles.pill}>
+                    <input type="radio" name="clipSeconds" value={seconds} defaultChecked={seconds === project.clipSeconds} />
+                    <span>{seconds} s</span>
                   </label>
                 ))}
               </div>
-              <span className={styles.label}>Caption position</span>
-              <div className={styles.choice}>
-                {CAPTION_POSITIONS.map((position) => (
-                  <label key={position.value} className={styles.pill}>
-                    <input
-                      type="radio"
-                      name="captionPosition"
-                      value={position.value}
-                      defaultChecked={position.value === project.captionPosition}
-                    />
-                    <span>{position.label}</span>
-                  </label>
-                ))}
-              </div>
+              <Field
+                label="Number of clips"
+                hint="Auto makes as many clips as the video allows. Each clip ends on a quiet moment, so it can run a little longer than the length you pick. Fewer clips are made if the video is short."
+              >
+                <select name="clipCount" defaultValue={project.clipCount ?? "auto"}>
+                  <option value="auto">Auto</option>
+                  {CLIP_COUNTS.map((count) => (
+                    <option key={count} value={count}>
+                      {count}
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <label className={styles.toggle}>
-                <span>All capitals</span>
-                <input type="checkbox" name="captionUppercase" defaultChecked={project.captionUppercase} />
+                <span>Burn in captions</span>
+                <input type="checkbox" name="withCaptions" defaultChecked={project.withCaptions} />
               </label>
-            </div>
-            <SubmitButton variant="primary" disabled={busy || waiting} pendingLabel="Starting…">
-              Make clips
-            </SubmitButton>
-          </ActionForm>
-        </Card>
+              <div className={styles.captionOptions}>
+                <span className={styles.label}>Caption style</span>
+                <div className={styles.choice}>
+                  {CAPTION_STYLES.map((style) => (
+                    <label key={style.value} className={styles.card}>
+                      <input type="radio" name="captionPreset" value={style.value} defaultChecked={style.value === preset} />
+                      <span className={`${styles.swatch} ${style.value === "yellow" ? styles.yellow : ""} ${style.value === "box" ? styles.box : ""}`}>Aa</span>
+                      <div>
+                        <span>{style.label}</span>
+                        <small>{style.hint}</small>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                <span className={styles.label}>Caption position</span>
+                <div className={styles.choice}>
+                  {CAPTION_POSITIONS.map((position) => (
+                    <label key={position.value} className={styles.pill}>
+                      <input
+                        type="radio"
+                        name="captionPosition"
+                        value={position.value}
+                        defaultChecked={position.value === project.captionPosition}
+                      />
+                      <span>{position.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <label className={styles.toggle}>
+                  <span>All capitals</span>
+                  <input type="checkbox" name="captionUppercase" defaultChecked={project.captionUppercase} />
+                </label>
+              </div>
+              <SubmitButton variant="primary" disabled={busy || waiting} pendingLabel="Starting…">
+                Make clips
+              </SubmitButton>
+            </ActionForm>
+          </Card>
+        )}
 
         <section>
           <h2>Clips</h2>

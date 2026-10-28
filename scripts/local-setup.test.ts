@@ -11,6 +11,7 @@ const install: LocalInstall = {
   chromePath: "C:\\Localirs\\tools\\chrome\\chrome.exe",
   whisperBin: "C:\\Localirs\\tools\\whisper\\whisper-cli.exe",
   whisperModel: "C:\\Localirs\\tools\\whisper\\ggml-base.bin",
+  dataDir: "C:\\Localirs\\data",
 };
 
 describe("buildLocalValues", () => {
@@ -27,6 +28,7 @@ describe("buildLocalValues", () => {
     expect(values.CHROME_PATH).toBe(install.chromePath);
     expect(values.WHISPER_BIN).toBe(install.whisperBin);
     expect(values.WHISPER_MODEL).toBe(install.whisperModel);
+    expect(values.LOCALIRS_DATA_DIR).toBe(install.dataDir);
     expect(values.TOKEN_ENC_KEY).toBe("generated");
   });
 
