@@ -462,3 +462,9 @@
   color: var(--muted);
   font-size: 0.9rem;
 }
+
+.elapsed {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}

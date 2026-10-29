@@ -173,6 +173,8 @@ model ClipProject {
   status          ClipProjectStatus @default(awaiting_source)
   error           String?
   renderStep      String?
+  // When the current "Make clips" started, so the page can show how long it has been running.
+  renderStartedAt DateTime?
   durationSeconds Int?
   clipSeconds     Int               @default(30)
   clipCount       Int?

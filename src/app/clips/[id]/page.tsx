@@ -37,6 +37,13 @@ const CAPTION_POSITIONS = [
   { value: "top", label: "Top" },
 ];
 
+// Every project that is making clips has a start time: "Make clips" sets it, and the migration that added it set it
+// for projects already rendering.
+function renderStartedAt(startedAt: Date | null): Date {
+  if (!startedAt) throw new Error("a project that is making clips has no start time");
+  return startedAt;
+}
+
 export default async function ClipProjectPage({ params }: { params: Promise<{ id: string }> }) {
   await connection();
   const ownerId = await getOwnerId();
@@ -129,7 +136,14 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
           <Alert tone="error">{summary}</Alert>
         </div>
       ) : null}
-      {busy ? <RenderProgress projectId={project.id} initialStep={project.renderStep} /> : null}
+      {busy ? (
+        <RenderProgress
+          projectId={project.id}
+          initialStep={project.renderStep}
+          startedAt={renderStartedAt(project.renderStartedAt).toISOString()}
+          initialClipsDone={project.clips.length}
+        />
+      ) : null}
 
       {/* The AI videos project has no source video to make clips from: its clips come from /ai. */}
       <div className={`${styles.project} ${project.aiVideos ? styles.single : ""}`}>
