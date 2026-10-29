@@ -7,7 +7,7 @@ import { putFile } from "../clips/upload-form";
 import { createAiVideoAction } from "./actions";
 import styles from "./ai.module.css";
 
-const LENGTHS = [2, 3, 5];
+const LENGTHS = [3, 5];
 
 // A start picture goes to storage first, the way clip uploads do; the action gets its storage key, not the file.
 async function sendNewVideo(previous: ActionResult, formData: FormData): Promise<ActionResult> {
@@ -57,7 +57,6 @@ export function NewVideoForm({ maxPromptLength }: { maxPromptLength: number }) {
             </label>
           ))}
         </div>
-        <p className={styles.note}>Instagram Reels must be at least 3 seconds long; 2 seconds is for trying a description quickly.</p>
       </div>
       <p className={styles.madeWithAi}>
         Made with AI: the video is marked as AI-made in Localirs, and Instagram should be told when it is posted.

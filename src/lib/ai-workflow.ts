@@ -12,7 +12,7 @@ export type Workflow = Record<string, WorkflowNode>;
 export const AI_VIDEO_FPS = 24;
 export const AI_VIDEO_WIDTH = 704;
 export const AI_VIDEO_HEIGHT = 1280;
-export const AI_VIDEO_SECONDS = [2, 3, 5] as const;
+export const AI_VIDEO_SECONDS = [3, 5] as const;
 
 // The nodes the worker talks about: the sampler reports the progress, SaveVideo writes the file, LoadImage is the
 // optional start picture.

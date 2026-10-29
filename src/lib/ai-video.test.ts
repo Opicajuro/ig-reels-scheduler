@@ -233,7 +233,7 @@ describe("runAiVideoJob", () => {
       id: "job-2",
       ownerId: "owner-1",
       prompt: "The picture comes alive",
-      seconds: 2,
+      seconds: 3,
       startImageKey: "ai-inputs/0b0e5e5e-1111-4222-8333-944445555666.png",
       status: "queued",
     };
@@ -246,9 +246,9 @@ describe("runAiVideoJob", () => {
     expect(comfy.uploads).toEqual(["start.png"]);
     const [queued] = comfy.prompts;
     expect(queued.prompt["56"]).toEqual({ class_type: "LoadImage", inputs: { image: "start.png" } });
-    expect(queued.prompt["55"].inputs).toMatchObject({ length: 49, start_image: ["56", 0] });
+    expect(queued.prompt["55"].inputs).toMatchObject({ length: 73, start_image: ["56", 0] });
     expect(state.projects).toHaveLength(1);
-    expect(state.clips[1]).toMatchObject({ projectId: "existing", name: "ai-002", length: 2, aiGenerated: true });
+    expect(state.clips[1]).toMatchObject({ projectId: "existing", name: "ai-002", length: 3, aiGenerated: true });
   });
 
   it("records ComfyUI's error, stops it and makes no clip", async () => {
@@ -287,7 +287,7 @@ describe("createAiVideo", () => {
     const { db } = fakeDb({});
     const base = { db, queue: queue([]), ownerId: "owner-1", prompt: "A fox", seconds: 3, startImageKey: null };
     await expect(createAiVideo({ ...base, prompt: "   " })).rejects.toThrow("describe the video");
-    await expect(createAiVideo({ ...base, seconds: 4 })).rejects.toThrow("2, 3, 5 seconds");
+    await expect(createAiVideo({ ...base, seconds: 4 })).rejects.toThrow("3, 5 seconds");
     await expect(createAiVideo({ ...base, startImageKey: "clips/p/c.mp4" })).rejects.toThrow("not valid");
     const { db: noEngine } = fakeDb({}, "not_installed");
     await expect(createAiVideo({ ...base, db: noEngine })).rejects.toThrow("install the AI video engine first");
