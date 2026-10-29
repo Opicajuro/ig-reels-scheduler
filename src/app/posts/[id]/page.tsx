@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import type { AttemptStep } from "@/generated/prisma/enums";
+import { AiBadge } from "@/components/ai-badge";
 import { Alert } from "@/components/alert";
 import { Card } from "@/components/card";
 import { EmptyState } from "@/components/empty-state";
@@ -62,6 +63,7 @@ export default async function PostPage({ params }: PageProps<"/posts/[id]">) {
         actions={
           <>
             <StatusBadge status={post.status} />
+            {post.aiGenerated ? <AiBadge title="Posted with Instagram's AI info label" /> : null}
             {open ? <CancelPostForm postId={post.id} /> : null}
             {post.status === "failed" ? <RetryPostForm postId={post.id} /> : null}
           </>
@@ -83,6 +85,8 @@ export default async function PostPage({ params }: PageProps<"/posts/[id]">) {
             <dd className={styles.caption}>{post.caption || "No caption"}</dd>
             <dt>Shown in the feed</dt>
             <dd>{post.shareToFeed ? "Yes" : "No, only under Reels"}</dd>
+            <dt>AI info label</dt>
+            <dd>{post.aiGenerated ? "Yes, Instagram shows that it was made with AI" : "No"}</dd>
             {post.permalink ? (
               <>
                 <dt>On Instagram</dt>

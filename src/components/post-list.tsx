@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { PostStatus } from "@/generated/prisma/enums";
+import { AiBadge } from "./ai-badge";
 import { LocalTime } from "./local-time";
 import { StatusBadge } from "./status-badge";
 import styles from "./post-list.module.css";
@@ -10,13 +11,14 @@ export type PostListItem = {
   scheduledAt: Date;
   status: PostStatus;
   caption: string;
+  aiGenerated: boolean;
   account: { username: string };
   // Extra lines under the caption, such as an error, and buttons on the right.
   details?: ReactNode;
   actions?: ReactNode;
 };
 
-// Posts as rows: publish time, account, caption and status, each linking to the post's page.
+// Posts as rows: publish time, account, caption, status and the AI label, each linking to the post's page.
 export function PostList({ posts }: { posts: PostListItem[] }) {
   return (
     <ul className={styles.list}>
@@ -28,6 +30,7 @@ export function PostList({ posts }: { posts: PostListItem[] }) {
             </Link>
             <span className={styles.account}>@{post.account.username}</span>
             <StatusBadge status={post.status} />
+            {post.aiGenerated ? <AiBadge title="Posted with Instagram's AI info label" /> : null}
             <p className={styles.caption}>{post.caption || "No caption"}</p>
             {post.details}
           </div>

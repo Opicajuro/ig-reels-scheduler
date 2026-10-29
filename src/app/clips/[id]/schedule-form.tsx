@@ -15,12 +15,15 @@ export function ScheduleForm({
   projectId,
   accounts,
   defaultCaption,
+  clipAiGenerated,
   alreadyScheduledTo,
 }: {
   clipId: string;
   projectId: string;
   accounts: AccountChoice[];
   defaultCaption: string;
+  /** a clip made with AI always carries Instagram's AI info label, so its box is ticked and locked */
+  clipAiGenerated: boolean;
   /** accounts that already have a live post from this project, such as ["@foo"] */
   alreadyScheduledTo: string[];
 }) {
@@ -68,6 +71,10 @@ export function ScheduleForm({
           down-ranks duplicate content.
         </p>
       ) : null}
+      <label className={styles.rights}>
+        <input type="checkbox" name="aiGenerated" defaultChecked={clipAiGenerated} disabled={clipAiGenerated} /> This video is
+        AI-generated (Instagram shows an AI info label)
+      </label>
       <label className={styles.rights}>
         <input type="checkbox" name="rightsConfirmed" required /> I own or hold a license to this clip&apos;s video and audio
       </label>

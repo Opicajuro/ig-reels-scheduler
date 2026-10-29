@@ -12,6 +12,7 @@ type PostRow = {
   mediaId: string;
   caption: string;
   shareToFeed: boolean;
+  aiGenerated: boolean;
   scheduledAt: Date;
   status: string;
   containerId: string | null;
@@ -30,6 +31,7 @@ function makePost(overrides: Partial<PostRow> = {}): PostRow {
     mediaId: "media-1",
     caption: "Big win",
     shareToFeed: true,
+    aiGenerated: false,
     scheduledAt: NOW,
     status: "scheduled",
     containerId: null,
@@ -192,6 +194,21 @@ describe("publishPost (spec section 7)", () => {
     expect(updates).toContainEqual({ igMediaId: "media-9", status: "published" });
     expect(updates.at(-1)).toEqual({ permalink: "https://instagram.com/reel/abc" });
     expect(attempts.map((a) => a.step)).toEqual(["create", "poll", "quota", "publish"]);
+  });
+
+  it("passes the post's AI info label on to the container", async () => {
+    const sent: boolean[] = [];
+    const meta = fakeMeta({
+      createContainer: async (args) => {
+        sent.push(args.aiGenerated);
+        return "container-1";
+      },
+    });
+
+    await run(fakeDb(makePost()).db, meta);
+    await run(fakeDb(makePost({ aiGenerated: true })).db, meta);
+
+    expect(sent).toEqual([false, true]);
   });
 
   it("keeps the post published when the permalink lookup fails, because the Reel is already live", async () => {

@@ -46,6 +46,7 @@ export async function createContainer({
   videoUrl,
   caption,
   shareToFeed,
+  aiGenerated,
   fetchFn = fetch,
   onBucPause,
 }: {
@@ -54,6 +55,7 @@ export async function createContainer({
   videoUrl: string;
   caption: string;
   shareToFeed: boolean;
+  aiGenerated: boolean;
   fetchFn?: Fetch;
   onBucPause?: BucPauseHandler;
 }): Promise<string> {
@@ -63,6 +65,8 @@ export async function createContainer({
     caption,
     share_to_feed: String(shareToFeed),
   });
+  // Instagram's AI info label. It is only sent when set, so other posts are created exactly as before.
+  if (aiGenerated) form.set("is_ai_generated", "true");
   const body = await callMeta(`${BASE}/${igUserId}/media`, { method: "POST", body: form }, token, fetchFn, onBucPause);
   return body.id as string;
 }

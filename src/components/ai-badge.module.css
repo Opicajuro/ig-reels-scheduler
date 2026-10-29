@@ -1,0 +1,10 @@
+/* Made with AI: a clip from the AI video engine, or a post that carries Instagram's AI info label. */
+.badge {
+  justify-self: start;
+  padding: 0 8px;
+  color: var(--info-text);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}

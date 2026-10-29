@@ -332,6 +332,7 @@ async function createClipPosts({
     clip: { projectId: string; storageKey: string; length: number };
     caption: string;
     scheduledAt: Date;
+    aiGenerated: boolean;
     siblingAccountCount: number;
     warnings: string[];
   }>;
@@ -373,6 +374,7 @@ async function createClipPosts({
             mediaId: item.mediaId,
             caption: item.caption,
             shareToFeed: true,
+            aiGenerated: item.aiGenerated,
             scheduledAt: item.scheduledAt,
             rightsConfirmedAt: now,
             queueJobId: jobs[index],
@@ -403,7 +405,8 @@ async function createClipPosts({
   }
 }
 
-// Posts a clip to an Instagram account.
+// Posts a clip to an Instagram account. A clip made with AI always carries Instagram's AI info label; aiGenerated adds
+// it to any other clip.
 export async function scheduleClip({
   db,
   store,
@@ -413,6 +416,7 @@ export async function scheduleClip({
   accountId,
   caption,
   scheduledAt,
+  aiGenerated,
   rightsConfirmed,
   audioSource,
   now,
@@ -425,6 +429,7 @@ export async function scheduleClip({
   accountId: string;
   caption: string;
   scheduledAt: string;
+  aiGenerated: boolean;
   rightsConfirmed: boolean;
   audioSource: AudioSourceValue;
   now: Date;
@@ -448,13 +453,23 @@ export async function scheduleClip({
     accountId,
     audioSource,
     now,
-    posts: [{ clip, caption, scheduledAt: at, siblingAccountCount, warnings: rights.warnings }],
+    posts: [
+      {
+        clip,
+        caption,
+        scheduledAt: at,
+        aiGenerated: clip.aiGenerated || aiGenerated,
+        siblingAccountCount,
+        warnings: rights.warnings,
+      },
+    ],
   });
   return post;
 }
 
 // Posts several clips to one account under one rights confirmation. Every check runs before the first post is made,
-// and the posts are made all or none. Clip i is published at the first time plus i gaps.
+// and the posts are made all or none. Clip i is published at the first time plus i gaps. Clips made with AI always carry
+// Instagram's AI info label; aiGenerated adds it to the others.
 export async function scheduleClips({
   db,
   store,
@@ -464,6 +479,7 @@ export async function scheduleClips({
   accountId,
   firstScheduledAt,
   gapHours,
+  aiGenerated,
   rightsConfirmed,
   audioSource,
   now,
@@ -476,6 +492,7 @@ export async function scheduleClips({
   accountId: string;
   firstScheduledAt: string;
   gapHours: number;
+  aiGenerated: boolean;
   rightsConfirmed: boolean;
   audioSource: AudioSourceValue;
   now: Date;
@@ -508,7 +525,7 @@ export async function scheduleClips({
     if (problems.length > 0) throw new UserError(`${clip.name}: ${problems.join("; ")}`);
     const siblingAccountCount = await countOtherAccounts(db, clip.projectId, accountId);
     const { warnings } = checkRights({ rightsConfirmed, audioSource, siblingAccountCount });
-    posts.push({ clip, caption, scheduledAt, siblingAccountCount, warnings });
+    posts.push({ clip, caption, scheduledAt, aiGenerated: clip.aiGenerated || aiGenerated, siblingAccountCount, warnings });
   }
 
   return createClipPosts({ db, store, queue, ownerId, accountId, audioSource, now, posts });

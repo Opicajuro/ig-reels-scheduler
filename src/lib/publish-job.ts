@@ -15,6 +15,7 @@ export type PublishMeta = {
     videoUrl: string;
     caption: string;
     shareToFeed: boolean;
+    aiGenerated: boolean;
     onBucPause?: BucPauseHandler;
   }): Promise<string>;
   getContainerStatus(args: { containerId: string; token: string; onBucPause?: BucPauseHandler }): Promise<string>;
@@ -59,6 +60,7 @@ type Post = {
   status: string;
   caption: string;
   shareToFeed: boolean;
+  aiGenerated: boolean;
   scheduledAt: Date;
   containerId: string | null;
   igMediaId: string | null;
@@ -162,6 +164,7 @@ async function createContainer(deps: PublishDeps, post: Post, token: string): Pr
       videoUrl,
       caption: post.caption,
       shareToFeed: post.shareToFeed,
+      aiGenerated: post.aiGenerated,
       onBucPause,
     }),
   );

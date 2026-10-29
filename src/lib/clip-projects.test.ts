@@ -147,6 +147,7 @@ function clip(overrides: Partial<Row> = {}): Row {
     storageKey: "clips/p1/c1.mp4",
     title: "Wait for it",
     description: "Watch to the end",
+    aiGenerated: false,
     ...overrides,
   };
 }
@@ -375,6 +376,7 @@ describe("scheduleClips", () => {
       accountId: "acc-1",
       firstScheduledAt: new Date(first).toISOString(),
       gapHours: 24,
+      aiGenerated: false,
       rightsConfirmed: true,
       audioSource: "original",
       now: new Date(),
@@ -384,16 +386,44 @@ describe("scheduleClips", () => {
     expect(tables.auditLog).toHaveLength(2);
   });
 
+  it("labels clips made with AI as AI-generated, and the others only when the box is ticked", async () => {
+    const schedule = async (aiGenerated: boolean) => {
+      const { db, tables } = fakeDb({
+        projects: [project()],
+        clips: [clip({ id: "c1", aiGenerated: true }), clip({ id: "c2", storageKey: "clips/p1/c2.mp4" })],
+        accounts: [account],
+      });
+      await scheduleClips({
+        db,
+        store: fakeStore().store,
+        queue: { send: async () => "job", cancel: async () => {} },
+        ...owned,
+        clipIds: ["c1", "c2"],
+        accountId: "acc-1",
+        firstScheduledAt: new Date(Date.now() + 3 * HOUR).toISOString(),
+        gapHours: 24,
+        aiGenerated,
+        rightsConfirmed: true,
+        audioSource: "original",
+        now: new Date(),
+      });
+      return tables.post.map((post) => post.aiGenerated);
+    };
+
+    expect(await schedule(false)).toEqual([true, false]);
+    expect(await schedule(true)).toEqual([true, true]);
+  });
+
   it("creates nothing when the rights are not confirmed or a clip is not in the owner's projects", async () => {
     const { db, tables } = fakeDb({ projects: [project()], clips: [clip()], accounts: [account] });
     const firstScheduledAt = new Date(Date.now() + 3 * HOUR).toISOString();
     const base = { db, store: fakeStore().store, queue: { send: async () => "x", cancel: async () => {} }, ...owned };
 
     await expect(
-      scheduleClips({ ...base, clipIds: ["c1"], accountId: "acc-1", firstScheduledAt, gapHours: 24, rightsConfirmed: false, audioSource: "original", now: new Date() }),
+      scheduleClips({ ...base, clipIds: ["c1"], accountId: "acc-1", firstScheduledAt, gapHours: 24, aiGenerated: false, rightsConfirmed: false, audioSource: "original", now: new Date() }),
     ).rejects.toThrow(/confirm/);
     await expect(
-      scheduleClips({ ...base, clipIds: ["c1", "missing"], accountId: "acc-1", firstScheduledAt, gapHours: 24, rightsConfirmed: true, audioSource: "original", now: new Date() }),
+      scheduleClips({ ...base, clipIds: ["c1", "missing"], accountId: "acc-1", firstScheduledAt, gapHours: 24, aiGenerated: false, rightsConfirmed: true, audioSource: "original", now: new Date() }),
     ).rejects.toThrow("clip not found");
 
     expect(tables.post).toEqual([]);
@@ -419,6 +449,7 @@ describe("scheduleClips", () => {
         accountId: "acc-1",
         firstScheduledAt: new Date(Date.now() + 3 * HOUR).toISOString(),
         gapHours: 24,
+        aiGenerated: false,
         rightsConfirmed: true,
         audioSource: "original",
         now: new Date(),
@@ -456,6 +487,7 @@ describe("scheduleClips", () => {
         accountId: "acc-1",
         firstScheduledAt: new Date(Date.now() + 3 * HOUR).toISOString(),
         gapHours: 24,
+        aiGenerated: false,
         rightsConfirmed: true,
         audioSource: "original",
         now: new Date(),
@@ -488,6 +520,7 @@ describe("scheduleClip", () => {
       accountId: "acc-1",
       caption: "Wait for it",
       scheduledAt,
+      aiGenerated: false,
       rightsConfirmed: true,
       audioSource: "original",
       now: new Date(),
@@ -498,6 +531,31 @@ describe("scheduleClip", () => {
     expect(media).toMatchObject({ accountId: "acc-1", status: "ready", reelKey: `reels/${media.id}.mp4` });
     expect(tables.post[0]).toMatchObject({ accountId: "acc-1", mediaId: media.id });
     expect(queued).toHaveLength(1);
+  });
+
+  it("labels a clip made with AI as AI-generated even when the form says it is not, and others as the form says", async () => {
+    const schedule = async (clipAiGenerated: boolean, aiGenerated: boolean) => {
+      const { db } = fakeDb({ projects: [project()], clips: [clip({ aiGenerated: clipAiGenerated })], accounts: [account] });
+      const post = await scheduleClip({
+        db,
+        store: fakeStore().store,
+        queue: { send: async () => "job-1", cancel: async () => {} },
+        ...owned,
+        clipId: "c1",
+        accountId: "acc-1",
+        caption: "Wait for it",
+        scheduledAt,
+        aiGenerated,
+        rightsConfirmed: true,
+        audioSource: "original",
+        now: new Date(),
+      });
+      return post.aiGenerated;
+    };
+
+    expect(await schedule(true, false)).toBe(true);
+    expect(await schedule(false, false)).toBe(false);
+    expect(await schedule(false, true)).toBe(true);
   });
 
   it("refuses a caption Instagram would reject, and copies or creates nothing", async () => {
@@ -513,6 +571,7 @@ describe("scheduleClip", () => {
         accountId: "acc-1",
         caption: "x".repeat(2201),
         scheduledAt,
+        aiGenerated: false,
         rightsConfirmed: true,
         audioSource: "original",
         now: new Date(),
@@ -536,6 +595,7 @@ describe("scheduleClip", () => {
         accountId: "acc-1",
         caption: "Wait for it",
         scheduledAt: now.toISOString(),
+        aiGenerated: false,
         rightsConfirmed: true,
         audioSource: "original",
         now,
@@ -557,6 +617,7 @@ describe("scheduleClip", () => {
         accountId: "acc-1",
         caption: "Wait for it",
         scheduledAt,
+        aiGenerated: false,
         rightsConfirmed: false,
         audioSource: "original",
         now: new Date(),
@@ -585,6 +646,7 @@ describe("scheduleClip", () => {
       accountId: "acc-1",
       caption: "Wait for it",
       scheduledAt,
+      aiGenerated: false,
       rightsConfirmed: true,
       audioSource: "from_source",
       now: new Date(),
@@ -610,6 +672,7 @@ describe("scheduleClip", () => {
         accountId: "acc-1",
         caption: "x",
         scheduledAt,
+        aiGenerated: false,
         rightsConfirmed: true,
         audioSource: "original",
         now: new Date(),

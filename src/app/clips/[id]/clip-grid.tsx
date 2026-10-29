@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AiBadge } from "@/components/ai-badge";
 import { Button } from "@/components/button";
 import { Drawer } from "@/components/drawer";
 import { EmptyState } from "@/components/empty-state";
@@ -81,11 +82,7 @@ export function ClipGrid({
               <video src={clip.downloadUrl} controls playsInline preload="metadata" />
               <div className={styles.clipBody}>
                 <strong>{clip.name}</strong>
-                {clip.aiGenerated ? (
-                  <span className={styles.aiBadge} title="Made with AI">
-                    AI
-                  </span>
-                ) : null}
+                {clip.aiGenerated ? <AiBadge title="Made with AI" /> : null}
                 <span className={styles.meta}>
                   {formatTime(clip.start)} – {formatTime(clip.start + clip.length)}
                 </span>
@@ -152,6 +149,7 @@ export function ClipGrid({
                     projectId={projectId}
                     accounts={accounts}
                     defaultCaption={captionOf(openClip)}
+                    clipAiGenerated={openClip.aiGenerated}
                     alreadyScheduledTo={alreadyScheduledTo}
                   />
                 ),
@@ -168,7 +166,12 @@ export function ClipGrid({
       <Drawer open={panel === "schedule"} title="Schedule on Instagram" onClose={() => setPanel(null)}>
         <BulkScheduleForm
           projectId={projectId}
-          clips={selected.map((clip) => ({ id: clip.id, name: clip.name, caption: captionOf(clip) }))}
+          clips={selected.map((clip) => ({
+            id: clip.id,
+            name: clip.name,
+            caption: captionOf(clip),
+            aiGenerated: clip.aiGenerated,
+          }))}
           accounts={accounts}
           alreadyScheduledTo={alreadyScheduledTo}
         />

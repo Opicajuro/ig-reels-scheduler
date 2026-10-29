@@ -3,15 +3,17 @@
 import { useState } from "react";
 import { bulkScheduleClipsAction } from "../actions";
 import { ActionForm, SubmitButton } from "@/components/action-form";
+import { AiBadge } from "@/components/ai-badge";
 import { Field } from "@/components/field";
 import { LocalTime } from "@/components/local-time";
 import styles from "../clips.module.css";
 import type { AccountChoice } from "./schedule-form";
 
-export type SelectedClip = { id: string; name: string; caption: string };
+export type SelectedClip = { id: string; name: string; caption: string; aiGenerated: boolean };
 
 // Schedules every selected clip to one account, spaced by a gap, under one rights confirmation. Before sending, it lists
 // each clip with the caption it is posted with and its publish time, worked out the same way as on the server.
+// Clips made with AI always carry Instagram's AI info label; the AI box adds it to the others.
 // A datetime-local value has no timezone, so the browser turns it into an absolute time before it is sent.
 export function BulkScheduleForm({
   projectId,
@@ -28,6 +30,7 @@ export function BulkScheduleForm({
   const [when, setWhen] = useState("");
   const [gapHours, setGapHours] = useState("24");
   const [audioSource, setAudioSource] = useState("unknown");
+  const [aiGenerated, setAiGenerated] = useState(false);
   const scheduledAt = when ? new Date(when).toISOString() : "";
   const gap = Number(gapHours);
   const gapValid = Number.isInteger(gap) && gap >= 1 && gap <= 720;
@@ -71,7 +74,15 @@ export function BulkScheduleForm({
         {clips.map((clip, index) => (
           <li key={clip.id}>
             <div className={styles.previewHead}>
-              <strong>{clip.name}</strong>
+              <strong>
+                {clip.name}
+                {clip.aiGenerated || aiGenerated ? (
+                  <>
+                    {" "}
+                    <AiBadge title="Posted with Instagram's AI info label" />
+                  </>
+                ) : null}
+              </strong>
               <span className={styles.meta}>
                 {scheduledAt && gapValid ? (
                   <LocalTime date={new Date(firstTime + index * gap * 60 * 60 * 1000)} />
@@ -104,6 +115,16 @@ export function BulkScheduleForm({
           down-ranks duplicate content.
         </p>
       ) : null}
+      <label className={styles.rights}>
+        <input
+          type="checkbox"
+          name="aiGenerated"
+          checked={aiGenerated}
+          onChange={(event) => setAiGenerated(event.target.checked)}
+        />{" "}
+        These videos are AI-generated (Instagram shows an AI info label)
+        {clips.some((clip) => clip.aiGenerated) ? ". Clips made with AI always carry it." : null}
+      </label>
       <label className={styles.rights}>
         <input type="checkbox" name="rightsConfirmed" required /> I own or hold a license to these clips&apos; video and audio
       </label>

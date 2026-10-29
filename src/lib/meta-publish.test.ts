@@ -38,6 +38,7 @@ describe("createContainer", () => {
       videoUrl: "https://storage/reel.mp4",
       caption: "hi",
       shareToFeed: true,
+      aiGenerated: false,
       fetchFn,
     });
 
@@ -49,12 +50,20 @@ describe("createContainer", () => {
     expect(form.get("media_type")).toBe("REELS");
     expect(form.get("video_url")).toBe("https://storage/reel.mp4");
     expect(form.get("share_to_feed")).toBe("true");
+    expect(form.has("is_ai_generated")).toBe(false);
+  });
+
+  it("asks for Instagram's AI info label when the post is AI-generated", async () => {
+    const { fetchFn, calls } = fakeFetch({ id: "container-1" });
+    await createContainer({ igUserId: "1", token: "t", videoUrl: "u", caption: "", shareToFeed: true, aiGenerated: true, fetchFn });
+
+    expect((calls[0].body as URLSearchParams).get("is_ai_generated")).toBe("true");
   });
 
   it("throws a MetaApiError carrying Meta's error code", async () => {
     const { fetchFn } = fakeFetch({ error: { message: "bad", code: 100 } }, { status: 400 });
     await expect(
-      createContainer({ igUserId: "1", token: "t", videoUrl: "u", caption: "", shareToFeed: true, fetchFn }),
+      createContainer({ igUserId: "1", token: "t", videoUrl: "u", caption: "", shareToFeed: true, aiGenerated: false, fetchFn }),
     ).rejects.toMatchObject({ code: 100, status: 400 });
   });
 
@@ -66,6 +75,7 @@ describe("createContainer", () => {
       videoUrl: "u",
       caption: "",
       shareToFeed: true,
+      aiGenerated: false,
       fetchFn,
     }).catch((e: unknown) => e);
 
@@ -86,6 +96,7 @@ describe("createContainer", () => {
       videoUrl: "u",
       caption: "",
       shareToFeed: true,
+      aiGenerated: false,
       fetchFn,
       onBucPause: (seconds) => pauses.push(seconds),
     });

@@ -102,6 +102,8 @@ model Post {
   media       Media         @relation(fields: [mediaId], references: [id], onDelete: Cascade)
   caption     String
   shareToFeed Boolean       @default(true)
+  // Sent as is_ai_generated, so Instagram shows its AI info label on the Reel.
+  aiGenerated Boolean       @default(false)
   scheduledAt DateTime
   status      PostStatus    @default(scheduled)
   containerId String?
@@ -194,7 +196,7 @@ model Clip {
   storageKey  String
   title       String?
   description String?
-  // Made by the AI video engine on /ai. Publishing will have to tell Instagram (is_ai_generated).
+  // Made by the AI video engine on /ai. Its posts always carry Instagram's AI info label (Post.aiGenerated).
   aiGenerated Boolean     @default(false)
   createdAt   DateTime    @default(now())
   aiVideoJob  AiVideoJob?
