@@ -89,7 +89,8 @@ try {
   $env:LOCALIRS_ALERT_EMAIL = $secrets.alertEmail
   $env:LOCALIRS_CHROME_PATH = Join-Path $tools "chrome\chrome-headless-shell.exe"
   $env:LOCALIRS_WHISPER_BIN = Join-Path $tools "whisper\Release\whisper-cli.exe"
-  $env:LOCALIRS_WHISPER_MODEL = Join-Path $tools "whisper\ggml-base.bin"
+  $env:LOCALIRS_WHISPER_MODEL = Join-Path $tools "whisper\ggml-large-v3-turbo-q5_0.bin"
+  $env:LOCALIRS_WHISPER_VAD_MODEL = Join-Path $tools "whisper\ggml-silero-v6.2.0.bin"
   $env:LOCALIRS_DATA_DIR = $data
   $env:PATH = "$tools;$env:PATH"
 

@@ -11,7 +11,8 @@ export function bundleCaptions() {
   return bundle({ entryPoint: ENTRY_POINT });
 }
 
-// Draws each caption as a transparent 1080x1920 PNG, all in one browser. stills is a list of { text, output }.
+// Draws each caption as a transparent 1080x1920 PNG, all in one browser. stills is a list of
+// { words, highlight, output }, as CaptionStill takes them.
 export async function renderCaptionStills({
   serveUrl,
   stills,
@@ -30,8 +31,8 @@ export async function renderCaptionStills({
     let next = 0;
     const renderNext = async () => {
       while (next < stills.length) {
-        const { text, output } = stills[next++];
-        const inputProps = { text, preset, position, uppercase };
+        const { words, highlight, output } = stills[next++];
+        const inputProps = { words, highlight, preset, position, uppercase };
         const composition = await selectComposition({
           serveUrl,
           id: "CaptionStill",

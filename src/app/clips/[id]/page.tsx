@@ -29,6 +29,7 @@ const CAPTION_STYLES = [
   { value: "classic", label: "Classic", hint: "White text, soft shadow" },
   { value: "yellow", label: "Yellow", hint: "Bold, black outline" },
   { value: "box", label: "Box", hint: "White on a dark panel" },
+  { value: "words", label: "Word by word", hint: "The spoken word lights up" },
 ];
 const CAPTION_POSITIONS = [
   { value: "bottom", label: "Bottom" },
@@ -180,7 +181,9 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
                   {CAPTION_STYLES.map((style) => (
                     <label key={style.value} className={styles.card}>
                       <input type="radio" name="captionPreset" value={style.value} defaultChecked={style.value === preset} />
-                      <span className={`${styles.swatch} ${style.value === "yellow" ? styles.yellow : ""} ${style.value === "box" ? styles.box : ""}`}>Aa</span>
+                      <span className={`${styles.swatch} ${style.value === "yellow" ? styles.yellow : ""} ${style.value === "box" ? styles.box : ""}`}>
+                        {style.value === "words" ? <span>A<span className={styles.spokenWord}>a</span></span> : "Aa"}
+                      </span>
                       <div>
                         <span>{style.label}</span>
                         <small>{style.hint}</small>

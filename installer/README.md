@@ -1,7 +1,7 @@
 # Localirs Windows installer
 
 One `Localirs-Setup.exe` that installs the app with everything it needs on the same PC: Node, ffmpeg,
-yt-dlp, whisper.cpp with its model, a headless Chrome for captions, PostgreSQL 16, SeaweedFS for file storage, and 7zr.exe (7-Zip)
+yt-dlp, whisper.cpp with its speech and voice-detection models, a headless Chrome for captions, PostgreSQL 16, SeaweedFS for file storage, and 7zr.exe (7-Zip)
 to unpack the AI video engine, which `/ai` downloads into `data\ai` when asked. Nothing else
 needs installing by hand. The only things you type are a Resend API key and a sender address for sign-in email.
 
@@ -35,7 +35,7 @@ needs installing by hand. The only things you type are a Resend API key and a se
   their CORS preflight, copy, download and delete, through the app's own storage functions.
 - Not verified: anything Windows-specific. `build-installer.ps1`, `setup-localirs.ps1`, `start-localirs.ps1`
   and `localirs.iss` have not been run. The download URLs in `tools.json` are not all checked. The whisper.cpp
-  zip layout and the `whisper-cli.exe` name in particular need a check on a real build.
+  zip layout (`Release\whisper-cli.exe`) was checked against the pinned zip.
 - The hashes in `tools.json` are empty until the first build fills them in.
 - Captions need a Whisper model, which the build downloads from Hugging Face. Links need `yt-dlp`, which the build
   downloads from GitHub.

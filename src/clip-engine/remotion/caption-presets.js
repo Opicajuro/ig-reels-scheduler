@@ -1,21 +1,32 @@
-// Caption looks a person can pick. Each preset sets how the caption text is drawn on the clip.
-export const CAPTION_PRESET_NAMES = ["classic", "yellow", "box"];
+// Caption looks a person can pick. Each preset sets how the caption text is drawn on the clip. A preset with
+// wordByWord shows each line once per word, with the spoken word drawn in its highlight style.
+export const CAPTION_PRESET_NAMES = ["classic", "yellow", "box", "words"];
 
 const PRESETS = {
   classic: {
     color: "white",
     background: null,
     textShadow: "0 4px 12px rgba(0,0,0,0.9)",
+    wordByWord: false,
   },
   yellow: {
     color: "#ffd400",
     background: null,
     textShadow: "-3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000, 3px 3px 0 #000, 0 6px 14px rgba(0,0,0,0.9)",
+    wordByWord: false,
   },
   box: {
     color: "white",
     background: "rgba(0,0,0,0.72)",
     textShadow: "none",
+    wordByWord: false,
+  },
+  words: {
+    color: "white",
+    background: null,
+    textShadow: "0 4px 12px rgba(0,0,0,0.9)",
+    wordByWord: true,
+    highlight: { color: "#111", background: "#ffd400", borderRadius: 12, padding: "0 12px", textShadow: "none" },
   },
 };
 

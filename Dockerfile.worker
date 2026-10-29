@@ -5,7 +5,7 @@ RUN apt-get update \
   && pip install --no-cache-dir --break-system-packages yt-dlp \
   && rm -rf /var/lib/apt/lists/*
 
-# Captions render with this Chrome. Whisper is not in the image: captions need WHISPER_BIN and WHISPER_MODEL set.
+# Captions render with this Chrome. Whisper is not in the image: captions need WHISPER_BIN, WHISPER_MODEL and WHISPER_VAD_MODEL set.
 ENV CHROME_PATH=/usr/bin/chromium
 
 RUN corepack enable

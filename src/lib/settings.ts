@@ -2,31 +2,12 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import { decryptToken, encryptToken, loadTokenKey } from "./token-crypto";
 import { UserError } from "./user-error";
 
-// The languages whisper can transcribe captions in, by whisper's language code. "auto" lets whisper detect it.
-export const CAPTION_LANGUAGES = [
-  { code: "auto", label: "Auto-detect" },
-  { code: "en", label: "English" },
-  { code: "sk", label: "Slovak" },
-  { code: "cs", label: "Czech" },
-  { code: "de", label: "German" },
-  { code: "es", label: "Spanish" },
-  { code: "fr", label: "French" },
-  { code: "it", label: "Italian" },
-  { code: "pl", label: "Polish" },
-  { code: "hu", label: "Hungarian" },
-  { code: "pt", label: "Portuguese" },
-  { code: "nl", label: "Dutch" },
-  { code: "uk", label: "Ukrainian" },
-  { code: "ru", label: "Russian" },
-] as const;
-
 export type Settings = {
   metaAppId: string | null;
   metaAppSecret: string | null;
   alertEmail: string | null;
   resendApiKey: string | null;
   emailFrom: string | null;
-  captionLanguage: string;
 };
 
 // What the settings form sends. An empty secret keeps the saved one, so the page never has to send a secret back.
@@ -36,7 +17,6 @@ export type SettingsInput = {
   alertEmail: string;
   resendApiKey: string;
   emailFrom: string;
-  captionLanguage: string;
 };
 
 const SETTINGS_ID = 1;
@@ -65,7 +45,7 @@ export function openSecret(sealed: string, key: Buffer): string {
 export async function getSettings(db: PrismaClient): Promise<Settings> {
   const row = await db.setting.findUnique({ where: { id: SETTINGS_ID } });
   if (!row) {
-    return { metaAppId: null, metaAppSecret: null, alertEmail: null, resendApiKey: null, emailFrom: null, captionLanguage: "auto" };
+    return { metaAppId: null, metaAppSecret: null, alertEmail: null, resendApiKey: null, emailFrom: null };
   }
   return {
     metaAppId: row.metaAppId,
@@ -73,7 +53,6 @@ export async function getSettings(db: PrismaClient): Promise<Settings> {
     alertEmail: row.alertEmail,
     resendApiKey: row.resendApiKey === null ? null : openSecret(row.resendApiKey, loadTokenKey()),
     emailFrom: row.emailFrom,
-    captionLanguage: row.captionLanguage,
   };
 }
 
@@ -83,9 +62,6 @@ function orNull(value: string): string | null {
 }
 
 export async function saveSettings(db: PrismaClient, input: SettingsInput): Promise<void> {
-  if (!CAPTION_LANGUAGES.some((language) => language.code === input.captionLanguage)) {
-    throw new UserError("choose a caption language from the list");
-  }
   const alertEmail = orNull(input.alertEmail);
   if (alertEmail !== null && !/^[^\s@]+@[^\s@]+$/.test(alertEmail)) {
     throw new UserError("the failure-email address does not look like an email address");
@@ -104,7 +80,6 @@ export async function saveSettings(db: PrismaClient, input: SettingsInput): Prom
     metaAppId: orNull(input.metaAppId),
     alertEmail,
     emailFrom,
-    captionLanguage: input.captionLanguage,
     ...(metaAppSecret === null ? {} : { metaAppSecret: sealSecret(metaAppSecret, loadTokenKey()) }),
     ...(resendApiKey === null ? {} : { resendApiKey: sealSecret(resendApiKey, loadTokenKey()) }),
   };

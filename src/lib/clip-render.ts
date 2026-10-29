@@ -5,8 +5,7 @@ import type { ClipProject, PrismaClient } from "@/generated/prisma/client";
 import { requireEnv } from "./env";
 import { buildClipKey, buildClipSourceKey } from "./storage";
 import type { ClipStore } from "./clip-store";
-import type { Caption } from "@remotion/captions";
-import { captionsForClip } from "@/clip-engine/captions-timing.js";
+import { captionLines, captionsForClip, captionStills } from "@/clip-engine/captions-timing.js";
 import { downloadVideo } from "@/clip-engine/download.js";
 import {
   audioSamples,
@@ -19,7 +18,8 @@ import {
 import { loudnessPerSecond, motionPerSecond } from "@/clip-engine/analysis.js";
 import { combineScores, MIN_SEGMENT_SECONDS, pickHighlights, resolveClipCount } from "@/clip-engine/helpers.js";
 import { bundleCaptions, renderCaptionStills } from "@/clip-engine/render-captions.js";
-import { transcribeToCaptions } from "@/clip-engine/transcribe.js";
+import { captionPreset } from "@/clip-engine/remotion/caption-presets.js";
+import { transcribeToWords } from "@/clip-engine/transcribe.js";
 
 export function clipName(index: number): string {
   return `clip-${String(index + 1).padStart(3, "0")}`;
@@ -70,15 +70,16 @@ export async function renderClipProject({
     const clipCount = resolveClipCount(project.clipCount, durationSeconds, project.clipSeconds);
     await step(project.withCaptions ? "Analysing motion and sound and transcribing" : "Analysing motion and sound");
     // Each of these reads the whole video in its own process, so they run at the same time.
-    const [motion, audio, captions] = await Promise.all([
+    const [motion, audio, words] = await Promise.all([
       motionPerSecond(motionFrames(sourcePath), durationSeconds),
       loudnessPerSecond(audioSamples(sourcePath), durationSeconds),
       project.withCaptions
-        ? transcribeToCaptions({
+        ? transcribeToWords({
             mediaPath: sourcePath,
             workDir,
             whisperBin: requireEnv("WHISPER_BIN"),
             model: requireEnv("WHISPER_MODEL"),
+            vadModel: requireEnv("WHISPER_VAD_MODEL"),
           })
         : null,
     ]);
@@ -87,8 +88,10 @@ export async function renderClipProject({
     );
 
     // Each caption is drawn once as a PNG, all from one Remotion bundle, then laid over its clip by ffmpeg.
-    if (captions) await step("Drawing captions");
-    const overlays = captions ? await captionOverlays(captions, highlights, path.join(workDir, "captions"), project) : null;
+    if (words) await step("Drawing captions");
+    const overlays = words
+      ? await captionOverlays(captionLines(words), highlights, path.join(workDir, "captions"), project)
+      : null;
 
     for (const [index, highlight] of highlights.entries()) {
       await step(`Making clip ${index + 1} of ${highlights.length}`);
@@ -126,29 +129,33 @@ export async function renderClipProject({
 
 // Draws every caption of the project and returns, per clip, the ffconcat list that times its captions.
 async function captionOverlays(
-  captions: Caption[],
+  lines: ReturnType<typeof captionLines>,
   highlights: { clipId: string; start: number; length: number }[],
   dir: string,
   look: Pick<ClipProject, "captionPreset" | "captionPosition" | "captionUppercase">,
 ): Promise<Map<string, string>> {
   await mkdir(dir, { recursive: true });
+  const { wordByWord } = captionPreset(look.captionPreset);
   const clips = highlights.map((highlight) => {
-    const clipCaptions: Caption[] = captionsForClip(
-      captions,
-      highlight.start * 1000,
-      (highlight.start + highlight.length) * 1000,
+    const clipLines = captionsForClip(lines, highlight.start * 1000, (highlight.start + highlight.length) * 1000);
+    const stills: { words: string[]; highlight: number | null; startMs: number; endMs: number }[] = captionStills(
+      clipLines,
+      wordByWord,
     );
-    const overlays = clipCaptions.map((caption, index) => ({
-      text: caption.text,
+    const overlays = stills.map((still, index) => ({
+      words: still.words,
+      highlight: still.highlight,
       image: path.join(dir, `${highlight.clipId}-${index}.png`),
-      start: caption.startMs / 1000,
-      end: caption.endMs / 1000,
+      start: still.startMs / 1000,
+      end: still.endMs / 1000,
     }));
     return { ...highlight, overlays };
   });
   await renderCaptionStills({
     serveUrl: await bundleCaptions(),
-    stills: clips.flatMap((clip) => clip.overlays.map(({ text, image }) => ({ text, output: image }))),
+    stills: clips.flatMap((clip) =>
+      clip.overlays.map(({ words, highlight, image }) => ({ words, highlight, output: image })),
+    ),
     chromePath: requireEnv("CHROME_PATH"),
     preset: look.captionPreset,
     position: look.captionPosition,

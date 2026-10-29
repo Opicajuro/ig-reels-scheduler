@@ -13,7 +13,7 @@ function fakeDb(initial: Row | null = null) {
     setting: {
       findUnique: async () => row,
       upsert: async ({ create, update }: { create: Row; update: Row }) => {
-        row = row ? { ...row, ...update } : { metaAppSecret: null, resendApiKey: null, captionLanguage: "auto", ...create };
+        row = row ? { ...row, ...update } : { metaAppSecret: null, resendApiKey: null, ...create };
         return row;
       },
     },
@@ -27,7 +27,6 @@ const INPUT: SettingsInput = {
   alertEmail: "me@example.test",
   resendApiKey: "re_test",
   emailFrom: "Localirs <onboarding@resend.dev>",
-  captionLanguage: "sk",
 };
 
 beforeEach(() => {
@@ -51,14 +50,13 @@ describe("sealSecret / openSecret", () => {
 });
 
 describe("getSettings", () => {
-  it("is empty with auto-detected captions before anything is saved", async () => {
+  it("is empty before anything is saved", async () => {
     expect(await getSettings(fakeDb().db)).toEqual({
       metaAppId: null,
       metaAppSecret: null,
       alertEmail: null,
       resendApiKey: null,
       emailFrom: null,
-      captionLanguage: "auto",
     });
   });
 });
@@ -97,10 +95,9 @@ describe("saveSettings", () => {
     expect(emailSettings(await getSettings(db))).toBeNull();
   });
 
-  it("refuses an address without @ and a language not in the list", async () => {
+  it("refuses an address without @", async () => {
     const { db } = fakeDb();
     await expect(saveSettings(db, { ...INPUT, alertEmail: "me" })).rejects.toThrow("does not look like an email");
-    await expect(saveSettings(db, { ...INPUT, captionLanguage: "xx" })).rejects.toThrow("caption language");
   });
 });
 

@@ -20,7 +20,6 @@
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "@remotion/bundler": "^4.0.534",
-    "@remotion/captions": "^4.0.534",
     "@remotion/renderer": "^4.0.534",
     "archiver": "^7.0.1",
     "dotenv": "^18.0.7",

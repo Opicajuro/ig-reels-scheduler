@@ -4,10 +4,18 @@ import { UserError } from "../lib/user-error";
 import { CAPTION_POSITION_NAMES, CAPTION_PRESET_NAMES, captionPlacement, captionPreset } from "./remotion/caption-presets.js";
 import { parseCaptionPosition, parseCaptionPreset } from "./helpers.js";
 
-test("there are three caption presets, and each one has a text color", () => {
-  assert.deepEqual(CAPTION_PRESET_NAMES, ["classic", "yellow", "box"]);
+test("there are four caption presets, and each one has a text color", () => {
+  assert.deepEqual(CAPTION_PRESET_NAMES, ["classic", "yellow", "box", "words"]);
   for (const name of CAPTION_PRESET_NAMES) {
     assert.ok(captionPreset(name).color, `${name} needs a color`);
+  }
+});
+
+test("only the word-by-word preset highlights the spoken word", () => {
+  for (const name of CAPTION_PRESET_NAMES) {
+    const preset = captionPreset(name);
+    assert.equal(preset.wordByWord, name === "words");
+    assert.equal(Boolean(preset.highlight), preset.wordByWord, `${name} needs a highlight only when word by word`);
   }
 });
 

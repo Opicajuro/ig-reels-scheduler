@@ -8,7 +8,7 @@ export function Root() {
       component={CaptionStill}
       width={1080}
       height={1920}
-      defaultProps={{ text: "", preset: "classic", position: "bottom", uppercase: false }}
+      defaultProps={{ words: [], highlight: null, preset: "classic", position: "bottom", uppercase: false }}
     />
   );
 }

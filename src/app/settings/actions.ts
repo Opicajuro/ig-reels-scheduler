@@ -14,7 +14,6 @@ export async function saveSettingsAction(_previous: ActionResult, formData: Form
       alertEmail: text("alertEmail"),
       resendApiKey: text("resendApiKey"),
       emailFrom: text("emailFrom"),
-      captionLanguage: text("captionLanguage"),
     });
     // Home, Accounts and Privacy show what these settings decide.
     revalidatePath("/", "layout");

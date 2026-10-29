@@ -183,6 +183,14 @@
   background: rgba(0, 0, 0, 0.72);
 }
 
+.spokenWord {
+  margin-left: 2px;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: #111;
+  background: #ffd400;
+}
+
 .toggle {
   display: flex;
   align-items: center;

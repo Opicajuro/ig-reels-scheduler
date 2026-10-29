@@ -7,7 +7,7 @@ import { Card } from "@/components/card";
 import { Field } from "@/components/field";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
-import { CAPTION_LANGUAGES, getSettings } from "@/lib/settings";
+import { getSettings } from "@/lib/settings";
 import { saveSettingsAction } from "./actions";
 import styles from "./settings.module.css";
 
@@ -63,21 +63,6 @@ export default async function SettingsPage() {
             </Field>
             <Field label="Sender" hint="Keep Localirs <onboarding@resend.dev> unless you verified your own domain in Resend.">
               <input name="emailFrom" defaultValue={settings.emailFrom ?? ""} placeholder="Localirs <onboarding@resend.dev>" />
-            </Field>
-          </div>
-        </Card>
-
-        <Card>
-          <h2>Captions</h2>
-          <div className={styles.fields}>
-            <Field label="Caption language" hint="The language spoken in your videos. Auto-detect works for most.">
-              <select name="captionLanguage" defaultValue={settings.captionLanguage}>
-                {CAPTION_LANGUAGES.map((language) => (
-                  <option key={language.code} value={language.code}>
-                    {language.label}
-                  </option>
-                ))}
-              </select>
             </Field>
           </div>
         </Card>

@@ -36,12 +36,12 @@ test("caption stills laid over a clip show only while each caption is spoken", a
   ]);
 
   const overlays = [
-    { text: "hello world", image: path.join(dir, "caption-0.png"), start: 0.5, end: 2 },
-    { text: "second line", image: path.join(dir, "caption-1.png"), start: 3, end: 4.5 },
+    { words: ["hello", "world"], image: path.join(dir, "caption-0.png"), start: 0.5, end: 2 },
+    { words: ["second", "line"], image: path.join(dir, "caption-1.png"), start: 3, end: 4.5 },
   ];
   await renderCaptionStills({
     serveUrl: await bundleCaptions(),
-    stills: overlays.map(({ text, image }) => ({ text, output: image })),
+    stills: overlays.map(({ words, image }) => ({ words, highlight: null, output: image })),
     chromePath: process.env.CHROME_PATH,
     preset: "classic",
   });
@@ -65,4 +65,41 @@ test("caption stills laid over a clip show only while each caption is spoken", a
   assert.ok(changedPixels(grayFrame(output, 4.5), gap) < 100, "second caption ends late");
   assert.ok(changedPixels(grayFrame(output, 0.2), gap) < 100, "a caption shows before the first one starts");
   assert.ok(changedPixels(grayFrame(output, 5.5), gap) < 100, "a caption shows after the last one ends");
+});
+
+test("word-by-word stills highlight the word being spoken", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "captions-words-test-"));
+  const source = path.join(dir, "source.mp4");
+  const blank = path.join(dir, "blank.png");
+  const list = path.join(dir, "overlays.ffconcat");
+  const output = path.join(dir, "captioned.mp4");
+  execFileSync("ffmpeg", [
+    "-v", "error", "-y",
+    "-f", "lavfi", "-i", "color=c=gray:duration=4:size=1920x1080:rate=30",
+    "-c:v", "libx264", "-pix_fmt", "yuv420p",
+    source,
+  ]);
+
+  const words = ["hello", "world"];
+  const overlays = [
+    { highlight: 0, image: path.join(dir, "word-0.png"), start: 0.5, end: 1.5 },
+    { highlight: 1, image: path.join(dir, "word-1.png"), start: 1.5, end: 2.5 },
+  ];
+  await renderCaptionStills({
+    serveUrl: await bundleCaptions(),
+    stills: overlays.map(({ highlight, image }) => ({ words, highlight, output: image })),
+    chromePath: process.env.CHROME_PATH,
+    preset: "words",
+  });
+  await renderBlankOverlay(blank);
+  writeFileSync(list, overlayList({ overlays, blank, length: 3 }));
+  await renderClip({ input: source, output, start: 0, length: 3, overlay: list });
+
+  const gap = grayFrame(output, 2.75);
+  const first = grayFrame(output, 1);
+  const second = grayFrame(output, 2);
+  assert.ok(changedPixels(first, gap) > 1000, "the line is missing while the first word is spoken");
+  assert.ok(changedPixels(second, gap) > 1000, "the line is missing while the second word is spoken");
+  // The highlight moved from "hello" to "world", so the two frames differ in many pixels.
+  assert.ok(changedPixels(first, second) > 1000, "the highlighted word did not change");
 });

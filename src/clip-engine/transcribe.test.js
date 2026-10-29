@@ -1,12 +1,17 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { transcribeToCaptions } from "./transcribe.js";
+import { fileURLToPath } from "node:url";
+import { transcribeToWords, wordsFromWhisperJson } from "./transcribe.js";
 
-test("transcribeToCaptions runs whisper-cli on the audio and returns its captions", async () => {
+// whisper-cli's -ml 1 -sow -oj output for whisper.cpp's samples/jfk.wav. The layout is the one whisper-cli 1.9.5
+// writes; the words and times are the ones its README lists for -ml 1, with punctuation joined to its word as -sow does.
+const FIXTURE = fileURLToPath(new URL("./whisper-words.fixture.json", import.meta.url));
+
+test("transcribeToWords runs whisper-cli in English with voice detection and returns its words", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "transcribe-test-"));
   const media = path.join(dir, "source.mp4");
   execFileSync("ffmpeg", [
@@ -17,28 +22,65 @@ test("transcribeToCaptions runs whisper-cli on the audio and returns its caption
     media,
   ]);
 
+  // Records its arguments, one per line, and writes the fixture where -of says.
   const fakeWhisper = path.join(dir, "fake-whisper.sh");
+  const argsFile = path.join(dir, "args.txt");
   writeFileSync(
     fakeWhisper,
     [
       "#!/bin/sh",
+      `printf '%s\\n' "$@" > '${argsFile}'`,
       "prefix=",
       "while [ $# -gt 0 ]; do",
       '  case "$1" in -of) prefix="$2"; shift;; esac',
       "  shift",
       "done",
-      'printf "1\\n00:00:00,500 --> 00:00:01,500\\nhello world\\n" > "$prefix.srt"',
+      `cp '${FIXTURE}' "$prefix.json"`,
       "",
     ].join("\n"),
   );
   chmodSync(fakeWhisper, 0o755);
 
-  const captions = await transcribeToCaptions({
+  const words = await transcribeToWords({
     mediaPath: media,
     workDir: dir,
     whisperBin: fakeWhisper,
-    model: "unused-by-fake.bin",
+    model: "model.bin",
+    vadModel: "vad.bin",
   });
 
-  assert.deepEqual(captions.map((c) => [c.text, c.startMs, c.endMs]), [["hello world", 500, 1500]]);
+  const args = readFileSync(argsFile, "utf8").trim().split("\n");
+  const after = (flag) => args[args.indexOf(flag) + 1];
+  assert.equal(after("-m"), "model.bin");
+  assert.equal(after("-l"), "en");
+  assert.ok(args.includes("--vad"), "voice detection is off");
+  assert.equal(after("-vm"), "vad.bin");
+  assert.equal(after("-ml"), "1");
+  assert.ok(args.includes("-sow") && args.includes("-oj"), "words are not written as JSON");
+  assert.equal(after("-f"), path.join(dir, "audio.wav"));
+  assert.equal(words.length, 22);
+});
+
+test("wordsFromWhisperJson reads one word per segment and skips the empty one", () => {
+  const words = wordsFromWhisperJson(JSON.parse(readFileSync(FIXTURE, "utf8")));
+  assert.deepEqual(words.slice(0, 6), [
+    { text: "And", startMs: 320, endMs: 370 },
+    { text: "so", startMs: 370, endMs: 690 },
+    { text: "my", startMs: 690, endMs: 850 },
+    { text: "fellow", startMs: 850, endMs: 1590 },
+    { text: "Americans,", startMs: 1590, endMs: 3300 },
+    { text: "ask", startMs: 3300, endMs: 4140 },
+  ]);
+  assert.deepEqual(words.at(-1), { text: "country.", startMs: 10020, endMs: 10510 });
+});
+
+test("wordsFromWhisperJson ends a word where the next one starts when VAD stretched it", () => {
+  const segment = (text, from, to) => ({ text, offsets: { from, to } });
+  const words = wordsFromWhisperJson({
+    transcription: [segment(" a", 1000, 1100), segment(" b", 1040, 1300)],
+  });
+  assert.deepEqual(words, [
+    { text: "a", startMs: 1000, endMs: 1040 },
+    { text: "b", startMs: 1040, endMs: 1300 },
+  ]);
 });
