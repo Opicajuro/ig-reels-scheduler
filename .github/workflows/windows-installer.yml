@@ -18,32 +18,36 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 150
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      # The pnpm store is cached on its own below, so setup-node's package-manager cache stays off.
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+          package-manager-cache: false
       # The downloads folder also holds weed.exe, built once per SeaweedFS version (v2: the entries before it had none).
       # It is saved after the build step even when the build fails: Get-Tool deletes a failed download, and a failed
       # go build leaves no weed.exe.
       - name: Restore downloaded tools
         id: tools
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: installer/downloads
           key: installer-tools-v2-${{ hashFiles('installer/tools.json') }}
       # Go is only needed to build weed.exe, which the restored tools may already hold.
-      - uses: actions/setup-go@v5
+      # SeaweedFS is built from its downloaded source, not a go.sum in this repository, so setup-go has nothing to cache.
+      - uses: actions/setup-go@v7
         if: hashFiles('installer/downloads/weed-*.exe') == ''
         with:
           go-version: "1.26.6"
+          cache: false
       - name: Restore the pnpm store
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: installer/pnpm-store
           key: pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-store-
       - name: Restore the Next.js build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: installer/next-cache
           key: next-cache-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
@@ -63,18 +67,18 @@ jobs:
         run: powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
       - name: Save downloaded tools
         if: ${{ !cancelled() && steps.tools.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: installer/downloads
           key: ${{ steps.tools.outputs.cache-primary-key }}
       - name: Upload the installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Localirs-Setup
           path: installer/Output/Localirs-Setup.exe
           if-no-files-found: error
       - name: Publish the installer as a release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: localirs-build-${{ github.run_number }}
           target_commitish: ${{ github.sha }}
