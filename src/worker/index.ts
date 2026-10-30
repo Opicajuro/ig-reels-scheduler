@@ -4,6 +4,7 @@ import path from "node:path";
 import type { Job } from "pg-boss";
 import { refreshDueTokens } from "@/lib/refresh-job";
 import { renderClipProject } from "@/lib/clip-render";
+import { requeueInterruptedRenders } from "@/lib/clip-resume";
 import { s3ClipStore } from "@/lib/clip-store";
 import { prisma } from "@/lib/prisma";
 import { loadTokenKey } from "@/lib/token-crypto";
@@ -17,6 +18,7 @@ import {
   BACKUP_QUEUE,
   CLIP_QUEUE,
   getBoss,
+  getClipJobs,
   INSIGHTS_QUEUE,
   MEDIA_QUEUE,
   OWNER_ALERTS_QUEUE,
@@ -56,10 +58,14 @@ async function main() {
     await processMedia({ db: prisma, mediaId: job.data.mediaId, downloadToFile, uploadFromFile });
   });
 
-  await boss.work(CLIP_QUEUE, async ([job]: Job<{ projectId: string }>[]) => {
+  // Before clip jobs are taken, so a job the closed worker had claimed is not mistaken for one running now.
+  const resumed = await requeueInterruptedRenders({ db: prisma, jobs: getClipJobs() });
+  if (resumed.length > 0) console.log(`resuming clips for ${resumed.length} project(s)`);
+  await boss.work(CLIP_QUEUE, async ([job]: Job<{ projectId: string; renderId: string }>[]) => {
     const workDir = await mkdtemp(path.join(os.tmpdir(), "clip-project-"));
     try {
-      await renderClipProject({ db: prisma, store: s3ClipStore, projectId: job.data.projectId, workDir });
+      const { projectId, renderId } = job.data;
+      await renderClipProject({ db: prisma, store: s3ClipStore, projectId, renderId, workDir });
     } finally {
       await rm(workDir, { recursive: true, force: true });
     }

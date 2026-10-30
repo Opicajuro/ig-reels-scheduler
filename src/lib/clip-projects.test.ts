@@ -201,7 +201,7 @@ describe("startRender", () => {
     const queued: string[] = [];
     await startRender({
       db,
-      queue: { send: async (id) => (queued.push(id), "job-1") },
+      queue: { send: async (id, renderId) => (queued.push(`${id}:${renderId}`), "job-1") },
       ...owned,
       projectId: "p1",
       clipSeconds: 30,
@@ -218,7 +218,10 @@ describe("startRender", () => {
       withCaptions: true,
       captionPreset: "yellow",
     });
-    expect(queued).toEqual(["p1"]);
+    // Each "Make clips" is a new render, so it starts over rather than resuming an interrupted one.
+    const { renderId } = tables.clipProject[0];
+    expect(renderId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(queued).toEqual([`p1:${renderId}`]);
   });
 
   it("stores Auto as no count, so the worker picks one from the video's length", async () => {

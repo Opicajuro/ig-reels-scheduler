@@ -18,7 +18,8 @@ function formatElapsed(totalSeconds: number): string {
 
 // While clips are being made, show what the worker is doing and for how long. The page is reloaded once each time
 // another clip is finished, so it shows up straight away, and once more at the end; not on every poll, so the clip
-// previews are not re-signed and restarted all the time.
+// previews are not re-signed and restarted all the time. A render that the worker goes on with after the PC slept or
+// Localirs was closed says "Resuming… clip N of M", and its time still counts from when "Make clips" was pressed.
 export function RenderProgress({
   projectId,
   initialStep,

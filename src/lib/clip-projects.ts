@@ -124,12 +124,15 @@ export async function startRender({
   const position = withCaptions ? parseCaptionPosition(captionPosition) : "bottom";
   const uppercase = withCaptions && captionUppercase === true;
 
+  // A new render id: this render starts over, replacing the clips, even if an earlier one was interrupted.
+  const renderId = randomUUID();
   await db.clipProject.update({
     where: { id: projectId },
     data: {
       status: "rendering",
       error: null,
       renderStartedAt: new Date(),
+      renderId,
       clipSeconds: seconds,
       clipCount,
       withCaptions,
@@ -139,7 +142,7 @@ export async function startRender({
     },
   });
   try {
-    await queue.send(projectId);
+    await queue.send(projectId, renderId);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await db.clipProject.update({ where: { id: projectId }, data: { status: "failed", error: message } });
