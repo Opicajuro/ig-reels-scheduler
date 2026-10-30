@@ -49,3 +49,89 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* The AI video section: its cards, and the contents of each, evenly spaced. */
+.cards {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.stack {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.stack h2,
+.stack .note {
+  margin: 0;
+}
+
+.meta {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.ok,
+.warning {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.ok {
+  color: var(--success-text);
+}
+
+.warning {
+  color: var(--warning-text);
+}
+
+/* A sentence with its button on the right; the button drops under it on a phone. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  font-size: var(--text-sm);
+}
+
+.progress > span:first-child {
+  grid-column: 1 / -1;
+}
+
+.progress progress {
+  width: 100%;
+  height: 8px;
+  appearance: none;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.progress progress::-webkit-progress-bar {
+  background: var(--surface-raised);
+}
+
+.progress progress::-webkit-progress-value {
+  background: var(--accent);
+}
+
+.progress progress::-moz-progress-bar {
+  background: var(--accent);
+}

@@ -301,6 +301,12 @@
   }
 }
 
+/* A clip card's Delete, under its Select and Open. */
+.clipDelete {
+  display: grid;
+  grid-column: 1 / -1;
+}
+
 .pick {
   display: flex;
   align-items: center;
@@ -424,6 +430,12 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);
+}
+
+/* Delete selected sits among the bar's buttons; its error, if any, shows under it. */
+.dockForm {
+  display: grid;
+  gap: var(--space-2);
 }
 
 @media (max-width: 760px) {

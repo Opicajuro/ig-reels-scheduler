@@ -1,7 +1,7 @@
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
 
-// An AI video's state and current step, which /ai polls while it is being made.
+// An AI video's state and current step, which the Clips page polls while it is being made.
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const ownerId = await getOwnerId();
   const { id } = await params;

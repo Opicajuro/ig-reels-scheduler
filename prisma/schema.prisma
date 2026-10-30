@@ -182,7 +182,7 @@ model ClipProject {
   captionPreset   String?
   captionPosition String            @default("bottom")
   captionUppercase Boolean          @default(false)
-  // The owner's one "AI videos" project, which holds the clips made on /ai. It has no source video.
+  // The owner's one "AI videos" project, which holds the AI videos made on the Clips page. It has no source video.
   aiVideos        Boolean           @default(false)
   createdAt       DateTime          @default(now())
   clips           Clip[]
@@ -198,7 +198,8 @@ model Clip {
   storageKey  String
   title       String?
   description String?
-  // Made by the AI video engine on /ai. Its posts always carry Instagram's AI info label (Post.aiGenerated).
+  // Made by the AI video engine from a description on the Clips page. Its posts always carry Instagram's AI info
+  // label (Post.aiGenerated).
   aiGenerated Boolean     @default(false)
   createdAt   DateTime    @default(now())
   aiVideoJob  AiVideoJob?
@@ -241,7 +242,8 @@ enum AiVideoStatus {
   failed
 }
 
-// One video asked for on /ai. When it is done, clipId is the clip it made in the owner's "AI videos" project.
+// One AI video asked for on the Clips page. When it is done, clipId is the clip it made in the owner's "AI videos"
+// project.
 model AiVideoJob {
   id            String        @id @default(cuid())
   ownerId       String

@@ -1,0 +1,96 @@
+/* Layout and pieces specific to AI videos on the Clips page. Colours, type and controls come from the tokens and components. */
+
+.meta {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.form > button {
+  justify-self: start;
+}
+
+.label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.choice {
+  display: flex;
+  gap: 6px;
+  margin-bottom: var(--space-2);
+}
+
+.choice label {
+  position: relative;
+  min-width: 72px;
+  padding: var(--space-2) var(--space-3);
+  text-align: center;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.choice label:has(input:checked) {
+  border-color: var(--link);
+  box-shadow: inset 0 0 0 1px var(--link);
+}
+
+.choice label:has(input:focus-visible) {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.madeWithAi {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--info-text);
+  font-size: var(--text-sm);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-md);
+}
+
+.jobs {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.jobs li {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.prompt {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.jobMeta,
+.jobState {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+}

@@ -3,12 +3,18 @@ import path from "node:path";
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { ActionForm, SubmitButton } from "@/components/action-form";
+import { Alert } from "@/components/alert";
 import { Card } from "@/components/card";
 import { Field } from "@/components/field";
 import { PageHeader } from "@/components/page-header";
+import { StatusBadge } from "@/components/status-badge";
+import { AI_ENGINE, aiDir, downloadBytes, formatGigabytes, getAiEngine, requiredFreeBytes } from "@/lib/ai-engine";
+import { checkGpu, formatVram } from "@/lib/ai-gpu";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { saveSettingsAction } from "./actions";
+import { installAiEngineAction, uninstallAiEngineAction } from "./ai-actions";
+import { EngineProgress } from "./engine-progress";
 import styles from "./settings.module.css";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -74,6 +80,9 @@ export default async function SettingsPage() {
         </div>
       </ActionForm>
 
+      <h2 id="ai-video">AI video</h2>
+      <AiVideoSection />
+
       <h2>Data folder and logs</h2>
       <Card>
         <dl className={styles.facts}>
@@ -109,5 +118,107 @@ export default async function SettingsPage() {
         </dl>
       </Card>
     </main>
+  );
+}
+
+// This PC's graphics card and, when it can make AI videos, the engine that makes them. The Clips page has the form.
+async function AiVideoSection() {
+  const gpu = await checkGpu();
+  const ready = gpu.found && gpu.ready;
+
+  return (
+    <div className={styles.cards}>
+      <Card>
+        <div className={styles.stack}>
+          <h2>This PC</h2>
+          {gpu.found ? (
+            <>
+              <dl className={styles.facts}>
+                <dt>Graphics card</dt>
+                <dd>{gpu.gpu.name}</dd>
+                <dt>Video memory</dt>
+                <dd>{formatVram(gpu.gpu.vramMiB)}</dd>
+                <dt>Driver</dt>
+                <dd>{gpu.gpu.driver}</dd>
+              </dl>
+              {!gpu.ready ? (
+                <Alert tone="error">This card has too little video memory for AI videos. They need at least 12 GB.</Alert>
+              ) : gpu.recommended ? (
+                <p className={styles.ok}>Ready for AI videos.</p>
+              ) : (
+                <p className={styles.warning}>Ready, but 16 GB of video memory is recommended: videos take longer on this card.</p>
+              )}
+            </>
+          ) : (
+            <Alert tone="error">{gpu.reason}</Alert>
+          )}
+          {ready ? null : (
+            <p className={styles.note}>
+              AI videos are made on this PC by an NVIDIA graphics card with at least 12 GB of video memory (16 GB
+              recommended), such as a GeForce RTX 4070 Ti Super, 4080 or 5080. Without one, there is nothing to set up.
+            </p>
+          )}
+        </div>
+      </Card>
+      {ready ? <AiEngineCard /> : null}
+    </div>
+  );
+}
+
+async function AiEngineCard() {
+  const engine = await getAiEngine(prisma);
+  let dir: string | null = null;
+  let dirProblem: string | null = null;
+  try {
+    dir = aiDir();
+  } catch (err) {
+    dirProblem = (err as Error).message;
+  }
+
+  return (
+    <Card>
+      <div className={styles.stack}>
+        <div className={styles.heading}>
+          <h2>AI video engine</h2>
+          <StatusBadge status={engine.status} />
+        </div>
+        <p className={styles.note}>
+          ComfyUI {AI_ENGINE.comfyui.version} (GPL-3.0) with the Wan 2.2 TI2V 5B video model (Apache-2.0), downloaded
+          once into {dir ?? "the data folder"}.
+        </p>
+        {dirProblem ? <Alert tone="error">{dirProblem}</Alert> : null}
+        {engine.status === "installing" ? <EngineProgress initialStep={engine.step} initialPercent={engine.percent} /> : null}
+        {engine.status === "installed" && engine.installedBytes !== null ? (
+          <div className={styles.row}>
+            <span>Installed, {formatGigabytes(engine.installedBytes)} on disk. New AI videos are made on the Clips page.</span>
+            <ActionForm
+              action={uninstallAiEngineAction}
+              confirm={{
+                message: `Delete the AI video engine (${formatGigabytes(engine.installedBytes)}) from this PC? The AI videos already made stay in your clips.`,
+                confirmLabel: "Uninstall",
+              }}
+            >
+              <SubmitButton variant="danger" pendingLabel="Uninstalling…">
+                Uninstall
+              </SubmitButton>
+            </ActionForm>
+          </div>
+        ) : null}
+        {engine.status === "failed" ? <Alert tone="error">The install stopped: {engine.error}</Alert> : null}
+        {(engine.status === "not_installed" || engine.status === "failed") && dir ? (
+          <div className={styles.row}>
+            <span>
+              Downloads {formatGigabytes(downloadBytes(AI_ENGINE))} and needs {formatGigabytes(requiredFreeBytes(AI_ENGINE))} of free disk space.
+              {engine.status === "failed" ? " Files already downloaded are kept." : ""}
+            </span>
+            <ActionForm action={installAiEngineAction}>
+              <SubmitButton variant="primary" pendingLabel="Starting…">
+                {engine.status === "failed" ? "Try again" : "Install"}
+              </SubmitButton>
+            </ActionForm>
+          </div>
+        ) : null}
+      </div>
+    </Card>
   );
 }

@@ -44,7 +44,7 @@ export function buildClipKey(projectId: string, clipId: string): string {
   return `clips/${projectId}/${clipId}.mp4`;
 }
 
-// The start picture of an AI video, uploaded from /ai.
+// The start picture of an AI video, uploaded from the Clips page.
 export function buildAiInputKey(id: string, extension: string): string {
   return `ai-inputs/${id}${extension.toLowerCase()}`;
 }

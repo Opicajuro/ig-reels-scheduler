@@ -286,12 +286,117 @@ export async function copyClip({ db, store, ownerId, clipId }: { db: PrismaClien
   });
 }
 
-export async function deleteClip({ db, store, ownerId, clipId }: { db: PrismaClient; store: ClipStore; ownerId: string; clipId: string }) {
-  const clip = await ownedClip(db, ownerId, clipId);
-  if (clip.project.status === "rendering") throw new UserError("clips are rendering for this project");
+// The owner's clips for a change to several at once, in the order asked. None may be in a project that is rendering.
+async function ownedClips(db: PrismaClient, ownerId: string, clipIds: string[]) {
+  const ids = [...new Set(clipIds)];
+  if (ids.length === 0) throw new UserError("select at least one clip");
+  const clips = await db.clip.findMany({ where: { id: { in: ids }, project: { ownerId } }, include: { project: true } });
+  if (clips.length !== ids.length) throw new UserError("clip not found");
+  if (clips.some((clip) => clip.project.status === "rendering")) throw new UserError("clips are rendering for this project");
+  const byId = new Map(clips.map((clip) => [clip.id, clip]));
+  return ids.map((id) => byId.get(id)!);
+}
 
-  await store.remove(clip.storageKey);
-  await db.clip.delete({ where: { id: clipId } });
+export async function deleteClip({ db, store, ownerId, clipId }: { db: PrismaClient; store: ClipStore; ownerId: string; clipId: string }) {
+  await deleteClips({ db, store, ownerId, clipIds: [clipId] });
+}
+
+// A clip's scheduled posts have their own copies (createClipPosts), so deleting clips never touches a post.
+export async function deleteClips({
+  db,
+  store,
+  ownerId,
+  clipIds,
+}: {
+  db: PrismaClient;
+  store: ClipStore;
+  ownerId: string;
+  clipIds: string[];
+}) {
+  const clips = await ownedClips(db, ownerId, clipIds);
+  // Files go first, so a failed delete leaves the rows in place to retry from.
+  for (const clip of clips) await store.remove(clip.storageKey);
+  await db.clip.deleteMany({ where: { id: { in: clips.map((clip) => clip.id) } } });
+  return clips.length;
+}
+
+// The project clips are moved or copied to: the owner's, not rendering, and not where any of the clips already are.
+async function targetProject(db: PrismaClient, ownerId: string, projectId: string, clips: Array<{ projectId: string }>) {
+  const target = await ownedProject(db, ownerId, projectId);
+  if (target.status === "rendering") throw new UserError("clips are rendering for that project");
+  if (clips.some((clip) => clip.projectId === target.id)) throw new UserError("the clips are already in that project: pick another project");
+  return target;
+}
+
+// The name itself when it is free, otherwise the name with " (2)", " (3)"… after it. The chosen name becomes taken.
+function freeName(name: string, taken: Set<string>): string {
+  let candidate = name;
+  for (let n = 2; taken.has(candidate); n++) candidate = `${name} (${n})`;
+  taken.add(candidate);
+  return candidate;
+}
+
+// A clip's file key includes its project, so a moved clip's file is copied to its new key before the old one goes.
+export async function moveClipsToProject({
+  db,
+  store,
+  ownerId,
+  clipIds,
+  projectId,
+}: {
+  db: PrismaClient;
+  store: ClipStore;
+  ownerId: string;
+  clipIds: string[];
+  projectId: string;
+}) {
+  const clips = await ownedClips(db, ownerId, clipIds);
+  const target = await targetProject(db, ownerId, projectId, clips);
+  const taken = new Set(target.clips.map((clip) => clip.name));
+  for (const clip of clips) {
+    const storageKey = buildClipKey(target.id, clip.id);
+    await store.copy(clip.storageKey, storageKey);
+    await db.clip.update({ where: { id: clip.id }, data: { projectId: target.id, name: freeName(clip.name, taken), storageKey } });
+    await store.remove(clip.storageKey);
+  }
+  return { projectName: target.name, count: clips.length };
+}
+
+export async function copyClipsToProject({
+  db,
+  store,
+  ownerId,
+  clipIds,
+  projectId,
+}: {
+  db: PrismaClient;
+  store: ClipStore;
+  ownerId: string;
+  clipIds: string[];
+  projectId: string;
+}) {
+  const clips = await ownedClips(db, ownerId, clipIds);
+  const target = await targetProject(db, ownerId, projectId, clips);
+  const taken = new Set(target.clips.map((clip) => clip.name));
+  for (const clip of clips) {
+    const copyId = randomUUID();
+    const storageKey = buildClipKey(target.id, copyId);
+    await store.copy(clip.storageKey, storageKey);
+    await db.clip.create({
+      data: {
+        id: copyId,
+        projectId: target.id,
+        name: freeName(clip.name, taken),
+        start: clip.start,
+        length: clip.length,
+        storageKey,
+        title: clip.title,
+        description: clip.description,
+        aiGenerated: clip.aiGenerated,
+      },
+    });
+  }
+  return { projectName: target.name, count: clips.length };
 }
 
 // Checks one post's caption and time before anything is made.

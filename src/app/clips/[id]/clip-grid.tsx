@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { ActionForm, SubmitButton } from "@/components/action-form";
 import { AiBadge } from "@/components/ai-badge";
 import { Button } from "@/components/button";
 import { Drawer } from "@/components/drawer";
 import { EmptyState } from "@/components/empty-state";
 import { Tabs } from "@/components/tabs";
+import { deleteClipAction, deleteClipsAction } from "../actions";
 import { ClipDetails } from "./clip-details";
 import { ExportForm } from "./export-form";
 import { ScheduleForm } from "./schedule-form";
 import { BulkScheduleForm } from "./bulk-schedule-form";
+import { MoveForm, type ProjectChoice } from "./move-form";
 import styles from "../clips.module.css";
 
 export type ClipView = {
@@ -35,24 +38,26 @@ function captionOf(clip: ClipView): string {
   return clip.description || clip.title || clip.name;
 }
 
-// Clips of one project. A clip opens in a drawer for its details and scheduling; picked clips get a bar to download
-// or schedule them together. Every change is a form posting to a server action.
+// Clips of one project. A clip opens in a drawer for its details, scheduling and moving; picked clips get a bar to
+// download, schedule, move, copy or delete them together. Every change is a form posting to a server action.
 export function ClipGrid({
   projectId,
   busy,
   clips,
   accounts,
   alreadyScheduledTo,
+  projects,
 }: {
   projectId: string;
   busy: boolean;
   clips: ClipView[];
   accounts: AccountView[];
   alreadyScheduledTo: string[];
+  projects: ProjectChoice[];
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [openId, setOpenId] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"export" | "schedule" | null>(null);
+  const [panel, setPanel] = useState<"export" | "schedule" | "move" | "copy" | null>(null);
   // Read through the current clips, so a clip deleted or replaced since it was picked or opened drops out.
   const selected = clips.filter((clip) => picked.has(clip.id));
   const openClip = clips.find((clip) => clip.id === openId) ?? null;
@@ -100,6 +105,17 @@ export function ClipGrid({
                 <Button type="button" aria-label={`Open ${clip.name}`} onClick={() => setOpenId(clip.id)}>
                   Open
                 </Button>
+                <ActionForm
+                  action={deleteClipAction}
+                  className={styles.clipDelete}
+                  confirm={{ message: `Delete ${clip.name}? This cannot be undone.`, confirmLabel: "Delete clip" }}
+                >
+                  <input type="hidden" name="clipId" value={clip.id} />
+                  <input type="hidden" name="projectId" value={projectId} />
+                  <SubmitButton variant="danger" size="sm" disabled={busy} aria-label={`Delete ${clip.name}`} pendingLabel="Deleting…">
+                    Delete
+                  </SubmitButton>
+                </ActionForm>
               </div>
             </article>
           ))}
@@ -121,6 +137,28 @@ export function ClipGrid({
               <Button type="button" onClick={() => setPanel("export")}>
                 Download for posting (ZIP)
               </Button>
+              <Button type="button" disabled={busy} onClick={() => setPanel("move")}>
+                Move to project…
+              </Button>
+              <Button type="button" disabled={busy} onClick={() => setPanel("copy")}>
+                Copy to project…
+              </Button>
+              <ActionForm
+                action={deleteClipsAction}
+                className={styles.dockForm}
+                confirm={{
+                  message: `Delete ${selected.length === 1 ? selected[0].name : `${selected.length} clips`}? This cannot be undone.`,
+                  confirmLabel: selected.length === 1 ? "Delete clip" : "Delete clips",
+                }}
+              >
+                <input type="hidden" name="projectId" value={projectId} />
+                {selected.map((clip) => (
+                  <input key={clip.id} type="hidden" name="clipId" value={clip.id} />
+                ))}
+                <SubmitButton variant="danger" disabled={busy} pendingLabel="Deleting…">
+                  Delete selected
+                </SubmitButton>
+              </ActionForm>
               <Button type="button" variant="primary" onClick={() => setPanel("schedule")}>
                 Schedule on Instagram
               </Button>
@@ -154,6 +192,18 @@ export function ClipGrid({
                   />
                 ),
               },
+              {
+                id: "move",
+                label: "Move or copy",
+                content: (
+                  <div className={styles.panel}>
+                    <MoveForm mode="move" clips={[openClip]} projectId={projectId} projects={projects} busy={busy} />
+                    {projects.length > 0 ? (
+                      <MoveForm mode="copy" clips={[openClip]} projectId={projectId} projects={projects} busy={busy} />
+                    ) : null}
+                  </div>
+                ),
+              },
             ]}
           />
         ) : null}
@@ -161,6 +211,14 @@ export function ClipGrid({
 
       <Drawer open={panel === "export"} title="Download for posting" onClose={() => setPanel(null)}>
         <ExportForm projectId={projectId} clips={selected} />
+      </Drawer>
+
+      <Drawer open={panel === "move"} title="Move to project" onClose={() => setPanel(null)}>
+        <MoveForm mode="move" clips={selected} projectId={projectId} projects={projects} busy={busy} />
+      </Drawer>
+
+      <Drawer open={panel === "copy"} title="Copy to project" onClose={() => setPanel(null)}>
+        <MoveForm mode="copy" clips={selected} projectId={projectId} projects={projects} busy={busy} />
       </Drawer>
 
       <Drawer open={panel === "schedule"} title="Schedule on Instagram" onClose={() => setPanel(null)}>

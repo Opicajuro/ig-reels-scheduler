@@ -3,8 +3,8 @@
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Field } from "@/components/field";
 import type { ActionResult } from "@/lib/action-result";
-import { putFile } from "../clips/upload-form";
-import { createAiVideoAction } from "./actions";
+import { putFile } from "./upload-form";
+import { createAiVideoAction } from "./ai-actions";
 import styles from "./ai.module.css";
 
 const LENGTHS = [3, 5];

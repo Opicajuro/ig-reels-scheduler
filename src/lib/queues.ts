@@ -84,7 +84,7 @@ export function getClipQueue(): ClipQueue {
 
 // Installing the AI engine downloads about 20 GB, which can take many hours on a slow line; it gets a day. A video
 // takes minutes on a 16 GB card, and much longer the first time Windows reads the model files; it gets 2 hours.
-// Neither is retried: the failure is shown on /ai, and the person starts it again.
+// Neither is retried: the failure is shown on the Clips page or in Settings, and the person starts it again.
 export function getAiEngineQueue(): AiEngineQueue {
   return {
     async send() {
