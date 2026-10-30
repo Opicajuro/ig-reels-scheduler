@@ -3,12 +3,15 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import type { ClipStore } from "./clip-store";
 import {
   copyClip,
+  copyClipsToProject,
   copyProject,
   createLinkProject,
   createUploadProject,
   deleteClip,
+  deleteClips,
   deleteProject,
   markSourceUploaded,
+  moveClipsToProject,
   renameClip,
   renameProject,
   scheduleClip,
@@ -78,6 +81,12 @@ function fakeDb(
       const index = tables[table].findIndex((item) => item.id === where.id);
       if (index < 0) throw new Error(`${table} ${where.id} not found`);
       return tables[table].splice(index, 1)[0];
+    },
+    deleteMany: async ({ where }: { where: Record<string, unknown> }) => {
+      const kept = tables[table].filter((row) => !matches(table, row, where));
+      const count = tables[table].length - kept.length;
+      tables[table] = kept;
+      return { count };
     },
   });
   const db = {
@@ -352,6 +361,127 @@ describe("copyProject and clip operations", () => {
 
     const busy = fakeDb({ projects: [project({ status: "rendering" })], clips: [clip()] });
     await expect(deleteClip({ db: busy.db, store: fakeStore().store, ...owned, clipId: "c1" })).rejects.toThrow("rendering");
+  });
+});
+
+describe("deleteClips", () => {
+  const threeClips = () => [
+    clip({ id: "c1" }),
+    clip({ id: "c2", name: "clip-002", storageKey: "clips/p1/c2.mp4" }),
+    clip({ id: "c3", storageKey: "clips/p1/c3.mp4" }),
+  ];
+
+  it("removes the files, then the rows, of every clip picked", async () => {
+    const { db, tables } = fakeDb({ projects: [project()], clips: threeClips() });
+    const files = fakeStore();
+    const count = await deleteClips({ db, store: files.store, ...owned, clipIds: ["c1", "c2", "c1"] });
+
+    expect(count).toBe(2);
+    expect(files.removed).toEqual(["clips/p1/c1.mp4", "clips/p1/c2.mp4"]);
+    expect(tables.clip.map((row) => row.id)).toEqual(["c3"]);
+  });
+
+  it("removes nothing while a project is rendering", async () => {
+    const { db, tables } = fakeDb({ projects: [project({ status: "rendering" })], clips: threeClips() });
+    const files = fakeStore();
+    await expect(deleteClips({ db, store: files.store, ...owned, clipIds: ["c1", "c2"] })).rejects.toThrow("rendering");
+    expect(files.removed).toEqual([]);
+    expect(tables.clip).toHaveLength(3);
+  });
+
+  it("removes nothing when a clip is unknown or someone else's, or none is picked", async () => {
+    const { db, tables } = fakeDb({
+      projects: [project(), project({ id: "p2", ownerId: "user-2" })],
+      clips: [clip({ id: "c1" }), clip({ id: "theirs", projectId: "p2", storageKey: "clips/p2/theirs.mp4" })],
+    });
+    const files = fakeStore();
+    await expect(deleteClips({ db, store: files.store, ...owned, clipIds: ["c1", "theirs"] })).rejects.toThrow("clip not found");
+    await expect(deleteClips({ db, store: files.store, ...owned, clipIds: ["c1", "nope"] })).rejects.toThrow("clip not found");
+    await expect(deleteClips({ db, store: files.store, ...owned, clipIds: [] })).rejects.toThrow("select at least one clip");
+    expect(files.removed).toEqual([]);
+    expect(tables.clip).toHaveLength(2);
+  });
+});
+
+describe("moveClipsToProject and copyClipsToProject", () => {
+  const seed = () => ({
+    projects: [project(), project({ id: "p2", name: "Beach day" })],
+    clips: [
+      clip({ id: "c1" }),
+      clip({ id: "c2", name: "clip-002", storageKey: "clips/p1/c2.mp4", aiGenerated: true }),
+      clip({ id: "t1", projectId: "p2", name: "clip-001", storageKey: "clips/p2/t1.mp4" }),
+      clip({ id: "t2", projectId: "p2", name: "clip-001 (2)", storageKey: "clips/p2/t2.mp4" }),
+    ],
+  });
+
+  it("moves each clip's file to a key under the other project, then the row, then removes the old file", async () => {
+    const { db, tables } = fakeDb(seed());
+    const files = fakeStore();
+    const moved = await moveClipsToProject({ db, store: files.store, ...owned, clipIds: ["c1", "c2"], projectId: "p2" });
+
+    expect(moved).toEqual({ projectName: "Beach day", count: 2 });
+    expect(files.copies).toEqual([
+      ["clips/p1/c1.mp4", "clips/p2/c1.mp4"],
+      ["clips/p1/c2.mp4", "clips/p2/c2.mp4"],
+    ]);
+    expect(files.removed).toEqual(["clips/p1/c1.mp4", "clips/p1/c2.mp4"]);
+    // clip-001 and clip-001 (2) are taken there, so the moved clip-001 becomes clip-001 (3).
+    expect(tables.clip.find((row) => row.id === "c1")).toMatchObject({ projectId: "p2", name: "clip-001 (3)", storageKey: "clips/p2/c1.mp4" });
+    expect(tables.clip.find((row) => row.id === "c2")).toMatchObject({ projectId: "p2", name: "clip-002", aiGenerated: true });
+    expect(tables.clip.filter((row) => row.projectId === "p1")).toEqual([]);
+  });
+
+  it("names clashing clips (2), then (3), when several with one name arrive together", async () => {
+    const { db, tables } = fakeDb({
+      projects: [project(), project({ id: "p2" }), project({ id: "p3" })],
+      clips: [
+        clip({ id: "c1" }),
+        clip({ id: "d1", projectId: "p3", storageKey: "clips/p3/d1.mp4" }),
+        clip({ id: "t1", projectId: "p2", storageKey: "clips/p2/t1.mp4" }),
+      ],
+    });
+    const files = fakeStore();
+    await moveClipsToProject({ db, store: files.store, ...owned, clipIds: ["c1", "d1"], projectId: "p2" });
+
+    const names = Object.fromEntries(tables.clip.map((row) => [row.id, [row.projectId, row.name]]));
+    expect(names).toEqual({ t1: ["p2", "clip-001"], c1: ["p2", "clip-001 (2)"], d1: ["p2", "clip-001 (3)"] });
+  });
+
+  it("refuses a rendering or someone else's project, and the project the clips are already in", async () => {
+    const cases = [
+      { projects: [project(), project({ id: "p2", status: "rendering" })], projectId: "p2", error: "rendering" },
+      { projects: [project({ status: "rendering" }), project({ id: "p2" })], projectId: "p2", error: "rendering" },
+      { projects: [project(), project({ id: "p2", ownerId: "user-2" })], projectId: "p2", error: "project not found" },
+      { projects: [project()], projectId: "p1", error: "pick another project" },
+    ];
+    for (const { projects, projectId, error } of cases) {
+      const { db, tables } = fakeDb({ projects, clips: [clip()] });
+      const files = fakeStore();
+      await expect(moveClipsToProject({ db, store: files.store, ...owned, clipIds: ["c1"], projectId })).rejects.toThrow(error);
+      await expect(copyClipsToProject({ db, store: files.store, ...owned, clipIds: ["c1"], projectId })).rejects.toThrow(error);
+      expect(files.copies).toEqual([]);
+      expect(tables.clip).toEqual([clip()]);
+    }
+  });
+
+  it("copies clips under new keys in the other project, keeping their details, and leaves the originals", async () => {
+    const { db, tables } = fakeDb(seed());
+    const files = fakeStore();
+    const copied = await copyClipsToProject({ db, store: files.store, ...owned, clipIds: ["c1", "c2"], projectId: "p2" });
+
+    expect(copied).toEqual({ projectName: "Beach day", count: 2 });
+    expect(files.removed).toEqual([]);
+    expect(tables.clip.filter((row) => row.projectId === "p1").map((row) => row.id)).toEqual(["c1", "c2"]);
+    const copies = tables.clip.filter((row) => row.projectId === "p2" && !["t1", "t2"].includes(row.id));
+    expect(copies).toMatchObject([
+      { name: "clip-001 (3)", start: 5, length: 15, title: "Wait for it", description: "Watch to the end", aiGenerated: false },
+      { name: "clip-002", title: "Wait for it", description: "Watch to the end", aiGenerated: true },
+    ]);
+    expect(files.copies).toEqual(copies.map((row, index) => [`clips/p1/c${index + 1}.mp4`, row.storageKey]));
+    for (const row of copies) {
+      expect(row.id).not.toMatch(/^c\d$/);
+      expect(row.storageKey).toBe(`clips/p2/${row.id}.mp4`);
+    }
   });
 });
 

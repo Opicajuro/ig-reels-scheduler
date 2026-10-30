@@ -55,6 +55,12 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
   });
   if (!project) notFound();
 
+  // The other projects, for moving or copying clips to.
+  const otherProjects = await prisma.clipProject.findMany({
+    where: { ownerId, id: { not: project.id } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, name: true },
+  });
   const accounts = await prisma.igAccount.findMany({
     where: { ownerId, status: "active" },
     orderBy: { createdAt: "asc" },
@@ -145,7 +151,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
         />
       ) : null}
 
-      {/* The AI videos project has no source video to make clips from: its clips come from /ai. */}
+      {/* The AI videos project has no source video to make clips from: its clips are made from a description. */}
       <div className={`${styles.project} ${project.aiVideos ? styles.single : ""}`}>
         {project.aiVideos ? null : (
           <Card>
@@ -239,6 +245,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
             clips={clips}
             accounts={accounts.map((account) => ({ id: account.id, username: account.username }))}
             alreadyScheduledTo={alreadyScheduledTo}
+            projects={otherProjects}
           />
         </section>
       </div>

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { UserError } from "./user-error";
 
 export type Gpu = { name: string; vramMiB: number; driver: string };
 
@@ -52,4 +53,11 @@ export function checkGpu(): Promise<GpuCheck> {
 
 export function formatVram(vramMiB: number): string {
   return `${(vramMiB / 1024).toFixed(1)} GB`;
+}
+
+// The pages hide the AI video controls when the graphics card is not good enough; a form sent anyway gets this answer.
+export async function requireReadyGpu() {
+  const check = await checkGpu();
+  if (!check.found) throw new UserError(check.reason);
+  if (!check.ready) throw new UserError("this graphics card has too little video memory for AI videos (12 GB at least)");
 }

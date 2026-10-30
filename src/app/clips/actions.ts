@@ -115,6 +115,53 @@ export async function deleteClipAction(_previous: ActionResult, formData: FormDa
   });
 }
 
+export async function deleteClipsAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    const projectId = text(formData, "projectId");
+    const count = await clips.deleteClips({
+      db: prisma,
+      store: s3ClipStore,
+      ownerId: await getOwnerId(),
+      clipIds: formData.getAll("clipId").map(String),
+    });
+    revalidatePath(`/clips/${projectId}`);
+    return `Deleted ${count} ${count === 1 ? "clip" : "clips"}`;
+  });
+}
+
+export async function moveClipsAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    const targetProjectId = text(formData, "targetProjectId");
+    const moved = await clips.moveClipsToProject({
+      db: prisma,
+      store: s3ClipStore,
+      ownerId: await getOwnerId(),
+      clipIds: formData.getAll("clipId").map(String),
+      projectId: targetProjectId,
+    });
+    revalidatePath(`/clips/${text(formData, "projectId")}`);
+    revalidatePath(`/clips/${targetProjectId}`);
+    revalidatePath("/clips");
+    return `Moved ${moved.count} ${moved.count === 1 ? "clip" : "clips"} to ${moved.projectName}`;
+  });
+}
+
+export async function copyClipsToProjectAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    const targetProjectId = text(formData, "targetProjectId");
+    const copied = await clips.copyClipsToProject({
+      db: prisma,
+      store: s3ClipStore,
+      ownerId: await getOwnerId(),
+      clipIds: formData.getAll("clipId").map(String),
+      projectId: targetProjectId,
+    });
+    revalidatePath(`/clips/${targetProjectId}`);
+    revalidatePath("/clips");
+    return `Copied ${copied.count} ${copied.count === 1 ? "clip" : "clips"} to ${copied.projectName}`;
+  });
+}
+
 export async function saveClipDetailsAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
     const projectId = text(formData, "projectId");

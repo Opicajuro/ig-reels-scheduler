@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AiEngineStatus } from "@/generated/prisma/enums";
-import styles from "./ai.module.css";
+import styles from "./settings.module.css";
 
 const POLL_MS = 2000;
 
