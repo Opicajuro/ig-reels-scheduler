@@ -3,12 +3,11 @@ import { createAccountLock } from "@/lib/account-lock";
 import { prisma } from "@/lib/prisma";
 import { publishPost } from "@/lib/publish-job";
 import * as metaPublish from "@/lib/meta-publish";
-import { presignDownload } from "@/lib/storage";
+import { discardIgPostVideo, stageIgPostVideo } from "@/lib/r2";
+import { openObject } from "@/lib/storage";
 import { decryptToken, loadTokenKey } from "@/lib/token-crypto";
 import { getInsightsQueue, getPublishQueue, PUBLISH_RETRY_LIMIT } from "@/lib/queues";
 import { scheduleInsightPulls } from "@/lib/insights";
-
-const DOWNLOAD_LIFETIME_SECONDS = 7200;
 
 export async function accessTokenFor(accountId: string): Promise<string> {
   const row = await prisma.igToken.findUnique({ where: { accountId } });
@@ -34,7 +33,8 @@ export function createPublishProcessor() {
         postId: job.data.postId,
         now,
         meta: metaPublish,
-        getReelUrl: (key) => presignDownload(key, DOWNLOAD_LIFETIME_SECONDS),
+        stageVideo: (postId, reelKey) => stageIgPostVideo(prisma, openObject, postId, reelKey),
+        discardVideo: (postId) => discardIgPostVideo(prisma, postId),
         getToken: accessTokenFor,
         lock,
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -61,6 +61,7 @@ export function createPublishProcessor() {
           where: { id: job.data.postId, status: { in: ["scheduled", "container_created"] } },
           data: { status: "failed", lastError: message, attempts: { increment: 1 } },
         });
+        await discardIgPostVideo(prisma, job.data.postId);
       }
       throw err;
     }

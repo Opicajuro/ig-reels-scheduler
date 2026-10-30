@@ -1,7 +1,14 @@
 import type { PrismaClient } from "@/generated/prisma/client";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PublishQueue } from "./queues";
 import { purgeUserData, revokeAccount } from "./meta-callbacks";
+import { discardIgPostVideo } from "./r2";
+
+vi.mock("./r2", () => ({ discardIgPostVideo: vi.fn(async () => {}) }));
+
+beforeEach(() => {
+  vi.mocked(discardIgPostVideo).mockClear();
+});
 
 function fakeDeps(scheduled: Array<{ id: string; queueJobId: string | null }>, media: Array<Record<string, string | null>> = []) {
   const calls: Array<{ model: string; method: string; args: unknown }> = [];
@@ -60,6 +67,10 @@ describe("revokeAccount", () => {
       },
     ]);
     expect(deps.cancelled).toEqual(["job-1"]);
+    expect(vi.mocked(discardIgPostVideo).mock.calls).toEqual([
+      [deps.db, "post-1"],
+      [deps.db, "post-2"],
+    ]);
   });
 });
 

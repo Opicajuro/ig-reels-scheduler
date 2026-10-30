@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { PublishQueue } from "./queues";
+import { discardIgPostVideo } from "./r2";
 
 // Cancels the account's scheduled posts and removes their publish jobs, so nothing is left queued for a revoked account.
 async function cancelScheduledPosts(db: PrismaClient, queue: PublishQueue, igUserId: string) {
@@ -13,6 +14,7 @@ async function cancelScheduledPosts(db: PrismaClient, queue: PublishQueue, igUse
   });
   for (const post of scheduled) {
     if (post.queueJobId) await queue.cancel(post.queueJobId);
+    await discardIgPostVideo(db, post.id);
   }
 }
 

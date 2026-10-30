@@ -208,12 +208,17 @@ model Clip {
 // The app's settings, edited on /settings: one row, id 1. The Meta app secret and the Resend API key are sealed with
 // TOKEN_ENC_KEY (src/lib/settings.ts).
 model Setting {
-  id            Int     @id @default(1)
-  metaAppId     String?
-  metaAppSecret String?
-  alertEmail    String?
-  resendApiKey  String?
-  emailFrom     String?
+  id                Int     @id @default(1)
+  metaAppId         String?
+  metaAppSecret     String?
+  alertEmail        String?
+  resendApiKey      String?
+  emailFrom         String?
+  // Cloudflare R2, where a post's video is put for Instagram to download. The secret access key is sealed too.
+  r2AccountId       String?
+  r2AccessKeyId     String?
+  r2SecretAccessKey String?
+  r2Bucket          String?
 }
 
 enum AiEngineStatus {

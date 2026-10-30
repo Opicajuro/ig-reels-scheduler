@@ -8,6 +8,10 @@ export type Settings = {
   alertEmail: string | null;
   resendApiKey: string | null;
   emailFrom: string | null;
+  r2AccountId: string | null;
+  r2AccessKeyId: string | null;
+  r2SecretAccessKey: string | null;
+  r2Bucket: string | null;
 };
 
 // What the settings form sends. An empty secret keeps the saved one, so the page never has to send a secret back.
@@ -45,7 +49,17 @@ export function openSecret(sealed: string, key: Buffer): string {
 export async function getSettings(db: PrismaClient): Promise<Settings> {
   const row = await db.setting.findUnique({ where: { id: SETTINGS_ID } });
   if (!row) {
-    return { metaAppId: null, metaAppSecret: null, alertEmail: null, resendApiKey: null, emailFrom: null };
+    return {
+      metaAppId: null,
+      metaAppSecret: null,
+      alertEmail: null,
+      resendApiKey: null,
+      emailFrom: null,
+      r2AccountId: null,
+      r2AccessKeyId: null,
+      r2SecretAccessKey: null,
+      r2Bucket: null,
+    };
   }
   return {
     metaAppId: row.metaAppId,
@@ -53,6 +67,10 @@ export async function getSettings(db: PrismaClient): Promise<Settings> {
     alertEmail: row.alertEmail,
     resendApiKey: row.resendApiKey === null ? null : openSecret(row.resendApiKey, loadTokenKey()),
     emailFrom: row.emailFrom,
+    r2AccountId: row.r2AccountId,
+    r2AccessKeyId: row.r2AccessKeyId,
+    r2SecretAccessKey: row.r2SecretAccessKey === null ? null : openSecret(row.r2SecretAccessKey, loadTokenKey()),
+    r2Bucket: row.r2Bucket,
   };
 }
 
@@ -86,6 +104,48 @@ export async function saveSettings(db: PrismaClient, input: SettingsInput): Prom
   await db.setting.upsert({ where: { id: SETTINGS_ID }, create: { id: SETTINGS_ID, ...data }, update: data });
 }
 
+// What the Cloudflare R2 form sends. An empty secret access key keeps the saved one.
+export type R2SettingsInput = {
+  r2AccountId: string;
+  r2AccessKeyId: string;
+  r2SecretAccessKey: string;
+  r2Bucket: string;
+};
+
+// All four values, or none to turn Instagram posting off.
+export async function saveR2Settings(db: PrismaClient, input: R2SettingsInput): Promise<void> {
+  const r2AccountId = orNull(input.r2AccountId);
+  const r2AccessKeyId = orNull(input.r2AccessKeyId);
+  const r2SecretAccessKey = orNull(input.r2SecretAccessKey);
+  const r2Bucket = orNull(input.r2Bucket);
+
+  if (r2AccountId === null && r2AccessKeyId === null && r2SecretAccessKey === null && r2Bucket === null) {
+    const data = { r2AccountId: null, r2AccessKeyId: null, r2SecretAccessKey: null, r2Bucket: null };
+    await db.setting.upsert({ where: { id: SETTINGS_ID }, create: { id: SETTINGS_ID, ...data }, update: data });
+    return;
+  }
+
+  const saved = await db.setting.findUnique({ where: { id: SETTINGS_ID } });
+  const hasSecret = r2SecretAccessKey !== null || Boolean(saved?.r2SecretAccessKey);
+  if (r2AccountId === null || r2AccessKeyId === null || r2Bucket === null || !hasSecret) {
+    throw new UserError("Cloudflare R2 needs all four: the account ID, the access key ID, the secret access key and the bucket name");
+  }
+  if (!/^[0-9a-f]{32}$/i.test(r2AccountId)) {
+    throw new UserError("the R2 account ID is 32 letters and digits, shown on the R2 overview page in Cloudflare");
+  }
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(r2Bucket)) {
+    throw new UserError("an R2 bucket name is 3 to 63 lowercase letters, digits and hyphens");
+  }
+
+  const data = {
+    r2AccountId,
+    r2AccessKeyId,
+    r2Bucket,
+    ...(r2SecretAccessKey === null ? {} : { r2SecretAccessKey: sealSecret(r2SecretAccessKey, loadTokenKey()) }),
+  };
+  await db.setting.upsert({ where: { id: SETTINGS_ID }, create: { id: SETTINGS_ID, ...data }, update: data });
+}
+
 // Setup copies values it was given (by the installer, or from an older .env) into the settings, but only where the
 // settings have no value yet, so running setup again never undoes a change made on /settings.
 export async function fillMissingSettings(
@@ -106,4 +166,14 @@ export async function fillMissingSettings(
 export function emailSettings(settings: Settings): { to: string; apiKey: string; from: string } | null {
   const { alertEmail, resendApiKey, emailFrom } = settings;
   return alertEmail && resendApiKey && emailFrom ? { to: alertEmail, apiKey: resendApiKey, from: emailFrom } : null;
+}
+
+export type R2Config = { accountId: string; accessKeyId: string; secretAccessKey: string; bucket: string };
+
+// Instagram posting is on once all four R2 values are saved.
+export function r2Settings(settings: Settings): R2Config | null {
+  const { r2AccountId, r2AccessKeyId, r2SecretAccessKey, r2Bucket } = settings;
+  return r2AccountId && r2AccessKeyId && r2SecretAccessKey && r2Bucket
+    ? { accountId: r2AccountId, accessKeyId: r2AccessKeyId, secretAccessKey: r2SecretAccessKey, bucket: r2Bucket }
+    : null;
 }

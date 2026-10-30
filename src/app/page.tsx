@@ -11,7 +11,7 @@ import { metaAppConfig } from "@/lib/ig-connect";
 import { describePostError } from "@/lib/meta-errors";
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
-import { getSettings } from "@/lib/settings";
+import { getSettings, r2Settings } from "@/lib/settings";
 import styles from "./home.module.css";
 
 const NEXT_POSTS = 5;
@@ -44,11 +44,12 @@ export default async function Home() {
   ]);
 
   const metaReady = metaAppConfig(settings, process.env.IG_REDIRECT_URI) !== null;
+  const r2Ready = r2Settings(settings) !== null;
   const reconnect = accounts.filter(
     (account) => account.status === "reauth_required" || (account.token !== null && account.token.expiresAt <= now),
   );
   const rateLimited = accounts.filter((account) => account.rateLimitedUntil && account.rateLimitedUntil > now);
-  const nothingNeedsAttention = metaReady && failed.length === 0 && reconnect.length === 0 && rateLimited.length === 0;
+  const nothingNeedsAttention = metaReady && r2Ready && failed.length === 0 && reconnect.length === 0 && rateLimited.length === 0;
 
   return (
     <main>
@@ -70,6 +71,12 @@ export default async function Home() {
           {metaReady ? null : (
             <li>
               Instagram is not set up yet, so posts cannot be scheduled. <Link href="/settings">Add the Meta app in Settings</Link>
+            </li>
+          )}
+          {r2Ready ? null : (
+            <li>
+              Instagram posting not set up: posts can be scheduled, but they need Cloudflare R2 to reach Instagram.{" "}
+              <Link href="/settings">Set up R2 in Settings</Link>
             </li>
           )}
           {reconnect.map((account) => (

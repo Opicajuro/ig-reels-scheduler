@@ -15,6 +15,7 @@ import { getSettings } from "@/lib/settings";
 import { saveSettingsAction } from "./actions";
 import { installAiEngineAction, uninstallAiEngineAction } from "./ai-actions";
 import { EngineProgress } from "./engine-progress";
+import { R2Section } from "./r2-section";
 import styles from "./settings.module.css";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -79,6 +80,8 @@ export default async function SettingsPage() {
           </SubmitButton>
         </div>
       </ActionForm>
+
+      <R2Section />
 
       <h2 id="ai-video">AI video</h2>
       <AiVideoSection />
