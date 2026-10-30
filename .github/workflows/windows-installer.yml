@@ -64,7 +64,8 @@ jobs:
             if ($errors) { $errors | ForEach-Object { Write-Host "$($file.Name): $($_.Message)" }; exit 1 }
           }
       - name: Build the installer
-        run: powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
+        # The run number is also the release's build number, which the installed app compares to offer updates.
+        run: powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1 -Build ${{ github.run_number }}
       - name: Save downloaded tools
         if: ${{ !cancelled() && steps.tools.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6

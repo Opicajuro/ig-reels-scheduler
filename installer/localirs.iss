@@ -1,10 +1,14 @@
 ; Inno Setup script for Localirs. Build with installer\build-installer.ps1.
 #define AppName "Localirs"
-#define AppVersion "0.1.0"
+; The CI run number this installer was built by (0 for a local build), from build-installer.ps1. The tray launcher
+; compares it with the newest release to offer updates.
+#ifndef AppBuild
+  #error Pass the build number: ISCC /DAppBuild=<n>
+#endif
 
 [Setup]
 AppName={#AppName}
-AppVersion={#AppVersion}
+AppVersion=0.1.{#AppBuild}
 DefaultDirName={localappdata}\Localirs
 DefaultGroupName=Localirs
 OutputDir=Output
@@ -40,7 +44,12 @@ Name: "{autodesktop}\Localirs"; Filename: "{app}\Localirs.exe"; WorkingDir: "{ap
 Name: "{group}\Uninstall Localirs"; Filename: "{uninstallexe}"
 
 [Run]
-Filename: "{app}\Localirs.exe"; Description: "Open Localirs now"; Flags: postinstall nowait skipifsilent
+; Not skipped when silent: an update from the tray icon runs setup silently, and this reopens Localirs after it.
+Filename: "{app}\Localirs.exe"; Description: "Open Localirs now"; Flags: postinstall nowait
+
+[UninstallDelete]
+; Written by the code below, so the uninstaller does not know it.
+Type: files; Name: "{app}\version.txt"
 
 [UninstallRun]
 ; Stops the web app, worker, storage and database so their files can be removed.
@@ -147,8 +156,8 @@ begin
     Result := 'Localirs is still running and could not be stopped. The details are in ' + AppDir + '\data\stop.log. Restart the PC, then run this setup again.';
 end;
 
-// Runs the setup hidden, with its progress on the install screen. Its output goes to data\setup.log.
-// The sender is only passed with a key, so an empty page changes nothing.
+// Records the build, then runs the setup hidden, with its progress on the install screen. Its output goes to data\setup.log.
+// The sender is only passed with a key, so an empty page changes nothing. A silent update skips the page, so it is empty.
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   AppDir, Params, Sender: String;
@@ -157,6 +166,8 @@ begin
   if CurStep = ssPostInstall then
   begin
     AppDir := ExpandConstant('{app}');
+    if not SaveStringToFile(AppDir + '\version.txt', '{#AppBuild}', False) then
+      RaiseException('Could not write ' + AppDir + '\version.txt');
     Sender := '';
     if AlertPage.Values[1] <> '' then Sender := AlertPage.Values[2];
     Params := '-ExecutionPolicy Bypass -File "' + AppDir + '\setup-localirs.ps1" -AlertEmail "' + AlertPage.Values[0] + '" -ResendApiKey "' + AlertPage.Values[1] + '" -EmailFrom "' + Sender + '"';

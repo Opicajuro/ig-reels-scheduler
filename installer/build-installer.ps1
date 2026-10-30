@@ -2,7 +2,10 @@
 # Downloads the pinned tools into installer\downloads, unpacks them into installer\payload\tools, compiles node_modules for Windows,
 # and packs everything with Inno Setup. Downloads are checked against tools.json; a null hash is
 # filled in on the first build and checked on every build after that.
+# -Build is the CI run number, which the installer records so Localirs can offer newer builds. Pass 0 for a local build.
+param([string]$Build = "")
 $ErrorActionPreference = "Stop"
+if ($Build -notmatch '^\d+$') { throw "Pass the build number: -Build <n> (0 for a local build)" }
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $payload = Join-Path $PSScriptRoot "payload"
 $tools = Join-Path $payload "tools"
@@ -177,7 +180,7 @@ $launcher = Join-Path $PSScriptRoot "launcher"
 if ($LASTEXITCODE -ne 0) { throw "Building Localirs.exe failed" }
 Write-PhaseTime "launcher"
 
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" (Join-Path $PSScriptRoot "localirs.iss")
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppBuild=$Build" (Join-Path $PSScriptRoot "localirs.iss")
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 Write-PhaseTime "Inno"
 Write-Host "Built installer\Output\Localirs-Setup.exe"
