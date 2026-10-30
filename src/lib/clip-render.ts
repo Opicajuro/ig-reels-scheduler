@@ -79,7 +79,6 @@ export async function renderClipProject({
             workDir,
             whisperBin: requireEnv("WHISPER_BIN"),
             model: requireEnv("WHISPER_MODEL"),
-            vadModel: requireEnv("WHISPER_VAD_MODEL"),
           })
         : null,
     ]);

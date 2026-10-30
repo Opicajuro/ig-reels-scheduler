@@ -6,9 +6,10 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-// Transcribes the English speech in the media into words, each with its time in ms. Voice detection (VAD) skips the
-// parts without speech, so whisper does not make up words in music or silence.
-export async function transcribeToWords({ mediaPath, workDir, whisperBin, model, vadModel }) {
+// Transcribes the English speech in the media into words, each with its time in ms. No voice detection (--vad):
+// whisper.cpp 1.9.5 maps a VAD segment's times back to the video by interpolating across each cut-out silence, which
+// squeezes to 0.1 s, so a word stamped a few ms early there lands seconds before it is said.
+export async function transcribeToWords({ mediaPath, workDir, whisperBin, model }) {
   const wav = path.join(workDir, "audio.wav");
   await execFileAsync("ffmpeg", ["-v", "error", "-y", "-i", mediaPath, "-vn", "-ar", "16000", "-ac", "1", wav]);
 
@@ -17,7 +18,6 @@ export async function transcribeToWords({ mediaPath, workDir, whisperBin, model,
   await execFileAsync(whisperBin, [
     "-m", model,
     "-l", "en",
-    "--vad", "-vm", vadModel,
     "-t", String(os.cpus().length),
     "-ml", "1", "-sow",
     "-oj", "-of", prefix,
@@ -32,6 +32,6 @@ export function wordsFromWhisperJson(json) {
   const words = json.transcription
     .map((segment) => ({ text: segment.text.trim(), startMs: segment.offsets.from, endMs: segment.offsets.to }))
     .filter((word) => word.text !== "");
-  // With VAD, whisper stretches a word shorter than 100 ms to 100 ms, which can run into the next word.
+  // A word ends by the time the next one starts, so its caption never overlaps the next.
   return words.map((word, index) => ({ ...word, endMs: Math.min(word.endMs, words[index + 1]?.startMs ?? word.endMs) }));
 }
