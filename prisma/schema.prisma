@@ -310,3 +310,28 @@ model AiVideoJob {
   clip          Clip?         @relation(fields: [clipId], references: [id], onDelete: SetNull)
   createdAt     DateTime      @default(now())
 }
+
+// Where the daily backups go (null: the backups folder in the data folder) and whether they copy the clip files too.
+model BackupSettings {
+  id           Int     @id @default(1)
+  folder       String?
+  includeClips Boolean @default(false)
+}
+
+enum BackupStatus {
+  running
+  ok
+  failed
+}
+
+// One backup, scheduled or asked for on /settings: a folder holding the database dump, secrets.json and a manifest.
+model Backup {
+  id           String       @id @default(cuid())
+  startedAt    DateTime     @default(now())
+  finishedAt   DateTime?
+  path         String
+  includeClips Boolean
+  status       BackupStatus @default(running)
+  sizeBytes    BigInt?
+  error        String?
+}

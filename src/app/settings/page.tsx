@@ -27,6 +27,7 @@ import { installAiEngineAction, uninstallAiEngineAction } from "./ai-actions";
 import { EncoderSection } from "./encoder-section";
 import { EngineProgress } from "./engine-progress";
 import { R2Section } from "./r2-section";
+import { BackupsSection } from "./backups-section";
 import styles from "./settings.module.css";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -177,6 +178,8 @@ export default async function SettingsPage() {
 
       <h2 id="ai-video">AI video</h2>
       <AiVideoSection />
+
+      <BackupsSection />
 
       <h2>Data folder and logs</h2>
       <Card>

@@ -14,6 +14,7 @@ import { startComfy } from "@/lib/comfy";
 import {
   AI_ENGINE_QUEUE,
   AI_VIDEO_QUEUE,
+  BACKUP_QUEUE,
   CLIP_QUEUE,
   getBoss,
   INSIGHTS_QUEUE,
@@ -32,9 +33,12 @@ import { getOwnerId } from "@/lib/owner";
 import { emailSettings, getSettings } from "@/lib/settings";
 import { videoEncoder } from "@/clip-engine/encoder.js";
 import { recordVideoEncoder, VIDEO_ENCODER_LABELS } from "@/lib/video-encoding";
+import { runBackup, settleUnfinishedBackups } from "@/lib/backup";
+import { requireEnv } from "@/lib/env";
 
 const DAILY_AT_03_UTC = "0 3 * * *";
 const DAILY_AT_08_UTC = "0 8 * * *";
+const DAILY_AT_0330 = "30 3 * * *";
 
 async function main() {
   const encoder = await videoEncoder();
@@ -98,7 +102,22 @@ async function main() {
     });
   });
 
-  console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media, clips, AI videos and publishing enabled`);
+  // At 03:30 in this PC's time zone. A PC that was off then makes the missed backup as soon as the worker starts.
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  await settleUnfinishedBackups(prisma, new Date());
+  await boss.schedule(BACKUP_QUEUE, DAILY_AT_0330, {}, { tz: timeZone, missed: "once" });
+  await boss.work(BACKUP_QUEUE, async () => {
+    const env = {
+      dataDir: requireEnv("LOCALIRS_DATA_DIR"),
+      pgBin: requireEnv("PG_BIN"),
+      databaseUrl: requireEnv("DATABASE_URL"),
+      // The worker runs in the app folder, next to the app's .env.
+      appEnvFile: path.join(process.cwd(), ".env"),
+    };
+    await runBackup({ db: prisma, env, now: new Date() });
+  });
+
+  console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media, clips, AI videos and publishing enabled, backups at 03:30 ${timeZone}`);
 }
 
 main().catch((err) => {

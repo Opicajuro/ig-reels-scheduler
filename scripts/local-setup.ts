@@ -21,8 +21,10 @@ export type LocalInstall = {
   chromePath: string;
   whisperBin: string;
   whisperModel: string;
-  /** the install's data folder; the AI video engine goes in its ai folder */
+  /** the install's data folder; the AI video engine goes in its ai folder, backups in its backups folder */
   dataDir: string;
+  /** the shipped PostgreSQL's bin folder, whose pg_dump makes the backups */
+  pgBin: string;
 };
 
 export function buildLocalValues(install: LocalInstall, generate: () => string): EnvValues {
@@ -39,6 +41,7 @@ export function buildLocalValues(install: LocalInstall, generate: () => string):
       WHISPER_BIN: install.whisperBin,
       WHISPER_MODEL: install.whisperModel,
       LOCALIRS_DATA_DIR: install.dataDir,
+      PG_BIN: install.pgBin,
     },
     generate,
   );
@@ -104,6 +107,7 @@ async function main() {
     whisperBin: requireInstallValue("LOCALIRS_WHISPER_BIN"),
     whisperModel: requireInstallValue("LOCALIRS_WHISPER_MODEL"),
     dataDir: requireInstallValue("LOCALIRS_DATA_DIR"),
+    pgBin: requireInstallValue("LOCALIRS_PG_BIN"),
   };
   const generate = () => randomBytes(32).toString("base64");
   const values = buildLocalValues(install, generate);
