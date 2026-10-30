@@ -282,14 +282,24 @@
   }
 }
 
+/* A clip card lifts towards the pointer, in the design's own way. */
 .clip {
   display: grid;
   align-content: start;
   min-width: 0;
   overflow: hidden;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border: var(--card-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  transition:
+    transform 0.45s cubic-bezier(0.3, 1.5, 0.5, 1),
+    box-shadow 0.45s;
+}
+
+.clip:hover {
+  transform: var(--card-lift);
+  box-shadow: var(--shadow-hover);
 }
 
 .clip.selected {

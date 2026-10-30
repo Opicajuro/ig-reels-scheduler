@@ -1,28 +1,6 @@
-/* Localirs design tokens: the one palette, spacing, type and radius scale every screen and component uses. */
+/* Localirs design tokens. Every screen and component uses these names; each design gives them its own values.
+   The root layout sets data-design (and data-palette, and --hue) on <html> from the saved appearance. */
 :root {
-  /* Colours (dark only) */
-  --bg: #0e1014;
-  --surface: #161a21;
-  --surface-raised: #1d222b;
-  --surface-hover: #232935;
-  --border: #262c37;
-  --text: #eceef3;
-  --muted: #8b93a3;
-  /* White text on --accent is 5.15:1 and on --accent-hover 5.90:1 (WCAG AA needs 4.5:1). */
-  --accent: #3a64e0;
-  --accent-hover: #2f5bd3;
-  --on-accent: #ffffff;
-  /* Accent as text on the dark background: 7.35:1. */
-  --link: #7b9dff;
-  --link-hover: #a3bbff;
-  /* White text on --danger is 5.06:1. */
-  --danger: #c93a3a;
-  --danger-hover: #b83232;
-  --danger-text: #ff8a7a;
-  --success-text: #4ade80;
-  --warning-text: #f2b84b;
-  --info-text: #7b9dff;
-
   /* Spacing */
   --space-1: 4px;
   --space-2: 8px;
@@ -33,25 +11,618 @@
   --space-7: 48px;
 
   /* Type */
-  --font-sans: var(--font-geist-sans), "Segoe UI", system-ui, Arial, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, Consolas, monospace;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, Consolas, monospace;
   --text-xs: 0.78rem;
   --text-sm: 0.88rem;
   --text-md: 1rem;
   --text-lg: 1.15rem;
   --text-xl: 1.5rem;
   --text-2xl: clamp(1.7rem, 3.5vw, 2.3rem);
-
-  /* Radius */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
   --radius-full: 999px;
+
+  /* Motion: C's spring (overshoots a little), and a soft ease-out. */
+  --ease-spring: cubic-bezier(0.3, 1.6, 0.5, 1);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Text on a --danger background, in every design. */
+  --on-danger: #ffffff;
 
   /* Layout: the menu and every page share this width. */
   --content-width: 1100px;
 
+  /* The colour shift, in degrees around the colour wheel; 0 keeps each design's own colours. */
+  --hue: 0;
+}
+
+/* A design's own colours (--base-*) turned by --hue. Danger, success and warning keep their meaning, so they do not turn.
+   Any element with data-design (the page, or a preview of a design) works these out for itself. */
+[data-design] {
+  --bg: oklch(from var(--base-bg) l c calc(h + var(--hue)));
+  --surface: oklch(from var(--base-surface) l c calc(h + var(--hue)));
+  --surface-raised: oklch(from var(--base-surface-raised) l c calc(h + var(--hue)));
+  --surface-hover: oklch(from var(--base-surface-hover) l c calc(h + var(--hue)));
+  --border: oklch(from var(--base-border) l c calc(h + var(--hue)));
+  --text: oklch(from var(--base-text) l c calc(h + var(--hue)));
+  --muted: oklch(from var(--base-muted) l c calc(h + var(--hue)));
+  --accent: oklch(from var(--base-accent) l c calc(h + var(--hue)));
+  --accent-hover: oklch(from var(--base-accent-hover) l c calc(h + var(--hue)));
+  --on-accent: oklch(from var(--base-on-accent) l c calc(h + var(--hue)));
+  --link: oklch(from var(--base-link) l c calc(h + var(--hue)));
+  --link-hover: oklch(from var(--base-link-hover) l c calc(h + var(--hue)));
+  /* The design's second and third colours: gradients, the brand mark, glows. */
+  --accent-2: oklch(from var(--base-accent-2) l c calc(h + var(--hue)));
+  --accent-3: oklch(from var(--base-accent-3) l c calc(h + var(--hue)));
+  --info-text: var(--link);
+  --focus-glow: color-mix(in srgb, var(--link) 28%, transparent);
+}
+
+/* ===== Night Spring (the default): dark glass with soft glows, springy buttons and lifting cards. ===== */
+[data-design="night"] {
   color-scheme: dark;
+  /* White text on --accent is 5.10:1, on --accent-hover 6.08:1; --muted on --surface 6.61:1. */
+  --base-bg: #0b0b14;
+  --base-surface: #15152a;
+  --base-surface-raised: #1c1c38;
+  --base-surface-hover: #25254a;
+  --base-border: #2a2a52;
+  --base-text: #f1f0ff;
+  --base-muted: #9b99c4;
+  --base-accent: #6c4cff;
+  --base-accent-hover: #5f3ff0;
+  --base-on-accent: #ffffff;
+  --base-link: #a99bff;
+  --base-link-hover: #cbc2ff;
+  --base-accent-2: #2ee6a6;
+  --base-accent-3: #ff8a66;
+  --danger: #c93a46;
+  --danger-hover: #b32f3b;
+  --danger-text: #ff8a8a;
+  --success-text: #2ee6a6;
+  --warning-text: #ffc145;
+  --page-bg:
+    radial-gradient(800px 380px at 90% -20%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 60%),
+    radial-gradient(600px 360px at -10% 120%, color-mix(in srgb, var(--accent-2) 14%, transparent), transparent 60%),
+    var(--bg);
+
+  --font-sans: var(--font-manrope), "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--font-unbounded), var(--font-sans);
+  --heading-weight: 700;
+  --heading-tracking: -0.03em;
+  --heading-case: none;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-card: 22px;
+  --card-border: 1px solid var(--border);
+  --shadow-card: 0 18px 40px -30px rgba(0, 0, 0, 0.9);
+  --shadow-hover: 0 30px 50px -24px color-mix(in srgb, var(--accent) 75%, transparent);
+  --card-lift: translateY(-6px);
+  --shadow-pop: 0 24px 60px -20px rgba(0, 0, 0, 0.8);
+  --backdrop: rgba(5, 5, 12, 0.65);
+
+  --btn-radius: 14px;
+  --btn-weight: 700;
+  --btn-case: none;
+  --btn-tracking: normal;
+  --btn-ease: var(--ease-spring);
+  --btn-lift: translateY(-3px) scale(1.04);
+  --btn-press: scale(0.96);
+  --btn-border: var(--border);
+  --btn-shadow: 0 8px 20px -12px rgba(0, 0, 0, 0.8);
+  --btn-shadow-hover: 0 14px 30px -12px color-mix(in srgb, var(--accent) 70%, transparent);
+  --btn-primary-bg: var(--accent);
+  --btn-primary-hover-bg: var(--accent-hover);
+  --btn-secondary-hover-bg: var(--surface-hover);
+  --btn-secondary-hover-text: var(--text);
+
+  --topbar-bg: color-mix(in srgb, var(--bg) 78%, transparent);
+  --topbar-border: 1px solid var(--border);
+  --topbar-text: var(--text);
+  --brand-font: var(--font-display);
+  --brand-weight: 700;
+  --brand-style: normal;
+  --brand-case: none;
+  --brand-mark: var(--accent);
+  --brand-mark-size: 12px;
+  --brand-mark-radius: 50%;
+  --brand-mark-shadow: 8px 0 0 var(--accent-3), 16px 0 0 var(--accent-2);
+  --brand-mark-clip: none;
+  --brand-mark-space: 16px;
+  --brand-mark-animation: none;
+  --nav-text: var(--muted);
+  --nav-size: 0.88rem;
+  --nav-weight: 600;
+  --nav-case: none;
+  --nav-tracking: normal;
+  --nav-radius: 12px;
+  --nav-hover-bg: var(--surface);
+  --nav-hover-text: var(--text);
+  --nav-hover-shadow: none;
+  --nav-active-bg: var(--text);
+  --nav-active-text: var(--bg);
+  --nav-active-shadow: none;
+
+  --toast-bg: var(--text);
+  --toast-text: var(--bg);
+  --toast-border: 1px solid transparent;
+  --toast-shadow: 0 20px 40px -18px color-mix(in srgb, var(--accent) 80%, transparent);
+  --toast-check: var(--accent);
+  --toast-radius: 16px;
+}
+
+/* Night Spring's colour palettes: the same design in other colours. Dark text on the accents that are light. */
+[data-design="night"][data-palette="ember"] {
+  --base-bg: #120a0a;
+  --base-surface: #211312;
+  --base-surface-raised: #2a1817;
+  --base-surface-hover: #352020;
+  --base-border: #3a2220;
+  --base-text: #fff3ee;
+  --base-muted: #c6a29a;
+  --base-accent: #ff5e3a;
+  --base-accent-hover: #ff7a5c;
+  --base-on-accent: #120a0a;
+  --base-link: #ff9a7a;
+  --base-link-hover: #ffc0aa;
+  --base-accent-2: #ffc145;
+  --base-accent-3: #ff8fab;
+}
+
+[data-design="night"][data-palette="ocean"] {
+  --base-bg: #06111a;
+  --base-surface: #0e1e2b;
+  --base-surface-raised: #132636;
+  --base-surface-hover: #1a3042;
+  --base-border: #1c3446;
+  --base-text: #eaf6ff;
+  --base-muted: #8fb0c6;
+  --base-accent: #1e9bff;
+  --base-accent-hover: #4fb2ff;
+  --base-on-accent: #06111a;
+  --base-link: #6cc4ff;
+  --base-link-hover: #a6dcff;
+  --base-accent-2: #33e1d0;
+  --base-accent-3: #ffb86b;
+}
+
+[data-design="night"][data-palette="forest"] {
+  --base-bg: #08100c;
+  --base-surface: #112019;
+  --base-surface-raised: #162820;
+  --base-surface-hover: #1d3328;
+  --base-border: #21372b;
+  --base-text: #effbf3;
+  --base-muted: #9bbfa8;
+  --base-accent: #22c55e;
+  --base-accent-hover: #4ade80;
+  --base-on-accent: #08100c;
+  --base-link: #6ee79a;
+  --base-link-hover: #a7f3c4;
+  --base-accent-2: #d9f99d;
+  --base-accent-3: #fbbf24;
+}
+
+[data-design="night"][data-palette="rose"] {
+  --base-bg: #120814;
+  --base-surface: #211224;
+  --base-surface-raised: #29172d;
+  --base-surface-hover: #341d39;
+  --base-border: #3b2140;
+  --base-text: #fff0fb;
+  --base-muted: #c9a2c3;
+  --base-accent: #db2777;
+  --base-accent-hover: #c21f68;
+  --base-on-accent: #ffffff;
+  --base-link: #f9a8d4;
+  --base-link-hover: #fcd0e7;
+  --base-accent-2: #a78bfa;
+  --base-accent-3: #fda4af;
+}
+
+[data-design="night"][data-palette="gold"] {
+  --base-bg: #0e0d0a;
+  --base-surface: #1c1a14;
+  --base-surface-raised: #24211a;
+  --base-surface-hover: #2e2a21;
+  --base-border: #353024;
+  --base-text: #fbf7ea;
+  --base-muted: #bfb59a;
+  --base-accent: #e0a82e;
+  --base-accent-hover: #f0bd4f;
+  --base-on-accent: #0e0d0a;
+  --base-link: #f0c869;
+  --base-link-hover: #f7dc9c;
+  --base-accent-2: #f5f0e1;
+  --base-accent-3: #8ab4ff;
+}
+
+/* ===== Neon Studio: deep black glass, violet and cyan light. ===== */
+[data-design="neon"] {
+  color-scheme: dark;
+  /* Dark text on --accent is 5.76:1. */
+  --base-bg: #07070d;
+  --base-surface: #11111b;
+  --base-surface-raised: #191926;
+  --base-surface-hover: #222233;
+  --base-border: #262638;
+  --base-text: #eef0ff;
+  --base-muted: #9095b8;
+  --base-accent: #9670ff;
+  --base-accent-hover: #a786ff;
+  --base-on-accent: #08080f;
+  --base-link: #b9a3ff;
+  --base-link-hover: #d6caff;
+  --base-accent-2: #22d3ee;
+  --base-accent-3: #f472b6;
+  --danger: #c93a46;
+  --danger-hover: #b32f3b;
+  --danger-text: #ff8a8a;
+  --success-text: #4ade80;
+  --warning-text: #f2b84b;
+  --page-bg:
+    radial-gradient(900px 400px at 85% -10%, color-mix(in srgb, var(--accent) 25%, transparent), transparent 60%),
+    radial-gradient(700px 400px at -10% 110%, color-mix(in srgb, var(--accent-2) 18%, transparent), transparent 60%),
+    var(--bg);
+
+  --font-sans: var(--font-bricolage), "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--font-sans);
+  --heading-weight: 800;
+  --heading-tracking: -0.02em;
+  --heading-case: none;
+
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-card: 18px;
+  --card-border: 1px solid var(--border);
+  --shadow-card: none;
+  --shadow-hover: 0 24px 50px -20px color-mix(in srgb, var(--accent) 70%, transparent);
+  --card-lift: translateY(-6px) scale(1.02);
+  --shadow-pop: 0 24px 60px -20px rgba(0, 0, 0, 0.85);
+  --backdrop: rgba(0, 0, 0, 0.65);
+
+  --btn-radius: 12px;
+  --btn-weight: 700;
+  --btn-case: none;
+  --btn-tracking: normal;
+  --btn-ease: var(--ease-out);
+  --btn-lift: translateY(-2px);
+  --btn-press: scale(0.98);
+  --btn-border: var(--border);
+  --btn-shadow: none;
+  --btn-shadow-hover: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent), 0 8px 30px -8px color-mix(in srgb, var(--accent) 60%, transparent);
+  --btn-primary-bg: linear-gradient(120deg, var(--accent), var(--accent-2));
+  --btn-primary-hover-bg: linear-gradient(120deg, var(--accent-2), var(--accent));
+  --btn-secondary-hover-bg: var(--surface-hover);
+  --btn-secondary-hover-text: var(--text);
+
+  --topbar-bg: color-mix(in srgb, var(--bg) 75%, transparent);
+  --topbar-border: 1px solid var(--border);
+  --topbar-text: var(--text);
+  --brand-font: var(--font-display);
+  --brand-weight: 800;
+  --brand-style: normal;
+  --brand-case: none;
+  --brand-mark: conic-gradient(from 0deg, var(--accent), var(--accent-2), var(--accent));
+  --brand-mark-size: 22px;
+  --brand-mark-radius: 7px;
+  --brand-mark-shadow: 0 0 18px color-mix(in srgb, var(--accent) 50%, transparent);
+  --brand-mark-clip: none;
+  --brand-mark-space: 0px;
+  --brand-mark-animation: spin 6s linear infinite;
+  --nav-text: var(--muted);
+  --nav-size: 0.92rem;
+  --nav-weight: 500;
+  --nav-case: none;
+  --nav-tracking: normal;
+  --nav-radius: var(--radius-full);
+  --nav-hover-bg: var(--surface);
+  --nav-hover-text: var(--text);
+  --nav-hover-shadow: none;
+  --nav-active-bg: color-mix(in srgb, var(--accent) 20%, transparent);
+  --nav-active-text: var(--text);
+  --nav-active-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+
+  --toast-bg: var(--surface-raised);
+  --toast-text: var(--text);
+  --toast-border: 1px solid color-mix(in srgb, var(--accent-2) 45%, transparent);
+  --toast-shadow: 0 18px 40px -12px color-mix(in srgb, var(--accent-2) 50%, transparent);
+  --toast-check: var(--accent-2);
+  --toast-radius: 14px;
+}
+
+/* ===== Cutting Room: a film editor's bench, serif titles, tape orange, hard offset shadows. ===== */
+[data-design="cut"] {
+  color-scheme: dark;
+  /* Dark text on --accent is 6.05:1. */
+  --base-bg: #121110;
+  --base-surface: #1c1a18;
+  --base-surface-raised: #24211e;
+  --base-surface-hover: #2e2a26;
+  --base-border: #3a352f;
+  --base-text: #f2ece2;
+  --base-muted: #a59c8d;
+  --base-accent: #ff5a1f;
+  --base-accent-hover: #ff7a45;
+  --base-on-accent: #121110;
+  --base-link: #ff7a45;
+  --base-link-hover: #ffa27a;
+  --base-accent-2: #f2ece2;
+  --base-accent-3: #ffd400;
+  --danger: #c93a3a;
+  --danger-hover: #b83232;
+  --danger-text: #ff7b6b;
+  --success-text: #7fd99a;
+  --warning-text: #f2b84b;
+  --page-bg: var(--bg);
+
+  --font-sans: var(--font-manrope), "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--font-instrument-serif), Georgia, serif;
+  --heading-weight: 400;
+  --heading-tracking: -0.01em;
+  --heading-case: none;
+
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-card: 6px;
+  --card-border: 1px solid var(--border);
+  --shadow-card: none;
+  --shadow-hover: 8px 12px 0 var(--accent);
+  --card-lift: rotate(-1.2deg) translateY(-4px);
+  --shadow-pop: 0 24px 60px -20px rgba(0, 0, 0, 0.85);
+  --backdrop: rgba(0, 0, 0, 0.7);
+
+  --btn-radius: 4px;
+  --btn-weight: 800;
+  --btn-case: uppercase;
+  --btn-tracking: 0.1em;
+  --btn-ease: cubic-bezier(0.7, 0, 0.2, 1);
+  --btn-lift: none;
+  --btn-press: translateY(1px);
+  --btn-border: var(--border);
+  --btn-shadow: none;
+  --btn-shadow-hover: none;
+  --btn-primary-bg: var(--accent);
+  --btn-primary-hover-bg: var(--accent-2);
+  --btn-secondary-hover-bg: var(--accent-2);
+  --btn-secondary-hover-text: var(--bg);
+
+  --topbar-bg: color-mix(in srgb, var(--bg) 88%, transparent);
+  --topbar-border: 1px dashed var(--border);
+  --topbar-text: var(--text);
+  --brand-font: var(--font-display);
+  --brand-weight: 400;
+  --brand-style: italic;
+  --brand-case: none;
+  --brand-mark: repeating-linear-gradient(90deg, var(--accent) 0 4px, transparent 4px 7px);
+  --brand-mark-size: 22px;
+  --brand-mark-radius: 3px;
+  --brand-mark-shadow: none;
+  --brand-mark-clip: none;
+  --brand-mark-space: 0px;
+  --brand-mark-animation: none;
+  --nav-text: var(--muted);
+  --nav-size: 0.75rem;
+  --nav-weight: 800;
+  --nav-case: uppercase;
+  --nav-tracking: 0.14em;
+  --nav-radius: 0;
+  --nav-hover-bg: transparent;
+  --nav-hover-text: var(--text);
+  --nav-hover-shadow: inset 0 -2px 0 var(--accent);
+  --nav-active-bg: transparent;
+  --nav-active-text: var(--text);
+  --nav-active-shadow: inset 0 -2px 0 var(--accent);
+
+  --toast-bg: var(--accent-2);
+  --toast-text: var(--bg);
+  --toast-border: 1px solid transparent;
+  --toast-shadow: 6px 6px 0 var(--accent);
+  --toast-check: var(--bg);
+  --toast-radius: 4px;
+}
+
+/* ===== Daylight Pro: bright and airy, soft depth, springy cards. ===== */
+[data-design="day"] {
+  color-scheme: light;
+  /* White text on --accent is 6.80:1; --muted on --surface 5.51:1. */
+  --base-bg: #f6f5ff;
+  --base-surface: #ffffff;
+  --base-surface-raised: #f8f7ff;
+  --base-surface-hover: #efedff;
+  --base-border: #dcd8ef;
+  --base-text: #17142b;
+  --base-muted: #625d7e;
+  --base-accent: #4b2bff;
+  --base-accent-hover: #3c1ee6;
+  --base-on-accent: #ffffff;
+  --base-link: #4b2bff;
+  --base-link-hover: #3c1ee6;
+  --base-accent-2: #00c48c;
+  --base-accent-3: #ff7a59;
+  --danger: #c8261b;
+  --danger-hover: #ad1f16;
+  --danger-text: #c4320a;
+  --success-text: #0a7d55;
+  --warning-text: #9a5b00;
+  --page-bg: linear-gradient(180deg, #ffffff, var(--bg) 480px);
+
+  --font-sans: var(--font-manrope), "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--font-unbounded), var(--font-sans);
+  --heading-weight: 700;
+  --heading-tracking: -0.03em;
+  --heading-case: none;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-card: 24px;
+  --card-border: 1px solid var(--border);
+  --shadow-card: 0 1px 0 var(--border), 0 12px 30px -20px rgba(40, 20, 120, 0.35);
+  --shadow-hover: 0 30px 50px -24px color-mix(in srgb, var(--accent) 45%, transparent);
+  --card-lift: translateY(-8px);
+  --shadow-pop: 0 24px 60px -24px rgba(40, 20, 120, 0.45);
+  --backdrop: rgba(23, 20, 43, 0.45);
+
+  --btn-radius: 14px;
+  --btn-weight: 800;
+  --btn-case: none;
+  --btn-tracking: normal;
+  --btn-ease: var(--ease-spring);
+  --btn-lift: translateY(-3px) scale(1.04);
+  --btn-press: scale(0.96);
+  --btn-border: var(--border);
+  --btn-shadow: 0 1px 0 var(--border), 0 6px 16px -8px rgba(40, 20, 120, 0.25);
+  --btn-shadow-hover: 0 14px 28px -12px color-mix(in srgb, var(--accent) 45%, transparent);
+  --btn-primary-bg: var(--accent);
+  --btn-primary-hover-bg: var(--accent-hover);
+  --btn-secondary-hover-bg: var(--surface-hover);
+  --btn-secondary-hover-text: var(--text);
+
+  --topbar-bg: rgba(255, 255, 255, 0.82);
+  --topbar-border: 1px solid var(--border);
+  --topbar-text: var(--text);
+  --brand-font: var(--font-display);
+  --brand-weight: 700;
+  --brand-style: normal;
+  --brand-case: none;
+  --brand-mark: var(--accent);
+  --brand-mark-size: 12px;
+  --brand-mark-radius: 50%;
+  --brand-mark-shadow: 8px 0 0 var(--accent-3), 16px 0 0 var(--accent-2);
+  --brand-mark-clip: none;
+  --brand-mark-space: 16px;
+  --brand-mark-animation: none;
+  --nav-text: var(--muted);
+  --nav-size: 0.88rem;
+  --nav-weight: 600;
+  --nav-case: none;
+  --nav-tracking: normal;
+  --nav-radius: 12px;
+  --nav-hover-bg: var(--surface-hover);
+  --nav-hover-text: var(--text);
+  --nav-hover-shadow: none;
+  --nav-active-bg: var(--text);
+  --nav-active-text: #ffffff;
+  --nav-active-shadow: none;
+
+  --toast-bg: var(--text);
+  --toast-text: #ffffff;
+  --toast-border: 1px solid transparent;
+  --toast-shadow: 0 20px 40px -18px rgba(23, 20, 43, 0.6);
+  --toast-check: var(--accent-2);
+  --toast-radius: 16px;
+}
+
+/* ===== Broadcast: sports-TV energy, heavy uppercase type, red and yellow blocks, hard shadows. ===== */
+[data-design="cast"] {
+  color-scheme: light;
+  /* White text on --accent is 4.75:1; --link on --bg 5.97:1. */
+  --base-bg: #f2f2ee;
+  --base-surface: #ffffff;
+  --base-surface-raised: #fafaf7;
+  --base-surface-hover: #ecece6;
+  --base-border: #c4c4bc;
+  --base-text: #0d0d0d;
+  --base-muted: #5c5c57;
+  --base-accent: #e3172a;
+  --base-accent-hover: #c50f20;
+  --base-on-accent: #ffffff;
+  --base-link: #1a3cff;
+  --base-link-hover: #0f2bd6;
+  --base-accent-2: #ffd60a;
+  --base-accent-3: #1a3cff;
+  --danger: #c8102e;
+  --danger-hover: #a90d26;
+  --danger-text: #c8102e;
+  --success-text: #0a7a3b;
+  --warning-text: #8a5a00;
+  --page-bg: var(--bg);
+
+  --font-sans: var(--font-bricolage), "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--font-sans);
+  --heading-weight: 800;
+  --heading-tracking: -0.03em;
+  --heading-case: uppercase;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-card: 18px;
+  --card-border: 2px solid var(--text);
+  --shadow-card: none;
+  --shadow-hover: 8px 10px 0 var(--text);
+  --card-lift: translateY(-6px);
+  --shadow-pop: 0 24px 60px -24px rgba(0, 0, 0, 0.45);
+  --backdrop: rgba(13, 13, 13, 0.55);
+
+  --btn-radius: 12px;
+  --btn-weight: 800;
+  --btn-case: uppercase;
+  --btn-tracking: 0.04em;
+  --btn-ease: var(--ease-spring);
+  --btn-lift: translateY(-3px) scale(1.04);
+  --btn-press: scale(0.96);
+  --btn-border: transparent;
+  --btn-shadow: inset 0 0 0 2px var(--text);
+  --btn-shadow-hover: inset 0 0 0 2px var(--text), 4px 6px 0 var(--text);
+  --btn-primary-bg: var(--accent);
+  --btn-primary-hover-bg: var(--accent-hover);
+  --btn-secondary-hover-bg: var(--accent-2);
+  --btn-secondary-hover-text: var(--text);
+
+  --topbar-bg: var(--text);
+  --topbar-border: 1px solid var(--text);
+  --topbar-text: #ffffff;
+  --brand-font: var(--font-display);
+  --brand-weight: 800;
+  --brand-style: normal;
+  --brand-case: uppercase;
+  --brand-mark: var(--accent);
+  --brand-mark-size: 22px;
+  --brand-mark-radius: 0;
+  --brand-mark-shadow: none;
+  --brand-mark-clip: polygon(0 0, 100% 50%, 0 100%);
+  --brand-mark-space: 0px;
+  --brand-mark-animation: none;
+  --nav-text: #cfcfca;
+  --nav-size: 0.78rem;
+  --nav-weight: 800;
+  --nav-case: uppercase;
+  --nav-tracking: 0.08em;
+  --nav-radius: 10px;
+  --nav-hover-bg: var(--accent-2);
+  --nav-hover-text: #0d0d0d;
+  --nav-hover-shadow: none;
+  --nav-active-bg: var(--accent);
+  --nav-active-text: #ffffff;
+  --nav-active-shadow: none;
+
+  --toast-bg: var(--accent-2);
+  --toast-text: #0d0d0d;
+  --toast-border: 2px solid #0d0d0d;
+  --toast-shadow: 6px 8px 0 #0d0d0d;
+  --toast-check: #0d0d0d;
+  --toast-radius: 14px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Motion is decoration: with reduced motion, things change at once instead of moving. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Element styles sit in a layer, so any component or page class beats them whatever its specificity. */
@@ -73,7 +644,9 @@
     flex-direction: column;
     overflow-x: clip;
     color: var(--text);
-    background: var(--bg);
+    background: var(--page-bg);
+    /* Once: the html box is one window tall, and the glows would otherwise repeat down a long page. */
+    background-repeat: no-repeat;
     font-family: var(--font-sans);
     font-size: 15px;
     line-height: 1.55;
@@ -110,7 +683,7 @@
   textarea:focus-visible {
     outline: none;
     border-color: var(--link);
-    box-shadow: 0 0 0 3px rgba(123, 157, 255, 0.25);
+    box-shadow: 0 0 0 3px var(--focus-glow);
   }
 
   textarea {
@@ -140,10 +713,17 @@
     padding: var(--space-6) var(--space-4) 80px;
   }
 
+  main h1,
+  main h2 {
+    font-family: var(--font-display);
+    font-weight: var(--heading-weight);
+    letter-spacing: var(--heading-tracking);
+    text-transform: var(--heading-case);
+  }
+
   main h1 {
     font-size: var(--text-2xl);
     line-height: 1.15;
-    letter-spacing: -0.02em;
     overflow-wrap: anywhere;
   }
 
@@ -199,9 +779,10 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  background: rgba(14, 16, 20, 0.82);
+  color: var(--topbar-text);
+  background: var(--topbar-bg);
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--topbar-border);
 }
 
 .topbar-inner {
@@ -218,17 +799,23 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-weight: 700;
+  font-family: var(--brand-font);
+  font-weight: var(--brand-weight);
+  font-style: var(--brand-style);
   font-size: 1.05rem;
   letter-spacing: -0.01em;
+  text-transform: var(--brand-case);
 }
 
 .brand-mark {
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
-  background: linear-gradient(135deg, var(--accent), #a855f7);
-  box-shadow: 0 0 18px rgba(58, 100, 224, 0.45);
+  width: var(--brand-mark-size);
+  height: var(--brand-mark-size);
+  margin-right: var(--brand-mark-space);
+  border-radius: var(--brand-mark-radius);
+  background: var(--brand-mark);
+  box-shadow: var(--brand-mark-shadow);
+  clip-path: var(--brand-mark-clip);
+  animation: var(--brand-mark-animation);
 }
 
 .topbar-links {
@@ -242,21 +829,25 @@
 .topbar-links a {
   display: block;
   padding: 6px 14px;
-  border-radius: var(--radius-full);
-  color: var(--muted);
-  font-size: 0.92rem;
-  transition: color 0.15s, background 0.15s;
+  border-radius: var(--nav-radius);
+  color: var(--nav-text);
+  font-size: var(--nav-size);
+  font-weight: var(--nav-weight);
+  letter-spacing: var(--nav-tracking);
+  text-transform: var(--nav-case);
+  transition: color 0.2s, background 0.2s, box-shadow 0.25s var(--ease-out);
 }
 
 .topbar-links a:hover {
-  color: var(--text);
-  background: var(--surface);
+  color: var(--nav-hover-text);
+  background: var(--nav-hover-bg);
+  box-shadow: var(--nav-hover-shadow);
 }
 
 .topbar-links a.active {
-  color: var(--text);
-  background: rgba(58, 100, 224, 0.2);
-  box-shadow: inset 0 0 0 1px rgba(123, 157, 255, 0.45);
+  color: var(--nav-active-text);
+  background: var(--nav-active-bg);
+  box-shadow: var(--nav-active-shadow);
 }
 
 /* Narrow windows: the links get their own row under the brand, and scroll sideways if needed. */

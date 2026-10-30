@@ -1,0 +1,248 @@
+/* The Appearance section: design cards with a small live preview each, Night Spring's colour chips, the colour shift. */
+/* Space before the next section of the page. */
+.section {
+  margin-bottom: var(--space-5);
+}
+
+.form {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.group {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  border: none;
+}
+
+.group[hidden] {
+  display: none;
+}
+
+.group legend {
+  margin-bottom: var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.designs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-3);
+}
+
+.design {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition:
+    transform 0.45s cubic-bezier(0.3, 1.5, 0.5, 1),
+    box-shadow 0.45s,
+    border-color 0.2s;
+}
+
+.design:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-hover);
+}
+
+.design input,
+.chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.design:has(input:checked),
+.chip:has(input:checked) {
+  border-color: var(--link);
+  box-shadow: inset 0 0 0 1px var(--link);
+}
+
+.design:has(input:focus-visible),
+.chip:has(input:focus-visible) {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.design strong {
+  padding: var(--space-1) var(--space-1) 0;
+  font-size: var(--text-sm);
+}
+
+.design small {
+  padding: 0 var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+/* A tiny screen in the design itself: it carries data-design, so the tokens inside are that design's. */
+.preview {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 104px;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--page-bg);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius-lg) - 4px);
+}
+
+.previewBar {
+  display: flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 var(--space-2);
+  background: var(--topbar-bg);
+  border-bottom: var(--topbar-border);
+}
+
+.previewMark {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--brand-mark-radius);
+  background: var(--brand-mark);
+  clip-path: var(--brand-mark-clip);
+}
+
+.previewBody {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto 1fr;
+  gap: 6px;
+  padding: var(--space-2);
+}
+
+.previewTitle {
+  font-family: var(--font-display);
+  font-weight: var(--heading-weight);
+  font-size: 1.15rem;
+  line-height: 1;
+  letter-spacing: var(--heading-tracking);
+}
+
+.previewButtons {
+  display: flex;
+  gap: 4px;
+}
+
+.previewPrimary,
+.previewSecondary {
+  width: 22px;
+  height: 12px;
+  border-radius: calc(var(--btn-radius) / 2);
+  box-shadow: var(--btn-shadow);
+}
+
+.previewPrimary {
+  background: var(--btn-primary-bg);
+}
+
+.previewSecondary {
+  background: var(--surface-raised);
+  border: 1px solid var(--btn-border);
+}
+
+.previewCard {
+  grid-column: 1 / -1;
+  background: var(--surface);
+  border: var(--card-border);
+  border-radius: calc(var(--radius-card) / 2);
+  box-shadow: var(--shadow-card);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 12px 6px 6px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.2s var(--ease-spring),
+    border-color 0.15s;
+}
+
+.chip:hover {
+  transform: translateY(-2px) scale(1.04);
+}
+
+.chip i {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+}
+
+.hues {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.hues input[type="range"] {
+  width: min(320px, 100%);
+  padding: 0;
+  background: none;
+  border: none;
+  accent-color: var(--accent);
+}
+
+.hueValue {
+  min-width: 9em;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.hueSwatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Each swatch shows this design's accent turned by its shift. */
+.hueSwatch {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: oklch(from var(--base-accent) l c calc(h + var(--swatch-hue)));
+  box-shadow: 0 0 0 1px var(--border);
+  cursor: pointer;
+  transition: transform 0.2s var(--ease-spring);
+}
+
+.hueSwatch:hover {
+  transform: scale(1.18);
+}
+
+.hueSwatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--text);
+}

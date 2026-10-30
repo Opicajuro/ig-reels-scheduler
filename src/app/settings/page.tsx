@@ -24,6 +24,7 @@ import {
   saveSettingsAction,
 } from "./actions";
 import { installAiEngineAction, uninstallAiEngineAction } from "./ai-actions";
+import { AppearanceSection } from "./appearance-section";
 import { EncoderSection } from "./encoder-section";
 import { EngineProgress } from "./engine-progress";
 import { R2Section } from "./r2-section";
@@ -52,6 +53,7 @@ export default async function SettingsPage() {
   return (
     <main>
       <PageHeader title="Settings" description="Changes take effect as soon as they are saved, without a restart." />
+      <AppearanceSection />
       <ActionForm action={saveSettingsAction} className={styles.form}>
         <Card>
           <h2>Meta app</h2>
