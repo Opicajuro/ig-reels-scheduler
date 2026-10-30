@@ -92,3 +92,10 @@ export async function uploadFromFile(key: string, filePath: string, contentType:
     }),
   );
 }
+
+// Streams an object out of storage, with its size, for a copy to somewhere else.
+export async function openObject(key: string): Promise<{ body: Readable; size: number }> {
+  const response = await client().send(new GetObjectCommand({ Bucket: requireEnv("S3_BUCKET"), Key: key }));
+  if (!response.Body || response.ContentLength === undefined) throw new Error(`${key} has no content`);
+  return { body: response.Body as Readable, size: response.ContentLength };
+}

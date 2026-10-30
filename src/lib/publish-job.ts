@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import { classifyMetaError, MetaApiError } from "./meta-errors";
+import { R2NotSetUp } from "./r2";
 
 const MAX_CONTAINER_CHECKS = 5;
 const CONTAINER_CHECK_INTERVAL_MS = 60_000;
@@ -43,7 +44,10 @@ export type PublishDeps = {
   postId: string;
   now: Date;
   meta: PublishMeta;
-  getReelUrl: (key: string) => Promise<string>;
+  // Puts the post's Reel where Instagram can download it and returns the link; throws R2NotSetUp without R2.
+  stageVideo: (postId: string, reelKey: string) => Promise<string>;
+  // Removes that copy once the post is published, failed for good or canceled.
+  discardVideo: (postId: string) => Promise<void>;
   getToken: (accountId: string) => Promise<string>;
   lock: PublishLock;
   sleep: (ms: number) => Promise<void>;
@@ -88,6 +92,7 @@ async function failAndStop(deps: PublishDeps, post: Post, message: string): Prom
     where: { id: post.id },
     data: { status: "failed", lastError: message, attempts: { increment: 1 } },
   });
+  await deps.discardVideo(post.id);
   throw new PostFailed(message);
 }
 
@@ -156,7 +161,13 @@ async function awaitContainer(deps: PublishDeps, post: Post, containerId: string
 
 async function createContainer(deps: PublishDeps, post: Post, token: string): Promise<string> {
   if (!post.media.reelKey) return failAndStop(deps, post, "media has no reel");
-  const videoUrl = await deps.getReelUrl(post.media.reelKey);
+  let videoUrl: string;
+  try {
+    videoUrl = await deps.stageVideo(post.id, post.media.reelKey);
+  } catch (err) {
+    if (err instanceof R2NotSetUp) return failAndStop(deps, post, err.message);
+    throw err;
+  }
   const containerId = await callMeta(deps, post, "create", (onBucPause) =>
     deps.meta.createContainer({
       igUserId: post.account.igUserId,
@@ -200,6 +211,7 @@ async function publishLocked(deps: PublishDeps, post: Post) {
       where: { id: post.id },
       data: { status: "published", lastError: "published; Meta did not return the media id" },
     });
+    await deps.discardVideo(post.id);
     return;
   }
   if (state !== "ready") return failAndStop(deps, post, `container ${state}`);
@@ -216,12 +228,14 @@ async function publishLocked(deps: PublishDeps, post: Post) {
 
   await guardPause(deps, post);
   const current = await deps.db.post.findUnique({ where: { id: post.id }, select: { status: true } });
-  if (current?.status === "canceled") return;
+  // Cancel deletes the copy in R2, but this run may have uploaded it again since.
+  if (current?.status === "canceled") return deps.discardVideo(post.id);
   const igMediaId = await callMeta(deps, post, "publish", (onBucPause) =>
     deps.meta.publishContainer({ igUserId, containerId: containerId as string, token, onBucPause }),
   );
   // Save the media id before anything else can fail, so a retry never publishes the Reel twice.
   await deps.db.post.update({ where: { id: post.id }, data: { igMediaId, status: "published" } });
+  await deps.discardVideo(post.id);
 
   // The permalink is only for display. The Reel is already live, so a failed lookup must not fail the post.
   try {

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { MetaApiError } from "./meta-errors";
 import { Deferred, publishPost, type PublishMeta } from "./publish-job";
+import { R2NotSetUp, R2_NOT_SET_UP } from "./r2";
 
 const NOW = new Date("2026-10-12T18:00:00Z");
 const HOUR = 60 * 60 * 1000;
@@ -117,8 +118,21 @@ const deferUntil = async (at: Date): Promise<never> => {
   throw new Deferred("deferred");
 };
 
+// The copies of a Reel put in R2 for Instagram, and the ones deleted again.
+let staged: string[] = [];
+let discarded: string[] = [];
+const stageVideo = async (postId: string, reelKey: string) => {
+  staged.push(`${postId} ${reelKey}`);
+  return `https://r2.test/ig-posts/${postId}.mp4?signed`;
+};
+const discardVideo = async (postId: string) => {
+  discarded.push(postId);
+};
+
 beforeEach(() => {
   deferrals = [];
+  staged = [];
+  discarded = [];
 });
 
 function run(db: PrismaClient, meta: PublishMeta, extra: Partial<Parameters<typeof publishPost>[0]> = {}) {
@@ -127,7 +141,8 @@ function run(db: PrismaClient, meta: PublishMeta, extra: Partial<Parameters<type
     postId: "post-1",
     now: NOW,
     meta,
-    getReelUrl: async (key) => `https://storage.test/${key}`,
+    stageVideo,
+    discardVideo,
     getToken: async () => "tok",
     lock: lockOk,
     sleep: noSleep,
@@ -196,6 +211,62 @@ describe("publishPost (spec section 7)", () => {
     expect(attempts.map((a) => a.step)).toEqual(["create", "poll", "quota", "publish"]);
   });
 
+  it("copies the Reel to R2 just before creating the container, gives Instagram that link, and deletes the copy once published", async () => {
+    const urls: string[] = [];
+    const meta = fakeMeta({
+      createContainer: async (args) => {
+        urls.push(args.videoUrl);
+        expect(discarded).toEqual([]);
+        return "container-1";
+      },
+    });
+
+    await run(fakeDb(makePost()).db, meta);
+
+    expect(staged).toEqual(["post-1 reels/media-1.mp4"]);
+    expect(urls).toEqual(["https://r2.test/ig-posts/post-1.mp4?signed"]);
+    expect(discarded).toEqual(["post-1"]);
+  });
+
+  it("fails the post without calling Meta when Cloudflare R2 is not set up", async () => {
+    const { db, updates } = fakeDb(makePost());
+    const meta = fakeMeta();
+
+    await run(db, meta, {
+      stageVideo: async () => {
+        throw new R2NotSetUp();
+      },
+    });
+
+    expect(meta.calls).toEqual([]);
+    expect(updates.at(-1)).toMatchObject({ status: "failed", lastError: R2_NOT_SET_UP });
+    expect(R2_NOT_SET_UP).toBe("Instagram posting needs Cloudflare R2 — set it up in Settings");
+  });
+
+  it("rethrows any other R2 upload error so the job retries, and the retry uploads again", async () => {
+    const { db, updates } = fakeDb(makePost());
+    const meta = fakeMeta();
+    let calls = 0;
+    const flaky = async (postId: string, reelKey: string) => {
+      calls++;
+      if (calls === 1) throw new Error("socket hang up");
+      return stageVideo(postId, reelKey);
+    };
+
+    await expect(run(db, meta, { stageVideo: flaky })).rejects.toThrow("socket hang up");
+    expect(updates.some((u) => u.status === "failed")).toBe(false);
+    await run(db, meta, { stageVideo: flaky });
+
+    expect(staged).toEqual(["post-1 reels/media-1.mp4"]);
+    expect(meta.calls).toContain("publish");
+  });
+
+  it("does not upload again when it reuses a container Instagram already made", async () => {
+    await run(fakeDb(makePost({ containerId: "container-old" })).db, fakeMeta());
+    expect(staged).toEqual([]);
+    expect(discarded).toEqual(["post-1"]);
+  });
+
   it("passes the post's AI info label on to the container", async () => {
     const sent: boolean[] = [];
     const meta = fakeMeta({
@@ -258,6 +329,7 @@ describe("publishPost (spec section 7)", () => {
     await run(db, meta);
     expect(updates.at(-1)).toMatchObject({ status: "failed" });
     expect(meta.calls).not.toContain("publish");
+    expect(discarded).toEqual(["post-1"]);
   });
 
   it("records the post as published, not failed, when the container is already PUBLISHED, so Retry cannot post it twice", async () => {
@@ -267,6 +339,7 @@ describe("publishPost (spec section 7)", () => {
     expect(updates.at(-1)).toMatchObject({ status: "published" });
     expect(meta.calls).not.toContain("publish");
     expect(meta.calls).not.toContain("create");
+    expect(discarded).toEqual(["post-1"]);
   });
 
   it("does not publish when the post was canceled while its container was being prepared", async () => {
@@ -274,6 +347,7 @@ describe("publishPost (spec section 7)", () => {
     const meta = fakeMeta();
     await run(db, meta);
     expect(meta.calls).not.toContain("publish");
+    expect(discarded).toEqual(["post-1"]);
   });
 
   it("throws (so the job retries later) when the container is still IN_PROGRESS after five polls", async () => {

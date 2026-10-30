@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { cancelScheduledPost } from "./posts";
 import type { PublishQueue } from "./queues";
+import { discardIgPostVideo } from "./r2";
+
+vi.mock("./r2", () => ({ discardIgPostVideo: vi.fn(async () => {}) }));
 
 function fakeDeps(options: { post?: { status: string; queueJobId: string | null } | null } = {}) {
   const updated: Array<Record<string, unknown>> = [];
@@ -33,6 +36,14 @@ describe("cancelScheduledPost", () => {
 
     expect(deps.updated).toEqual([{ status: "canceled" }]);
     expect(deps.removed).toEqual(["job-post-1"]);
+  });
+
+  it("deletes the post's copy in Cloudflare R2", async () => {
+    vi.mocked(discardIgPostVideo).mockClear();
+    const deps = fakeDeps();
+    await cancelScheduledPost({ db: deps.db, queue: deps.queue, ownerId: "user-1", postId: "post-1" });
+
+    expect(discardIgPostVideo).toHaveBeenCalledExactlyOnceWith(deps.db, "post-1");
   });
 
   it("marks the post canceled without touching the queue when it has no job", async () => {

@@ -11,12 +11,14 @@ Instagram accounts through the Meta Graph API.
 - **Upload sheet.** Select clips and download a text sheet with each clip's title and description, to paste
   into YouTube Studio by hand.
 - **Scheduling.** Schedule a clip to a connected Instagram account. The post publishes 45 minutes before its
-  time, with retries, a per-account lock and Meta's rate-limit pauses.
+  time, with retries, a per-account lock and Meta's rate-limit pauses. Instagram downloads each Reel from a link,
+  so just before posting the video is copied to your Cloudflare R2 bucket (set in Settings) and deleted from it
+  afterwards.
 - **Start screen.** The next posts, what needs attention (failed posts, accounts to reconnect, rate-limit pauses)
   and the latest clip projects.
 - **Scheduled.** Upcoming, publishing, published, failed and canceled posts, with cancel and retry; each post has a
   page with its video, publish steps and insights.
-- **Settings.** The Meta app and failure emails are set in the app, not in `.env`.
+- **Settings.** The Meta app, Cloudflare R2 and failure emails are set in the app, not in `.env`.
 
 ## Stack
 

@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { PublishQueue } from "./queues";
+import { discardIgPostVideo } from "./r2";
 import { UserError } from "./user-error";
 
 export async function cancelScheduledPost({
@@ -21,4 +22,5 @@ export async function cancelScheduledPost({
   // container_created covers the 45 minutes before publish; the publish job checks for canceled before publishing.
   await db.post.update({ where: { id: postId }, data: { status: "canceled" } });
   if (post.queueJobId) await queue.cancel(post.queueJobId);
+  await discardIgPostVideo(db, postId);
 }
