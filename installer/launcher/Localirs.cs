@@ -270,7 +270,8 @@ static class Launcher
             // Setup waits while this mutex is held (AppMutex), so let it go before starting setup.
             mutex.ReleaseMutex();
             mutex.Close();
-            Process.Start(setup, "/SILENT /SUPPRESSMSGBOXES /NORESTART /DIR=\"" + InstallDir + "\"");
+            // No /SUPPRESSMSGBOXES: if the update fails (for example Localirs cannot be stopped), setup shows why.
+            Process.Start(setup, "/SILENT /NORESTART /DIR=\"" + InstallDir + "\"");
             Application.Exit();
         };
         client.DownloadFileAsync(new Uri(updateUrl), setup);
