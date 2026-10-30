@@ -42,7 +42,7 @@ password `minio12345`), create a bucket named `ig-reels`. The Meta app and failu
 the Settings page. There is no sign-in: the app belongs to the first user row and only answers on this PC.
 
 Optional, for links and captions: `yt-dlp` on the worker's PATH for clips made from a link, and
-`CHROME_PATH`, `WHISPER_BIN`, `WHISPER_MODEL` and `WHISPER_VAD_MODEL` for captions.
+`CHROME_PATH`, `WHISPER_BIN` and `WHISPER_MODEL` for captions.
 
 Optional, for AI videos on `/ai` (Windows with an NVIDIA card of 12 GB or more): `LOCALIRS_DATA_DIR` (the engine
 goes in its `ai` folder) and `7zr` on the worker's PATH. The engine's downloads are pinned in `src/lib/ai-engine.json`.

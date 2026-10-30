@@ -45,7 +45,6 @@ Set these on both the web and the worker service, unless noted.
 | `CHROME_PATH` | Chrome or Chrome headless shell binary. Needed only for clips with captions. |
 | `WHISPER_BIN` | whisper.cpp `whisper-cli` binary. Needed only for clips with captions. |
 | `WHISPER_MODEL` | Path to a whisper.cpp model file, for example `ggml-large-v3-turbo-q5_0.bin`. Needed only for captions. |
-| `WHISPER_VAD_MODEL` | Path to a whisper.cpp Silero VAD model file, for example `ggml-silero-v6.2.0.bin`. Needed only for captions. |
 
 The Meta app ID and secret and the failure-email settings (address, Resend API key, sender) are not environment
 variables: set them on the app's Settings page after the first deploy.

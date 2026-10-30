@@ -51,7 +51,6 @@ $ffmpegZip = Get-Tool "ffmpeg" $manifest.ffmpeg "ffmpeg.zip"
 $ytDlp = Get-Tool "yt-dlp" $manifest.ytDlp "yt-dlp.exe"
 $whisperZip = Get-Tool "whisper.cpp" $manifest.whisperCpp "whisper.zip"
 $whisperModel = Get-Tool "Whisper model" $manifest.whisperModel "ggml-large-v3-turbo-q5_0.bin"
-$whisperVadModel = Get-Tool "Whisper VAD model" $manifest.whisperVadModel "ggml-silero-v6.2.0.bin"
 $sevenZip = Get-Tool "7-Zip (7zr)" $manifest.sevenZip "7zr.exe"
 $chromeZip = Get-Tool "Chrome headless shell" $manifest.chromeHeadlessShell "chrome-headless-shell.zip"
 $pgZip = Get-Tool "PostgreSQL" $manifest.postgres "postgres.zip"
@@ -70,7 +69,6 @@ Copy-Item -Force $sevenZip (Join-Path $tools "7zr.exe")
 
 Expand-Archive -Force $whisperZip (Join-Path $tools "whisper")
 Copy-Item -Force $whisperModel (Join-Path $tools "whisper\ggml-large-v3-turbo-q5_0.bin")
-Copy-Item -Force $whisperVadModel (Join-Path $tools "whisper\ggml-silero-v6.2.0.bin")
 
 Expand-Archive -Force $chromeZip (Join-Path $tools "chrome-unzip")
 Move-Item -Force (Join-Path $tools "chrome-unzip\chrome-headless-shell-win64") (Join-Path $tools "chrome")

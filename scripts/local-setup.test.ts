@@ -11,7 +11,6 @@ const install: LocalInstall = {
   chromePath: "C:\\Localirs\\tools\\chrome\\chrome.exe",
   whisperBin: "C:\\Localirs\\tools\\whisper\\whisper-cli.exe",
   whisperModel: "C:\\Localirs\\tools\\whisper\\ggml-large-v3-turbo-q5_0.bin",
-  whisperVadModel: "C:\\Localirs\\tools\\whisper\\ggml-silero-v6.2.0.bin",
   dataDir: "C:\\Localirs\\data",
 };
 
@@ -29,7 +28,6 @@ describe("buildLocalValues", () => {
     expect(values.CHROME_PATH).toBe(install.chromePath);
     expect(values.WHISPER_BIN).toBe(install.whisperBin);
     expect(values.WHISPER_MODEL).toBe(install.whisperModel);
-    expect(values.WHISPER_VAD_MODEL).toBe(install.whisperVadModel);
     expect(values.LOCALIRS_DATA_DIR).toBe(install.dataDir);
     expect(values.TOKEN_ENC_KEY).toBe("generated");
   });
