@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { saveSettingsAction } from "./actions";
 import { installAiEngineAction, uninstallAiEngineAction } from "./ai-actions";
+import { EncoderSection } from "./encoder-section";
 import { EngineProgress } from "./engine-progress";
 import styles from "./settings.module.css";
 
@@ -80,6 +81,7 @@ export default async function SettingsPage() {
         </div>
       </ActionForm>
 
+      <EncoderSection />
       <h2 id="ai-video">AI video</h2>
       <AiVideoSection />
 

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { videoEncoder } from "@/clip-engine/encoder.js";
 import { buildReelTranscodeArgs, checkReelSpec, type ProbeResult } from "./media-spec";
 
 const execFileAsync = promisify(execFile);
@@ -11,7 +12,7 @@ export async function transcodeToReel({
   inputPath: string;
   outputPath: string;
 }): Promise<{ durationSeconds: number; width: number; height: number }> {
-  await execFileAsync("ffmpeg", ["-v", "error", ...buildReelTranscodeArgs(inputPath, outputPath)]);
+  await execFileAsync("ffmpeg", ["-v", "error", ...buildReelTranscodeArgs(inputPath, outputPath, await videoEncoder())]);
 
   const { stdout } = await execFileAsync("ffprobe", [
     "-v", "error", "-print_format", "json", "-show_format", "-show_streams", outputPath,
