@@ -435,7 +435,7 @@ async function createClipPosts({
   audioSource: AudioSourceValue;
   now: Date;
   posts: Array<{
-    clip: { projectId: string; storageKey: string; length: number };
+    clip: { id: string; projectId: string; storageKey: string; length: number };
     caption: string;
     scheduledAt: Date;
     aiGenerated: boolean;
@@ -471,6 +471,7 @@ async function createClipPosts({
             height: 1920,
             audioSource,
             sourceProjectId: item.clip.projectId,
+            sourceClipId: item.clip.id,
           },
         });
         const post = await tx.post.create({

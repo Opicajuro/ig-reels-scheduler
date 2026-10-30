@@ -8,8 +8,10 @@ import { Card } from "@/components/card";
 import { EmptyState } from "@/components/empty-state";
 import { LocalTime } from "@/components/local-time";
 import { PageHeader } from "@/components/page-header";
+import { ExternalLink, PlatformChips } from "@/components/platform-links";
 import { StatusBadge } from "@/components/status-badge";
 import { insightTable } from "@/lib/insights";
+import { linksByClip } from "@/lib/links";
 import { describePostError } from "@/lib/meta-errors";
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
@@ -39,7 +41,7 @@ export default async function PostPage({ params }: PageProps<"/posts/[id]">) {
     where: { id, account: { ownerId } },
     include: {
       account: { select: { username: true } },
-      media: { select: { reelKey: true } },
+      media: { select: { reelKey: true, sourceClipId: true } },
       attemptLogs: { orderBy: { at: "asc" } },
       insights: true,
     },
@@ -47,6 +49,8 @@ export default async function PostPage({ params }: PageProps<"/posts/[id]">) {
   if (!post) notFound();
 
   const videoUrl = post.media.reelKey ? await presignDownload(post.media.reelKey, VIDEO_LINK_SECONDS) : null;
+  const sourceClipId = post.media.sourceClipId;
+  const elsewhere = sourceClipId ? ((await linksByClip(prisma, [sourceClipId])).get(sourceClipId) ?? []) : [];
   const lastCode = post.attemptLogs.findLast((attempt) => attempt.errorCode !== null)?.errorCode ?? null;
   const insights = insightTable(post.insights);
   const open = post.status === "scheduled" || post.status === "container_created";
@@ -91,7 +95,15 @@ export default async function PostPage({ params }: PageProps<"/posts/[id]">) {
               <>
                 <dt>On Instagram</dt>
                 <dd>
-                  <a href={post.permalink}>{post.permalink}</a>
+                  <ExternalLink href={post.permalink}>{post.permalink}</ExternalLink>
+                </dd>
+              </>
+            ) : null}
+            {elsewhere.length > 0 ? (
+              <>
+                <dt>Posted elsewhere</dt>
+                <dd>
+                  <PlatformChips links={elsewhere} />
                 </dd>
               </>
             ) : null}

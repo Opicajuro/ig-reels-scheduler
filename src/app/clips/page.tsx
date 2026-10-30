@@ -19,6 +19,7 @@ import { createLinkProjectAction } from "./actions";
 import aiStyles from "./ai.module.css";
 import styles from "./clips.module.css";
 import { NewVideoForm } from "./new-video-form";
+import { SourceLink } from "./source-link";
 import { UploadForm } from "./upload-form";
 import { VideoProgress } from "./video-progress";
 
@@ -108,12 +109,17 @@ export default async function ClipsPage() {
         <ul className={styles.projects}>
           {projects.map((project) => (
             <li key={project.id}>
-              <Link href={`/clips/${project.id}`}>
+              <Link href={`/clips/${project.id}`} className={styles.projectLink}>
                 <strong>{project.name}</strong>
                 <span className={styles.meta}>
                   {describeClipProject({ status: project.status, error: project.error, clipCount: project._count.clips })}
                 </span>
               </Link>
+              {project.aiVideos ? null : (
+                <span className={styles.source}>
+                  <SourceLink sourceUrl={project.sourceUrl} />
+                </span>
+              )}
             </li>
           ))}
         </ul>

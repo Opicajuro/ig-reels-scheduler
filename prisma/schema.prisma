@@ -18,6 +18,8 @@ model User {
   auditLogs     AuditLog[]
   clipProjects  ClipProject[]
   aiVideoJobs   AiVideoJob[]
+  profileLinks  ProfileLink[]
+  guideLinks    GuideLink[]
 }
 
 enum AccountStatus {
@@ -83,6 +85,9 @@ model Media {
   error      String?
   audioSource     AudioSource @default(unknown)
   sourceProjectId String?
+  // The clip it was scheduled from, for showing where else that clip was posted. Not a relation: deleting the clip
+  // never touches a post.
+  sourceClipId    String?
   posts      Post[]
 }
 
@@ -203,6 +208,36 @@ model Clip {
   aiGenerated Boolean     @default(false)
   createdAt   DateTime    @default(now())
   aiVideoJob  AiVideoJob?
+  links       ClipLink[]
+}
+
+// Where a clip was posted outside Localirs (YouTube Shorts, TikTok, …), pasted by the owner. A copy of the clip does not
+// get them: they belong to the clip that was posted.
+model ClipLink {
+  id        String   @id @default(cuid())
+  clipId    String
+  clip      Clip     @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  url       String
+  createdAt DateTime @default(now())
+}
+
+// The owner's own social profiles, shown on Home and as contact links on the privacy page.
+model ProfileLink {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  url       String
+  createdAt DateTime @default(now())
+}
+
+// Video guides the owner adds in Settings, listed on the Help page.
+model GuideLink {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title     String
+  url       String
+  createdAt DateTime @default(now())
 }
 
 // The app's settings, edited on /settings: one row, id 1. The Meta app secret and the Resend API key are sealed with

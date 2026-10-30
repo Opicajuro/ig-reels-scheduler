@@ -25,7 +25,7 @@ type Row = Record<string, unknown> & { id: string };
 
 // Enough of Prisma for these functions. Nested filters such as { project: { ownerId } } go through `relations`.
 function fakeDb(
-  seed: { projects?: Row[]; clips?: Row[]; accounts?: Row[]; media?: Row[]; posts?: Row[] } = {},
+  seed: { projects?: Row[]; clips?: Row[]; accounts?: Row[]; media?: Row[]; posts?: Row[]; clipLinks?: Row[] } = {},
 ) {
   const tables: Record<string, Row[]> = {
     clipProject: seed.projects ?? [],
@@ -33,6 +33,7 @@ function fakeDb(
     igAccount: seed.accounts ?? [],
     media: seed.media ?? [],
     post: seed.posts ?? [],
+    clipLink: seed.clipLinks ?? [],
     auditLog: [],
   };
   const relations: Record<string, Record<string, (row: Row) => Row | undefined>> = {
@@ -485,6 +486,31 @@ describe("moveClipsToProject and copyClipsToProject", () => {
   });
 });
 
+describe("a clip's posted-elsewhere links", () => {
+  const links = [{ id: "l1", clipId: "c1", url: "https://youtube.com/shorts/abc" }];
+  const seed = () => ({ projects: [project(), project({ id: "p2", name: "Beach day" })], clips: [clip()], clipLinks: structuredClone(links) });
+
+  it("stay with the clip that was posted: no copy gets them", async () => {
+    for (const copy of [
+      (db: PrismaClient, store: ClipStore) => copyClip({ db, store, ...owned, clipId: "c1" }),
+      (db: PrismaClient, store: ClipStore) => copyProject({ db, store, ...owned, projectId: "p1" }),
+      (db: PrismaClient, store: ClipStore) => copyClipsToProject({ db, store, ...owned, clipIds: ["c1"], projectId: "p2" }),
+    ]) {
+      const { db, tables } = fakeDb(seed());
+      await copy(db, fakeStore().store);
+      expect(tables.clip).toHaveLength(2);
+      expect(tables.clipLink).toEqual(links);
+    }
+  });
+
+  it("move with the clip, which keeps its row", async () => {
+    const { db, tables } = fakeDb(seed());
+    await moveClipsToProject({ db, store: fakeStore().store, ...owned, clipIds: ["c1"], projectId: "p2" });
+    expect(tables.clip).toEqual([expect.objectContaining({ id: "c1", projectId: "p2" })]);
+    expect(tables.clipLink).toEqual(links);
+  });
+});
+
 describe("scheduleClips", () => {
   const account = { id: "acc-1", ownerId: "user-1", status: "active" };
   const HOUR = 60 * 60 * 1000;
@@ -782,7 +808,7 @@ describe("scheduleClip", () => {
       now: new Date(),
     });
 
-    expect(tables.media.at(-1)).toMatchObject({ audioSource: "from_source", sourceProjectId: "p1" });
+    expect(tables.media.at(-1)).toMatchObject({ audioSource: "from_source", sourceProjectId: "p1", sourceClipId: "c1" });
     expect(tables.auditLog).toHaveLength(1);
     expect(tables.auditLog[0]).toMatchObject({ action: "rights_confirmed", targetType: "Post", targetId: post.id });
     const logged = tables.auditLog[0].data as { siblingAccountCount: number; warnings: string[] };

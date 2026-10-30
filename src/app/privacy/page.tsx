@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { PageHeader } from "@/components/page-header";
+import { ExternalLink } from "@/components/platform-links";
+import { getOwnerId } from "@/lib/owner";
+import { platformName } from "@/lib/platforms";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 
@@ -11,6 +14,8 @@ export default async function PrivacyPage() {
   await connection();
   // The contact is the failure-email address from Settings.
   const { alertEmail } = await getSettings(prisma);
+  // The owner's profiles from Settings are contacts too.
+  const profiles = await prisma.profileLink.findMany({ where: { ownerId: await getOwnerId() }, orderBy: { createdAt: "asc" } });
 
   return (
     <main>
@@ -37,12 +42,24 @@ export default async function PrivacyPage() {
         <p>
           Questions or deletion requests: <a href={`mailto:${alertEmail}`}>{alertEmail}</a>
         </p>
-      ) : (
+      ) : profiles.length > 0 ? null : (
         <p>
           No contact address yet. Add your email address under Failure emails on the{" "}
           <Link href="/settings">Settings</Link> page.
         </p>
       )}
+      {profiles.length > 0 ? (
+        <>
+          <p>{alertEmail ? "You can also reach us on:" : "Questions or deletion requests:"}</p>
+          <ul>
+            {profiles.map((profile) => (
+              <li key={profile.id}>
+                <ExternalLink href={profile.url}>{platformName(profile.url)}</ExternalLink>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
     </main>
   );
 }

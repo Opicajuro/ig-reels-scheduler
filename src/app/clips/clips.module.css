@@ -217,23 +217,50 @@
 }
 
 .projects li {
-  margin: 0;
-}
-
-.projects a {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3) 14px;
+  margin: 0;
+  padding-right: 14px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
+}
+
+.projects li:hover {
+  border-color: var(--link);
+}
+
+/* The project's own page; the source video link sits beside it. */
+.projectLink {
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3) 14px;
   color: var(--text);
 }
 
-.projects a:hover {
-  border-color: var(--link);
+.source {
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+/* Narrow windows: the source link gets its own line under the project. */
+@media (max-width: 640px) {
+  .projects li {
+    flex-wrap: wrap;
+    padding-right: 0;
+  }
+
+  .source {
+    flex-basis: 100%;
+    padding: 0 14px var(--space-3);
+    margin-top: calc(-1 * var(--space-3));
+  }
 }
 
 .projects strong {
@@ -479,4 +506,28 @@
   margin-left: auto;
   font-variant-numeric: tabular-nums;
   color: var(--text);
+}
+
+/* A clip's links to where it was posted elsewhere, in its drawer. */
+.links {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.links li {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.linkUrl {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

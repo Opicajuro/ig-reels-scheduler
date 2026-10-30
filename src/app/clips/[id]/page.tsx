@@ -11,6 +11,7 @@ import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Card } from "@/components/card";
 import { Field } from "@/components/field";
 import { PageHeader } from "@/components/page-header";
+import { SourceLink } from "../source-link";
 import {
   copyProjectAction,
   deleteProjectAction,
@@ -51,7 +52,12 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
 
   const project = await prisma.clipProject.findFirst({
     where: { id, ownerId },
-    include: { clips: { orderBy: { createdAt: "asc" } } },
+    include: {
+      clips: {
+        orderBy: { createdAt: "asc" },
+        include: { links: { orderBy: { createdAt: "asc" }, select: { id: true, url: true } } },
+      },
+    },
   });
   if (!project) notFound();
 
@@ -83,6 +89,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       title: clip.title,
       description: clip.description,
       aiGenerated: clip.aiGenerated,
+      links: clip.links,
       downloadUrl: await presignDownload(clip.storageKey, 3600),
     })),
   );
@@ -95,6 +102,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
   const sourceLength = project.durationSeconds
     ? `Source ${Math.floor(project.durationSeconds / 60)}:${String(project.durationSeconds % 60).padStart(2, "0")}`
     : null;
+  const facts = (failed ? [sourceLength] : [sourceLength, summary]).filter(Boolean).join(" · ");
 
   return (
     <main className={styles.page}>
@@ -104,7 +112,16 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
 
       <PageHeader
         title={project.name}
-        description={failed ? sourceLength : [sourceLength, summary].filter(Boolean).join(" · ")}
+        description={
+          project.aiVideos ? (
+            facts
+          ) : (
+            <>
+              <SourceLink sourceUrl={project.sourceUrl} />
+              {facts ? ` · ${facts}` : null}
+            </>
+          )
+        }
         actions={
           <>
             <ActionForm action={renameProjectAction} className={styles.actions}>

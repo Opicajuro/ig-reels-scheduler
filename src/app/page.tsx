@@ -11,6 +11,7 @@ import { metaAppConfig } from "@/lib/ig-connect";
 import { describePostError } from "@/lib/meta-errors";
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
+import { platformName } from "@/lib/platforms";
 import { getSettings } from "@/lib/settings";
 import styles from "./home.module.css";
 
@@ -23,7 +24,7 @@ export default async function Home() {
   const ownerId = await getOwnerId();
   const now = new Date();
 
-  const [upcoming, failed, accounts, projects, settings] = await Promise.all([
+  const [upcoming, failed, accounts, projects, settings, profiles] = await Promise.all([
     prisma.post.findMany({
       where: { status: { in: ["scheduled", "container_created"] }, account: { ownerId } },
       orderBy: { scheduledAt: "asc" },
@@ -41,6 +42,7 @@ export default async function Home() {
     prisma.igAccount.findMany({ where: { ownerId, status: { not: "revoked" } }, include: { token: true } }),
     prisma.clipProject.findMany({ where: { ownerId }, orderBy: { createdAt: "desc" }, take: RECENT_PROJECTS }),
     getSettings(prisma),
+    prisma.profileLink.findMany({ where: { ownerId }, orderBy: { createdAt: "asc" } }),
   ]);
 
   const metaReady = metaAppConfig(settings, process.env.IG_REDIRECT_URI) !== null;
@@ -61,6 +63,17 @@ export default async function Home() {
           </ButtonLink>
         }
       />
+
+      {profiles.length > 0 ? (
+        <nav className={styles.profiles} aria-label="Your profiles">
+          <span className={styles.profilesLabel}>Your profiles</span>
+          {profiles.map((profile) => (
+            <ButtonLink key={profile.id} href={profile.url} target="_blank" rel="noopener noreferrer" size="sm" title={profile.url}>
+              {platformName(profile.url)}
+            </ButtonLink>
+          ))}
+        </nav>
+      ) : null}
 
       <h2>Needs attention</h2>
       {nothingNeedsAttention ? (

@@ -5,14 +5,24 @@ import { connection } from "next/server";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Alert } from "@/components/alert";
 import { Card } from "@/components/card";
+import { EmptyState } from "@/components/empty-state";
 import { Field } from "@/components/field";
 import { PageHeader } from "@/components/page-header";
+import { ExternalLink } from "@/components/platform-links";
 import { StatusBadge } from "@/components/status-badge";
 import { AI_ENGINE, aiDir, downloadBytes, formatGigabytes, getAiEngine, requiredFreeBytes } from "@/lib/ai-engine";
 import { checkGpu, formatVram } from "@/lib/ai-gpu";
+import { getOwnerId } from "@/lib/owner";
+import { platformName } from "@/lib/platforms";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
-import { saveSettingsAction } from "./actions";
+import {
+  addGuideLinkAction,
+  addProfileLinkAction,
+  removeGuideLinkAction,
+  removeProfileLinkAction,
+  saveSettingsAction,
+} from "./actions";
 import { installAiEngineAction, uninstallAiEngineAction } from "./ai-actions";
 import { EngineProgress } from "./engine-progress";
 import styles from "./settings.module.css";
@@ -25,6 +35,11 @@ const LOG_FILES = ["web.log", "web.err.log", "worker.log", "worker.err.log", "st
 export default async function SettingsPage() {
   await connection();
   const settings = await getSettings(prisma);
+  const ownerId = await getOwnerId();
+  const [profiles, guides] = await Promise.all([
+    prisma.profileLink.findMany({ where: { ownerId }, orderBy: { createdAt: "asc" } }),
+    prisma.guideLink.findMany({ where: { ownerId }, orderBy: { createdAt: "asc" } }),
+  ]);
   // An installed copy runs from <install>\app and keeps its database, videos and logs in <install>\data.
   const appFolder = process.cwd();
   const dataFolder = path.resolve(appFolder, "..", "data");
@@ -79,6 +94,80 @@ export default async function SettingsPage() {
           </SubmitButton>
         </div>
       </ActionForm>
+
+      <h2>Links</h2>
+      <div className={styles.cards}>
+        <Card>
+          <div className={styles.stack}>
+            <h2 id="profiles">Your profiles</h2>
+            <p className={styles.note}>Links to your channels and pages on other sites, shown on Home and the privacy page.</p>
+            {profiles.length === 0 ? (
+              <EmptyState>No profiles yet.</EmptyState>
+            ) : (
+              <ul className={styles.links}>
+                {profiles.map((profile) => (
+                  <li key={profile.id}>
+                    <strong>{platformName(profile.url)}</strong>
+                    <ExternalLink href={profile.url} className={styles.linkUrl}>
+                      {profile.url}
+                    </ExternalLink>
+                    <ActionForm action={removeProfileLinkAction}>
+                      <input type="hidden" name="linkId" value={profile.id} />
+                      <SubmitButton size="sm" pendingLabel="Removing…">
+                        Remove
+                      </SubmitButton>
+                    </ActionForm>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <ActionForm action={addProfileLinkAction} className={styles.addLink}>
+              <Field label="Profile link" hint="Such as your YouTube channel, TikTok or Facebook page.">
+                <input type="url" name="url" maxLength={2000} placeholder="https://…" required />
+              </Field>
+              <SubmitButton pendingLabel="Adding…">Add profile</SubmitButton>
+            </ActionForm>
+          </div>
+        </Card>
+
+        <Card>
+          <div className={styles.stack}>
+            <h2 id="guides">Video guides</h2>
+            <p className={styles.note}>Videos that show how to use Localirs, listed on the Help page.</p>
+            {guides.length === 0 ? (
+              <EmptyState>No video guides yet.</EmptyState>
+            ) : (
+              <ul className={styles.links}>
+                {guides.map((guide) => (
+                  <li key={guide.id}>
+                    <strong>{guide.title}</strong>
+                    <ExternalLink href={guide.url} className={styles.linkUrl}>
+                      {guide.url}
+                    </ExternalLink>
+                    <ActionForm action={removeGuideLinkAction}>
+                      <input type="hidden" name="linkId" value={guide.id} />
+                      <SubmitButton size="sm" pendingLabel="Removing…">
+                        Remove
+                      </SubmitButton>
+                    </ActionForm>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <ActionForm action={addGuideLinkAction} className={styles.addLink}>
+              <div className={styles.fields}>
+                <Field label="Title">
+                  <input name="title" maxLength={120} required />
+                </Field>
+                <Field label="Video link">
+                  <input type="url" name="url" maxLength={2000} placeholder="https://…" required />
+                </Field>
+              </div>
+              <SubmitButton pendingLabel="Adding…">Add guide</SubmitButton>
+            </ActionForm>
+          </div>
+        </Card>
+      </div>
 
       <h2 id="ai-video">AI video</h2>
       <AiVideoSection />

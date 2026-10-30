@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { PostStatus } from "@/generated/prisma/enums";
 import { AiBadge } from "./ai-badge";
 import { LocalTime } from "./local-time";
+import { PlatformChips } from "./platform-links";
 import { StatusBadge } from "./status-badge";
 import styles from "./post-list.module.css";
 
@@ -13,6 +14,8 @@ export type PostListItem = {
   caption: string;
   aiGenerated: boolean;
   account: { username: string };
+  // Where the post's clip was also posted, outside Localirs.
+  elsewhere?: Array<{ id: string; url: string }>;
   // Extra lines under the caption, such as an error, and buttons on the right.
   details?: ReactNode;
   actions?: ReactNode;
@@ -32,6 +35,7 @@ export function PostList({ posts }: { posts: PostListItem[] }) {
             <StatusBadge status={post.status} />
             {post.aiGenerated ? <AiBadge title="Posted with Instagram's AI info label" /> : null}
             <p className={styles.caption}>{post.caption || "No caption"}</p>
+            {post.elsewhere ? <PlatformChips links={post.elsewhere} /> : null}
             {post.details}
           </div>
           {post.actions ? <div className={styles.actions}>{post.actions}</div> : null}

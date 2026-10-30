@@ -6,6 +6,7 @@ import { runAction, type ActionResult } from "@/lib/action-result";
 import { getOwnerId } from "@/lib/owner";
 import * as clips from "@/lib/clip-projects";
 import { s3ClipStore } from "@/lib/clip-store";
+import { addClipLink, removeClipLink } from "@/lib/links";
 import { parseAudioSource } from "@/lib/rights";
 import { prisma } from "@/lib/prisma";
 import { getClipQueue, getPublishQueue } from "@/lib/queues";
@@ -218,5 +219,23 @@ export async function bulkScheduleClipsAction(_previous: ActionResult, formData:
     revalidatePath(`/clips/${text(formData, "projectId")}`);
     revalidatePath("/scheduled");
     return `Scheduled ${posts.length} ${posts.length === 1 ? "clip" : "clips"}`;
+  });
+}
+
+export async function addClipLinkAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    await addClipLink({ db: prisma, ownerId: await getOwnerId(), clipId: text(formData, "clipId"), url: text(formData, "url") });
+    revalidatePath(`/clips/${text(formData, "projectId")}`);
+    revalidatePath("/scheduled");
+    return "Link added";
+  });
+}
+
+export async function removeClipLinkAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    await removeClipLink({ db: prisma, ownerId: await getOwnerId(), linkId: text(formData, "linkId") });
+    revalidatePath(`/clips/${text(formData, "projectId")}`);
+    revalidatePath("/scheduled");
+    return "Link removed";
   });
 }

@@ -4,7 +4,9 @@ import { connection } from "next/server";
 import type { PostStatus } from "@/generated/prisma/enums";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { ExternalLink } from "@/components/platform-links";
 import { PostList } from "@/components/post-list";
+import { linksByClip } from "@/lib/links";
 import { describePostError } from "@/lib/meta-errors";
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
@@ -37,10 +39,16 @@ export default async function ScheduledPage({ searchParams }: PageProps<"/schedu
       orderBy: { scheduledAt: tab.id === "upcoming" || tab.id === "publishing" ? "asc" : "desc" },
       include: {
         account: { select: { username: true } },
+        media: { select: { sourceClipId: true } },
         attemptLogs: { where: { errorCode: { not: null } }, orderBy: { at: "desc" }, take: 1 },
       },
     }),
   ]);
+  // Where each post's clip was also posted, outside Localirs.
+  const elsewhere = await linksByClip(
+    prisma,
+    posts.flatMap((post) => (post.media.sourceClipId ? [post.media.sourceClipId] : [])),
+  );
   const countOf = (statuses: PostStatus[]) =>
     counts.filter((row) => statuses.includes(row.status)).reduce((sum, row) => sum + row._count, 0);
 
@@ -66,13 +74,14 @@ export default async function ScheduledPage({ searchParams }: PageProps<"/schedu
         <PostList
           posts={posts.map((post) => ({
             ...post,
+            elsewhere: post.media.sourceClipId ? elsewhere.get(post.media.sourceClipId) : undefined,
             details:
               post.status === "failed" ? (
                 <p className={styles.error}>{describePostError(post.lastError, post.attemptLogs[0]?.errorCode ?? null)}</p>
               ) : post.status === "published" && post.permalink ? (
-                <a href={post.permalink} className={styles.permalink}>
+                <ExternalLink href={post.permalink} className={styles.permalink}>
                   View on Instagram
-                </a>
+                </ExternalLink>
               ) : null,
             actions:
               post.status === "scheduled" || post.status === "container_created" ? (

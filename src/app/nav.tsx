@@ -8,6 +8,7 @@ export const SECTIONS = [
   { href: "/scheduled", label: "Scheduled" },
   { href: "/accounts", label: "Accounts" },
   { href: "/settings", label: "Settings" },
+  { href: "/help", label: "Help" },
 ] as const;
 
 // The menu bar on every screen.

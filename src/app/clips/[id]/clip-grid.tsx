@@ -6,9 +6,11 @@ import { AiBadge } from "@/components/ai-badge";
 import { Button } from "@/components/button";
 import { Drawer } from "@/components/drawer";
 import { EmptyState } from "@/components/empty-state";
+import { PlatformChips } from "@/components/platform-links";
 import { Tabs } from "@/components/tabs";
 import { deleteClipAction, deleteClipsAction } from "../actions";
 import { ClipDetails } from "./clip-details";
+import { ClipLinks } from "./clip-links";
 import { ExportForm } from "./export-form";
 import { ScheduleForm } from "./schedule-form";
 import { BulkScheduleForm } from "./bulk-schedule-form";
@@ -23,6 +25,8 @@ export type ClipView = {
   title: string | null;
   description: string | null;
   aiGenerated: boolean;
+  // Where the clip was posted outside Localirs.
+  links: Array<{ id: string; url: string }>;
   downloadUrl: string;
 };
 
@@ -91,6 +95,7 @@ export function ClipGrid({
                 <span className={styles.meta}>
                   {formatTime(clip.start)} – {formatTime(clip.start + clip.length)}
                 </span>
+                <PlatformChips links={clip.links} />
               </div>
               <div className={styles.clipActions}>
                 <label className={styles.pick}>
@@ -191,6 +196,11 @@ export function ClipGrid({
                     alreadyScheduledTo={alreadyScheduledTo}
                   />
                 ),
+              },
+              {
+                id: "links",
+                label: "Links",
+                content: <ClipLinks clip={openClip} projectId={projectId} />,
               },
               {
                 id: "move",
