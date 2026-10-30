@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { videoEncoderArgs } from "@/clip-engine/encoder.js";
 import { buildReelTranscodeArgs, checkReelSpec } from "./media-spec";
 
 const GOOD_PROBE = {
@@ -10,13 +11,13 @@ const GOOD_PROBE = {
 };
 
 describe("buildReelTranscodeArgs", () => {
-  it("uses the exact transcode command from the handoff", () => {
-    expect(buildReelTranscodeArgs("in.mkv", "out.mp4")).toEqual([
+  it("uses the exact transcode command from the handoff, with the chosen encoder", () => {
+    expect(buildReelTranscodeArgs("in.mkv", "out.mp4", "nvenc")).toEqual([
       "-y",
       "-i", "in.mkv",
       "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p",
-      "-c:v", "libx264", "-profile:v", "high", "-preset", "medium", "-crf", "20",
-      "-maxrate", "8M", "-bufsize", "16M", "-g", "60", "-keyint_min", "60", "-sc_threshold", "0",
+      ...videoEncoderArgs("nvenc", 20),
+      "-g", "60", "-keyint_min", "60", "-sc_threshold", "0",
       "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart",
       "out.mp4",
     ]);

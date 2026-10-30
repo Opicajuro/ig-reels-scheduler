@@ -1,3 +1,5 @@
+import { videoEncoderArgs, type VideoEncoder } from "@/clip-engine/encoder.js";
+
 const MIN_DURATION_SECONDS = 3;
 const MAX_DURATION_SECONDS = 900;
 const MIN_FPS = 23;
@@ -15,13 +17,13 @@ export type ProbeResult = {
   streams: ProbeStream[];
 };
 
-export function buildReelTranscodeArgs(input: string, output: string): string[] {
+export function buildReelTranscodeArgs(input: string, output: string, encoder: VideoEncoder): string[] {
   return [
     "-y",
     "-i", input,
     "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30,format=yuv420p",
-    "-c:v", "libx264", "-profile:v", "high", "-preset", "medium", "-crf", "20",
-    "-maxrate", "8M", "-bufsize", "16M", "-g", "60", "-keyint_min", "60", "-sc_threshold", "0",
+    ...videoEncoderArgs(encoder, 20),
+    "-g", "60", "-keyint_min", "60", "-sc_threshold", "0",
     "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart",
     output,
   ];

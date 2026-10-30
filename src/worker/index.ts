@@ -30,11 +30,17 @@ import { sendOwnerAlerts } from "@/lib/alert-job";
 import { sendEmail } from "@/lib/alerts";
 import { getOwnerId } from "@/lib/owner";
 import { emailSettings, getSettings } from "@/lib/settings";
+import { videoEncoder } from "@/clip-engine/encoder.js";
+import { recordVideoEncoder, VIDEO_ENCODER_LABELS } from "@/lib/video-encoding";
 
 const DAILY_AT_03_UTC = "0 3 * * *";
 const DAILY_AT_08_UTC = "0 8 * * *";
 
 async function main() {
+  const encoder = await videoEncoder();
+  await recordVideoEncoder(prisma, encoder);
+  console.log(`video encoder: ${VIDEO_ENCODER_LABELS[encoder]}`);
+
   const boss = await getBoss();
 
   await boss.schedule(TOKEN_REFRESH_QUEUE, DAILY_AT_03_UTC, {}, { tz: "UTC" });

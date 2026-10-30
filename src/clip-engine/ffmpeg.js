@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { videoEncoder, videoEncoderArgs } from "./encoder.js";
 import {
   AUDIO_SAMPLE_RATE,
   MOTION_HEIGHT,
@@ -116,10 +117,7 @@ export async function renderClip({ input, output, start, length, overlay }) {
     "-t", String(length),
     "-map", "[out]",
     "-map", "0:a?",
-    "-c:v", "libx264",
-    "-preset", "veryfast",
-    "-crf", "21",
-    "-pix_fmt", "yuv420p",
+    ...videoEncoderArgs(await videoEncoder(), 21),
     "-c:a", "aac",
     "-b:a", "128k",
     "-movflags", "+faststart",
@@ -140,10 +138,7 @@ export async function convertAiVideo({ input, output }) {
     "-map", "[out]",
     "-map", "1:a",
     "-shortest",
-    "-c:v", "libx264",
-    "-profile:v", "high",
-    "-preset", "medium",
-    "-crf", "20",
+    ...videoEncoderArgs(await videoEncoder(), 20),
     "-c:a", "aac",
     "-b:a", "128k",
     "-movflags", "+faststart",

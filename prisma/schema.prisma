@@ -251,6 +251,18 @@ model Setting {
   emailFrom     String?
 }
 
+// The H.264 encoder the worker found when it last started: the NVIDIA card's NVENC, or x264 on the processor.
+model VideoEncoding {
+  id        Int          @id @default(1)
+  encoder   VideoEncoder
+  checkedAt DateTime     @updatedAt
+}
+
+enum VideoEncoder {
+  nvenc
+  x264
+}
+
 enum AiEngineStatus {
   not_installed
   installing
