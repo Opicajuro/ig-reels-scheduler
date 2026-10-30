@@ -11,6 +11,7 @@ export const OWNER_ALERTS_QUEUE = "owner-alerts";
 export const CLIP_QUEUE = "clip-project";
 export const AI_ENGINE_QUEUE = "ai-engine";
 export const AI_VIDEO_QUEUE = "ai-video";
+export const BACKUP_QUEUE = "backup";
 
 // A publish job runs up to 5 times: the first try, then 4 retries 60 seconds apart, doubling each time.
 export const PUBLISH_RETRY_LIMIT = 4;
@@ -51,7 +52,7 @@ async function startBoss(): Promise<PgBoss> {
   const keyed = { policy: "short" as const };
   await instance.createQueue(MEDIA_QUEUE, keyed);
   await instance.createQueue(INSIGHTS_QUEUE, keyed);
-  for (const name of [PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE, AI_ENGINE_QUEUE, AI_VIDEO_QUEUE]) {
+  for (const name of [PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE, AI_ENGINE_QUEUE, AI_VIDEO_QUEUE, BACKUP_QUEUE]) {
     await instance.createQueue(name);
   }
   return instance;
@@ -103,6 +104,14 @@ export function getAiVideoQueue(): AiVideoQueue {
       return jobId;
     },
   };
+}
+
+// A backup that copies the clips can take a long time on a slow drive; it gets 6 hours. It is not retried: the failure
+// is listed in Settings, and the next day's backup runs anyway.
+export async function enqueueBackup(): Promise<string> {
+  const jobId = await (await getBoss()).send(BACKUP_QUEUE, {}, { retryLimit: 0, expireInSeconds: 6 * 60 * 60 });
+  if (jobId === null) throw new Error("the backup was not queued");
+  return jobId;
 }
 
 export function getInsightsQueue(): InsightQueue {

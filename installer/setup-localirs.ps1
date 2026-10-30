@@ -91,6 +91,7 @@ try {
   $env:LOCALIRS_WHISPER_BIN = Join-Path $tools "whisper\Release\whisper-cli.exe"
   $env:LOCALIRS_WHISPER_MODEL = Join-Path $tools "whisper\ggml-large-v3-turbo-q5_0.bin"
   $env:LOCALIRS_DATA_DIR = $data
+  $env:LOCALIRS_PG_BIN = $pgBin
   $env:PATH = "$tools;$env:PATH"
 
   Push-Location $app

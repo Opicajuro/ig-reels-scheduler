@@ -1,0 +1,76 @@
+.cards {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.stack {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.stack h2 {
+  margin: 0;
+}
+
+.note,
+.error {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.note {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--danger-text);
+}
+
+.toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.toggle small {
+  display: block;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* A backup with its Restore button on the right; the button drops under it on a phone. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list li {
+  margin: 0;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+
+.backup {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+.backup code {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
