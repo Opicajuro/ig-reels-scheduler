@@ -7,6 +7,7 @@ import { Alert } from "@/components/alert";
 import { Card } from "@/components/card";
 import { EmptyState } from "@/components/empty-state";
 import { Field } from "@/components/field";
+import { NoAiGpuNote } from "@/components/no-ai-gpu-note";
 import { PageHeader } from "@/components/page-header";
 import { ExternalLink } from "@/components/platform-links";
 import { StatusBadge } from "@/components/status-badge";
@@ -253,23 +254,14 @@ async function AiVideoSection() {
                 <dt>Driver</dt>
                 <dd>{gpu.gpu.driver}</dd>
               </dl>
-              {!gpu.ready ? (
-                <Alert tone="error">This card has too little video memory for AI videos. They need at least 12 GB.</Alert>
-              ) : gpu.recommended ? (
+              {!gpu.ready ? null : gpu.recommended ? (
                 <p className={styles.ok}>Ready for AI videos.</p>
               ) : (
                 <p className={styles.warning}>Ready, but 16 GB of video memory is recommended: videos take longer on this card.</p>
               )}
             </>
-          ) : (
-            <Alert tone="error">{gpu.reason}</Alert>
-          )}
-          {ready ? null : (
-            <p className={styles.note}>
-              AI videos are made on this PC by an NVIDIA graphics card with at least 12 GB of video memory (16 GB
-              recommended), such as a GeForce RTX 4070 Ti Super, 4080 or 5080. Without one, there is nothing to set up.
-            </p>
-          )}
+          ) : null}
+          {ready ? null : <NoAiGpuNote check={gpu} />}
         </div>
       </Card>
       {ready ? <AiEngineCard /> : null}

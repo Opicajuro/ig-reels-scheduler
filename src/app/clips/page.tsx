@@ -6,6 +6,7 @@ import { Alert } from "@/components/alert";
 import { Card } from "@/components/card";
 import { EmptyState } from "@/components/empty-state";
 import { LocalTime } from "@/components/local-time";
+import { NoAiGpuNote } from "@/components/no-ai-gpu-note";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Tabs } from "@/components/tabs";
@@ -138,17 +139,9 @@ async function AiVideoCard() {
       <div className={styles.panel}>
         <h2>New AI video</h2>
         <p className={styles.muted}>Made on this PC by its graphics card, without the internet.</p>
-        {!gpu.found ? (
+        {!gpu.found || !gpu.ready ? (
           <>
-            <Alert tone="error">{gpu.reason}</Alert>
-            <p className={styles.muted}>
-              AI videos need an NVIDIA graphics card with at least 12 GB of video memory.{" "}
-              <Link href="/settings#ai-video">See AI video in Settings</Link>
-            </p>
-          </>
-        ) : !gpu.ready ? (
-          <>
-            <Alert tone="error">This graphics card has too little video memory for AI videos. They need at least 12 GB.</Alert>
+            <NoAiGpuNote check={gpu} />
             <p className={styles.muted}>
               <Link href="/settings#ai-video">See AI video in Settings</Link>
             </p>

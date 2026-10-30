@@ -2,7 +2,7 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { checkGpu, judgeGpu, parseNvidiaSmi } from "./ai-gpu";
+import { aiGpuShortfall, checkGpu, judgeGpu, parseNvidiaSmi } from "./ai-gpu";
 
 describe("parseNvidiaSmi", () => {
   it("reads the name, video memory and driver of the first card", () => {
@@ -30,6 +30,25 @@ describe("judgeGpu", () => {
   });
 });
 
+describe("aiGpuShortfall", () => {
+  it("adds nothing to the note when there is simply no NVIDIA card", () => {
+    expect(aiGpuShortfall({ found: false, noNvidia: true, reason: "No NVIDIA graphics card found" })).toBeNull();
+  });
+
+  it("gives the driver's problem or the card's video memory otherwise", () => {
+    expect(aiGpuShortfall({ found: false, noNvidia: false, reason: "The NVIDIA driver did not answer: x" })).toBe(
+      "The NVIDIA driver did not answer: x",
+    );
+    expect(aiGpuShortfall(judgeGpu({ name: "NVIDIA GeForce RTX 3060 Ti", vramMiB: 8192, driver: "1" }))).toBe(
+      "The NVIDIA GeForce RTX 3060 Ti here has 8.0 GB of video memory.",
+    );
+  });
+
+  it("fails for a card that is good enough", () => {
+    expect(() => aiGpuShortfall(judgeGpu({ name: "card", vramMiB: 16376, driver: "1" }))).toThrow("good enough");
+  });
+});
+
 describe("checkGpu", () => {
   let dir: string;
   let path0: string | undefined;
@@ -46,7 +65,11 @@ describe("checkGpu", () => {
 
   it("says there is no NVIDIA card when nvidia-smi is missing", async () => {
     process.env.PATH = path.join(dir, "empty");
-    expect(await checkGpu()).toEqual({ found: false, reason: expect.stringContaining("No NVIDIA graphics card found") });
+    expect(await checkGpu()).toEqual({
+      found: false,
+      noNvidia: true,
+      reason: expect.stringContaining("No NVIDIA graphics card found"),
+    });
   });
 
   it("runs nvidia-smi with the query and reads its answer", async () => {
@@ -67,6 +90,10 @@ describe("checkGpu", () => {
     await writeFile(script, "#!/bin/sh\necho 'NVIDIA-SMI has failed because it could not communicate with the NVIDIA driver.' >&2\nexit 9\n");
     await chmod(script, 0o755);
     process.env.PATH = dir;
-    expect(await checkGpu()).toEqual({ found: false, reason: expect.stringContaining("could not communicate with the NVIDIA driver") });
+    expect(await checkGpu()).toEqual({
+      found: false,
+      noNvidia: false,
+      reason: expect.stringContaining("could not communicate with the NVIDIA driver"),
+    });
   });
 });

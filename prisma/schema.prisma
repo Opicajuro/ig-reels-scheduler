@@ -265,7 +265,8 @@ model Setting {
   hue               Int     @default(0)
 }
 
-// The H.264 encoder the worker found when it last started: the NVIDIA card's NVENC, or x264 on the processor.
+// The H.264 encoder the worker found when it last started: the NVIDIA card's NVENC, AMD graphics' AMF, or x264 on the
+// processor.
 model VideoEncoding {
   id        Int          @id @default(1)
   encoder   VideoEncoder
@@ -274,6 +275,7 @@ model VideoEncoding {
 
 enum VideoEncoder {
   nvenc
+  amf
   x264
 }
 

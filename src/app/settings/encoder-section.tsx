@@ -20,12 +20,12 @@ export async function EncoderSection() {
             <dd>When the worker started, <LocalTime date={encoding.checkedAt} /></dd>
           </dl>
         ) : (
-          <p className={styles.note}>The worker has not started yet. It checks for an NVIDIA graphics card when it starts.</p>
+          <p className={styles.note}>The worker has not started yet. It checks for NVIDIA or AMD graphics when it starts.</p>
         )}
         {encoding?.encoder === "x264" ? (
           <p className={styles.note}>
-            Videos are encoded on the processor because ffmpeg could not encode on an NVIDIA graphics card. With an NVIDIA
-            card, update its driver and restart the app to encode on the card.
+            Videos are encoded on the processor because ffmpeg could not encode on NVIDIA or AMD graphics. With such a
+            graphics card, update its driver and restart the app to encode on the card.
           </p>
         ) : null}
       </Card>

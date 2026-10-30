@@ -5,6 +5,7 @@ const VIDEO_ENCODING_ID = 1;
 
 export const VIDEO_ENCODER_LABELS: Record<VideoEncoder, string> = {
   nvenc: "NVIDIA GPU (NVENC)",
+  amf: "AMD graphics (AMF)",
   x264: "CPU (x264)",
 };
 
