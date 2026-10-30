@@ -8,18 +8,18 @@
 
 .info {
   color: var(--info-text);
-  background: rgba(123, 157, 255, 0.08);
-  border-color: rgba(123, 157, 255, 0.35);
+  background: color-mix(in srgb, var(--info-text) 8%, transparent);
+  border-color: color-mix(in srgb, var(--info-text) 40%, transparent);
 }
 
 .success {
   color: var(--success-text);
-  background: rgba(74, 222, 128, 0.08);
-  border-color: rgba(74, 222, 128, 0.35);
+  background: color-mix(in srgb, var(--success-text) 8%, transparent);
+  border-color: color-mix(in srgb, var(--success-text) 40%, transparent);
 }
 
 .error {
   color: var(--danger-text);
-  background: rgba(255, 138, 122, 0.08);
-  border-color: rgba(255, 138, 122, 0.35);
+  background: color-mix(in srgb, var(--danger-text) 8%, transparent);
+  border-color: color-mix(in srgb, var(--danger-text) 40%, transparent);
 }

@@ -19,8 +19,10 @@
   background: var(--surface-raised);
   font-size: var(--text-xs);
   white-space: nowrap;
+  transition: transform 0.2s var(--ease-spring), border-color 0.15s;
 }
 
 .chip:hover {
   border-color: var(--link);
+  transform: translateY(-1px);
 }

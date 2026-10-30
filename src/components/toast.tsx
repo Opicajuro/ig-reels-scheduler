@@ -26,6 +26,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div className={styles.region} role="status" aria-live="polite">
         {toasts.map((toast) => (
           <p key={toast.id} className={styles.toast}>
+            <svg className={styles.check} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="11" fill="currentColor" opacity="0.15" />
+              <path d="M6 12.5l4 4 8-9" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
             {toast.message}
           </p>
         ))}

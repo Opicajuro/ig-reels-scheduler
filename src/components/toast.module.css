@@ -10,13 +10,45 @@
   pointer-events: none;
 }
 
+/* It springs in, then its check mark draws itself. */
 .toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   max-width: 320px;
   padding: 10px 14px;
-  color: var(--success-text);
-  background: var(--surface-raised);
-  border: 1px solid rgba(74, 222, 128, 0.35);
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  color: var(--toast-text);
+  background: var(--toast-bg);
+  border: var(--toast-border);
+  border-radius: var(--toast-radius);
+  box-shadow: var(--toast-shadow);
   font-size: var(--text-sm);
+  font-weight: 600;
+  animation: toast-in 0.45s cubic-bezier(0.2, 0.9, 0.2, 1.2);
+}
+
+.check {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--toast-check);
+}
+
+.check path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: draw 0.5s 0.25s forwards;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.96);
+  }
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
 }

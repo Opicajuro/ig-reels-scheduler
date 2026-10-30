@@ -249,6 +249,10 @@ model Setting {
   alertEmail    String?
   resendApiKey  String?
   emailFrom     String?
+  // The look of the app (src/lib/appearance.ts): a design, Night Spring's colour palette, and a colour shift in degrees.
+  design        String  @default("night")
+  palette       String  @default("default")
+  hue           Int     @default(0)
 }
 
 // The H.264 encoder the worker found when it last started: the NVIDIA card's NVENC, or x264 on the processor.
