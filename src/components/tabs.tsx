@@ -6,8 +6,9 @@ import styles from "./tabs.module.css";
 export type Tab = { id: string; label: string; content: ReactNode };
 
 // Tabs over panels. Every panel stays mounted, so typed form values survive switching tabs. Arrow keys move between tabs.
-export function Tabs({ label, tabs }: { label: string; tabs: Tab[] }) {
-  const [active, setActive] = useState(tabs[0].id);
+// `initial` picks the tab shown first.
+export function Tabs({ label, tabs, initial = tabs[0].id }: { label: string; tabs: Tab[]; initial?: string }) {
+  const [active, setActive] = useState(initial);
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
   const baseId = useId();
 

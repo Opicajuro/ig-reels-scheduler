@@ -45,6 +45,90 @@
   margin-bottom: var(--space-5);
 }
 
+/* The project's settings: a card whose Make clips button stays in view at the bottom of the window. */
+.settings {
+  display: grid;
+  min-width: 0;
+  padding: var(--space-4) var(--space-4) 0;
+  background: var(--surface);
+  border: var(--card-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.settings > [role="alert"] {
+  margin-bottom: var(--space-4);
+}
+
+.settingsFooter {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: var(--space-4) calc(-1 * var(--space-4)) 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+}
+
+.settingsFooter > button {
+  width: 100%;
+}
+
+/* The caption styles, two to a row. */
+.choice.styles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.choice.styles .card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  text-align: center;
+}
+
+.choice.styles .swatch {
+  flex: none;
+  height: 32px;
+}
+
+/* The project's name, which turns into a field when clicked. */
+.titleButton {
+  max-width: 100%;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
+  overflow-wrap: anywhere;
+  background: none;
+  border: none;
+  border-bottom: 2px dashed transparent;
+  cursor: text;
+}
+
+.titleButton:hover:not(:disabled) {
+  border-bottom-color: var(--border);
+}
+
+.titleButton:disabled {
+  cursor: default;
+}
+
+.titleForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.titleForm input[type="text"] {
+  width: min(100%, 28ch);
+  font: inherit;
+}
+
 /* A stack of form controls inside a Card. */
 .panel {
   display: grid;
@@ -282,16 +366,17 @@
   }
 }
 
-/* A clip card lifts towards the pointer, in the design's own way. */
+/* A clip card lifts towards the pointer, in the design's own way. Clicking it selects it. */
 .clip {
+  position: relative;
   display: grid;
   align-content: start;
   min-width: 0;
-  overflow: hidden;
   background: var(--surface);
   border: var(--card-border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
+  cursor: pointer;
   transition:
     transform 0.45s cubic-bezier(0.3, 1.5, 0.5, 1),
     box-shadow 0.45s;
@@ -302,22 +387,63 @@
   box-shadow: var(--shadow-hover);
 }
 
-.clip.selected {
-  border-color: var(--link);
+/* An open menu stays above the cards after this one. */
+.clip:has([aria-expanded="true"]) {
+  z-index: 3;
 }
 
-.clip video {
+.clip.selected {
+  border-color: var(--link);
+  box-shadow:
+    0 0 0 2px var(--link),
+    var(--shadow-card);
+}
+
+.thumb {
+  overflow: hidden;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+}
+
+.thumb video {
   display: block;
   width: 100%;
   aspect-ratio: 9 / 16;
   object-fit: contain;
-  background: #000;
+  background: var(--surface-raised);
+}
+
+/* The checkbox and the ⋯ menu sit on the still's top corners. */
+.pick {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+}
+
+.pick input {
+  margin: 0;
+  cursor: pointer;
+}
+
+.clipMenu {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  cursor: default;
 }
 
 .clipBody {
   display: grid;
   gap: 6px;
-  padding: 10px var(--space-3) 0;
+  padding: 10px var(--space-3) var(--space-3);
 }
 
 .clipBody strong {
@@ -325,46 +451,23 @@
   overflow-wrap: anywhere;
 }
 
-.clipActions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--space-2);
-  padding: var(--space-3);
-}
-
-@media (max-width: 480px) {
-  .clipActions {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* A clip card's Delete, under its Select and Open. */
+/* The card's Delete form shows only its error, if any. */
 .clipDelete {
-  display: grid;
-  grid-column: 1 / -1;
+  padding: 0 var(--space-3);
 }
 
-.pick {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+.clipDelete:has([role="alert"]) {
+  padding-bottom: var(--space-3);
+}
+
+/* A clip's video in its drawer. */
+.player {
+  display: block;
+  width: 100%;
+  max-height: 50vh;
+  margin-bottom: var(--space-4);
   background: var(--surface-raised);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.pick input {
-  flex: none;
-}
-
-.pick:has(input:checked) {
-  border-color: var(--link);
-  box-shadow: inset 0 0 0 1px var(--link);
+  border-radius: var(--radius-md);
 }
 
 /* A clip's download, copy and delete, in its drawer. */

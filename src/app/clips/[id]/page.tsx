@@ -8,19 +8,18 @@ import { prisma } from "@/lib/prisma";
 import { presignDownload } from "@/lib/storage";
 import { Alert } from "@/components/alert";
 import { ActionForm, SubmitButton } from "@/components/action-form";
-import { Card } from "@/components/card";
 import { Field } from "@/components/field";
 import { PageHeader } from "@/components/page-header";
 import { SourceLink } from "../source-link";
 import {
   copyProjectAction,
   deleteProjectAction,
-  renameProjectAction,
   startRenderAction,
 } from "../actions";
 import { RenderProgress } from "../render-progress";
 import styles from "../clips.module.css";
 import { ClipGrid } from "./clip-grid";
+import { ProjectTitle } from "./project-title";
 
 export const metadata: Metadata = { title: "Clip project" };
 
@@ -111,7 +110,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       </Link>
 
       <PageHeader
-        title={project.name}
+        title={<ProjectTitle projectId={project.id} name={project.name} busy={busy} />}
         description={
           project.aiVideos ? (
             facts
@@ -124,13 +123,6 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
         }
         actions={
           <>
-            <ActionForm action={renameProjectAction} className={styles.actions}>
-              <input type="hidden" name="projectId" value={project.id} />
-              <input type="text" name="name" defaultValue={project.name} maxLength={120} required disabled={busy} />
-              <SubmitButton disabled={busy} pendingLabel="Renaming…">
-                Rename
-              </SubmitButton>
-            </ActionForm>
             {project.aiVideos ? null : (
               <ActionForm action={copyProjectAction}>
                 <input type="hidden" name="projectId" value={project.id} />
@@ -171,33 +163,33 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       {/* The AI videos project has no source video to make clips from: its clips are made from a description. */}
       <div className={`${styles.project} ${project.aiVideos ? styles.single : ""}`}>
         {project.aiVideos ? null : (
-          <Card>
-            <ActionForm
-              className={styles.panel}
-              action={startRenderAction}
-              confirm={
-                clips.length > 0
-                  ? {
-                      message: `Making clips again replaces ${clips.length === 1 ? "the current clip" : `the ${clips.length} current clips`} and the titles and descriptions you edited. Continue?`,
-                      confirmLabel: "Replace clips",
-                    }
-                  : undefined
-              }
-            >
-              <input type="hidden" name="projectId" value={project.id} />
+          <ActionForm
+            className={styles.settings}
+            action={startRenderAction}
+            confirm={
+              clips.length > 0
+                ? {
+                    message: `Making clips again replaces ${clips.length === 1 ? "the current clip" : `the ${clips.length} current clips`} and the titles and descriptions you edited. Continue?`,
+                    confirmLabel: "Replace clips",
+                  }
+                : undefined
+            }
+          >
+            <input type="hidden" name="projectId" value={project.id} />
+            <div className={styles.panel}>
               <h2>Make clips</h2>
               <span className={styles.label}>Clip length (seconds)</span>
               <div className={styles.choice}>
                 {CLIP_LENGTHS.map((seconds) => (
                   <label key={seconds} className={styles.pill}>
                     <input type="radio" name="clipSeconds" value={seconds} defaultChecked={seconds === project.clipSeconds} />
-                    <span>{seconds} s</span>
+                    <span>{seconds}</span>
                   </label>
                 ))}
               </div>
               <Field
                 label="Number of clips"
-                hint="Auto makes as many clips as the video allows. Each clip ends on a quiet moment, so it can run a little longer than the length you pick. Fewer clips are made if the video is short."
+                hint="Auto makes as many as the video allows. Clips end on a quiet moment, so they can run a little long."
               >
                 <select name="clipCount" defaultValue={project.clipCount ?? "auto"}>
                   <option value="auto">Auto</option>
@@ -214,17 +206,14 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
               </label>
               <div className={styles.captionOptions}>
                 <span className={styles.label}>Caption style</span>
-                <div className={styles.choice}>
+                <div className={`${styles.choice} ${styles.styles}`}>
                   {CAPTION_STYLES.map((style) => (
-                    <label key={style.value} className={styles.card}>
+                    <label key={style.value} className={styles.card} title={style.hint}>
                       <input type="radio" name="captionPreset" value={style.value} defaultChecked={style.value === preset} />
                       <span className={`${styles.swatch} ${style.value === "yellow" ? styles.yellow : ""} ${style.value === "box" ? styles.box : ""}`}>
                         {style.value === "words" ? <span>A<span className={styles.spokenWord}>a</span></span> : "Aa"}
                       </span>
-                      <div>
-                        <span>{style.label}</span>
-                        <small>{style.hint}</small>
-                      </div>
+                      <span>{style.label}</span>
                     </label>
                   ))}
                 </div>
@@ -247,11 +236,13 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
                   <input type="checkbox" name="captionUppercase" defaultChecked={project.captionUppercase} />
                 </label>
               </div>
+            </div>
+            <div className={styles.settingsFooter}>
               <SubmitButton variant="primary" disabled={busy || waiting} pendingLabel="Starting…">
                 Make clips
               </SubmitButton>
-            </ActionForm>
-          </Card>
+            </div>
+          </ActionForm>
         )}
 
         <section>
