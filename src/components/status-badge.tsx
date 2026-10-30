@@ -22,6 +22,10 @@ const STATUSES: Record<Status, { label: string; tone: Tone }> = {
   running: { label: "Making video", tone: "info" },
 };
 
+export function statusLabel(status: Status): string {
+  return STATUSES[status].label;
+}
+
 // The state of a post, a clip project, an AI video or the AI engine as a coloured pill. label replaces the usual
 // wording.
 export function StatusBadge({ status, label }: { status: Status; label?: string }) {

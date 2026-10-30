@@ -45,3 +45,151 @@
   flex-basis: 100%;
   font-size: var(--text-sm);
 }
+
+/* List or Calendar, above the status tabs. */
+.views {
+  display: inline-flex;
+  margin-bottom: var(--space-3);
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.views a {
+  padding: var(--space-1) var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  border-radius: var(--radius-sm);
+}
+
+.views a:hover {
+  color: var(--text);
+}
+
+.views a.active {
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.calendarHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.calendarHead h2 {
+  min-width: 10ch;
+  margin: 0;
+  font-size: var(--text-lg);
+  text-align: center;
+}
+
+.month {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.month th {
+  padding: var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: left;
+}
+
+.month td {
+  height: 96px;
+  padding: var(--space-1);
+  vertical-align: top;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.month td.outside {
+  background: transparent;
+}
+
+.month td.outside .dayNumber {
+  color: var(--muted);
+}
+
+.dayNumber {
+  display: inline-block;
+  min-width: 1.6em;
+  margin-bottom: 2px;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  border-radius: var(--radius-full);
+}
+
+.today .dayNumber {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+/* One post in its day; the left edge shows its status. */
+.entry {
+  display: block;
+  margin-top: 2px;
+  padding: 1px var(--space-1);
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: var(--surface-raised);
+  border-left: 3px solid var(--link);
+  border-radius: var(--radius-sm);
+}
+
+.entry:hover {
+  background: var(--surface-hover);
+}
+
+.entry time {
+  font-variant-numeric: tabular-nums;
+}
+
+.entry[data-status="published"] {
+  border-left-color: var(--success-text);
+}
+
+.entry[data-status="failed"] {
+  border-left-color: var(--danger-text);
+}
+
+.entry[data-status="canceled"] {
+  border-left-color: var(--muted);
+}
+
+/* Phones: only the time fits in a day, and it may wrap. */
+@media (max-width: 560px) {
+  .month td {
+    height: 64px;
+    padding: 2px;
+  }
+
+  .entry {
+    padding: 0 2px;
+    font-size: 0.68rem;
+    white-space: normal;
+    border-left-width: 2px;
+  }
+
+  .entry span {
+    display: none;
+  }
+}
+
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

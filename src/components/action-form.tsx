@@ -20,22 +20,28 @@ const Pending = createContext(false);
 export type Confirmation = { message: string; confirmLabel: string };
 
 // A form that sends to an action returning an ActionResult. A mistake shows next to the form and the typed values
-// stay; success shows a toast. With `confirm`, it asks first. Its SubmitButton is disabled while the action runs.
+// stay; success shows a toast and calls `onDone`. With `confirm`, it asks first. Its SubmitButton is disabled while the
+// action runs.
 export function ActionForm({
   action,
   confirm,
+  onDone,
   className,
   children,
 }: {
   action: (previous: ActionResult, formData: FormData) => Promise<ActionResult>;
   confirm?: Confirmation;
+  onDone?: () => void;
   className?: string;
   children: ReactNode;
 }) {
   const showToast = useToast();
   const [state, formAction, pending] = useActionState(async (previous: ActionResult, formData: FormData) => {
     const result = await action(previous, formData);
-    if (result?.ok) showToast(result.message);
+    if (result?.ok) {
+      showToast(result.message);
+      onDone?.();
+    }
     return result;
   }, null);
   const [asking, setAsking] = useState<FormData | null>(null);

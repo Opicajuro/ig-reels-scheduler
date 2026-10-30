@@ -11,6 +11,7 @@ import { describePostError } from "@/lib/meta-errors";
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
 import { CancelPostForm, RetryPostForm } from "./post-actions";
+import { PostCalendar } from "./post-calendar";
 import styles from "./scheduled.module.css";
 
 export const metadata: Metadata = { title: "Scheduled" };
@@ -27,8 +28,9 @@ const TABS = [
 
 export default async function ScheduledPage({ searchParams }: PageProps<"/scheduled">) {
   await connection();
-  const { tab: tabParam } = await searchParams;
+  const { tab: tabParam, view } = await searchParams;
   const tab = TABS.find((candidate) => candidate.id === tabParam) ?? TABS[0];
+  const calendar = view === "calendar";
   const ownerId = await getOwnerId();
 
   const [counts, posts] = await Promise.all([
@@ -55,11 +57,26 @@ export default async function ScheduledPage({ searchParams }: PageProps<"/schedu
   return (
     <main>
       <PageHeader title="Scheduled" description="Your Instagram posts: what is coming up, what went out and what failed." />
+      <nav className={styles.views} aria-label="View">
+        {[
+          { id: "list", label: "List", on: !calendar },
+          { id: "calendar", label: "Calendar", on: calendar },
+        ].map((option) => (
+          <Link
+            key={option.id}
+            href={`/scheduled?tab=${tab.id}${option.id === "calendar" ? "&view=calendar" : ""}`}
+            className={option.on ? styles.active : undefined}
+            aria-current={option.on ? "page" : undefined}
+          >
+            {option.label}
+          </Link>
+        ))}
+      </nav>
       <nav className={styles.tabs} aria-label="Post status">
         {TABS.map((candidate) => (
           <Link
             key={candidate.id}
-            href={`/scheduled?tab=${candidate.id}`}
+            href={`/scheduled?tab=${candidate.id}${calendar ? "&view=calendar" : ""}`}
             className={candidate.id === tab.id ? styles.active : undefined}
             aria-current={candidate.id === tab.id ? "page" : undefined}
           >
@@ -70,6 +87,17 @@ export default async function ScheduledPage({ searchParams }: PageProps<"/schedu
 
       {posts.length === 0 ? (
         <EmptyState>{tab.empty}</EmptyState>
+      ) : calendar ? (
+        <PostCalendar
+          now={new Date().toISOString()}
+          posts={posts.map((post) => ({
+            id: post.id,
+            scheduledAt: post.scheduledAt.toISOString(),
+            status: post.status,
+            username: post.account.username,
+            caption: post.caption,
+          }))}
+        />
       ) : (
         <PostList
           posts={posts.map((post) => ({

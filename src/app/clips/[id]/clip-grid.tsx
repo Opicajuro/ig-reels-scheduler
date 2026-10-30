@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type MouseEvent } from "react";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { AiBadge } from "@/components/ai-badge";
 import { Button } from "@/components/button";
 import { Drawer } from "@/components/drawer";
 import { EmptyState } from "@/components/empty-state";
+import { Menu } from "@/components/menu";
 import { PlatformChips } from "@/components/platform-links";
 import { Tabs } from "@/components/tabs";
 import { deleteClipAction, deleteClipsAction } from "../actions";
@@ -42,6 +43,102 @@ function captionOf(clip: ClipView): string {
   return clip.description || clip.title || clip.name;
 }
 
+type DrawerTab = "details" | "move";
+
+// Where a clip card shows its still: a moment into the clip, as the first frame is often black.
+function stillAt(clip: ClipView): number {
+  return Math.min(1, clip.length / 2);
+}
+
+// A clip card. It shows a still of the clip, a frame picked with a #t= media fragment, and loads the video only to
+// play it muted while the pointer is over it. Clicking the card or its checkbox selects it; its own actions are in a
+// ⋯ menu.
+function ClipCard({
+  clip,
+  projectId,
+  busy,
+  picked,
+  onPick,
+  onOpen,
+}: {
+  clip: ClipView;
+  projectId: string;
+  busy: boolean;
+  picked: boolean;
+  onPick: (on: boolean) => void;
+  onOpen: (tab: DrawerTab) => void;
+}) {
+  const video = useRef<HTMLVideoElement>(null);
+  const deleteButton = useRef<HTMLButtonElement>(null);
+
+  function onCardClick(event: MouseEvent<HTMLElement>) {
+    if ((event.target as Element).closest("a, button, input, label, [role=menu]")) return;
+    onPick(!picked);
+  }
+
+  return (
+    <article
+      className={`${styles.clip} ${picked ? styles.selected : ""}`}
+      onClick={onCardClick}
+      onMouseEnter={() => {
+        if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        // Leaving the card before the video starts interrupts play(), which is expected.
+        video.current!.play().catch((err: unknown) => {
+          if (!(err instanceof DOMException && err.name === "AbortError")) throw err;
+        });
+      }}
+      onMouseLeave={() => {
+        video.current!.pause();
+        video.current!.currentTime = stillAt(clip);
+      }}
+    >
+      <div className={styles.thumb}>
+        <video ref={video} src={`${clip.downloadUrl}#t=${stillAt(clip)}`} muted loop playsInline preload="metadata" />
+        <label className={styles.pick}>
+          <input
+            type="checkbox"
+            aria-label={`Select ${clip.name}`}
+            checked={picked}
+            onChange={(event) => onPick(event.target.checked)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") onPick(!picked);
+            }}
+          />
+        </label>
+        <div className={styles.clipMenu}>
+          <Menu
+            label={`Actions for ${clip.name}`}
+            items={[
+              { label: "Open", onSelect: () => onOpen("details") },
+              { label: "Download", href: clip.downloadUrl, download: true },
+              { label: "Move or copy…", onSelect: () => onOpen("move"), disabled: busy },
+              { label: "Delete…", onSelect: () => deleteButton.current!.form!.requestSubmit(), disabled: busy, danger: true },
+            ]}
+          />
+        </div>
+      </div>
+      <div className={styles.clipBody}>
+        <strong>{clip.name}</strong>
+        {clip.aiGenerated ? <AiBadge title="Made with AI" /> : null}
+        <span className={styles.meta}>
+          {formatTime(clip.start)} – {formatTime(clip.start + clip.length)}
+        </span>
+        <PlatformChips links={clip.links} />
+      </div>
+      {/* Sent from the menu's Delete, so its question and any error show on the card. */}
+      <ActionForm
+        action={deleteClipAction}
+        confirm={{ message: `Delete ${clip.name}? This cannot be undone.`, confirmLabel: "Delete clip" }}
+        className={styles.clipDelete}
+      >
+        <input type="hidden" name="clipId" value={clip.id} />
+        <input type="hidden" name="projectId" value={projectId} />
+        <button ref={deleteButton} type="submit" hidden />
+      </ActionForm>
+    </article>
+  );
+}
+
 // Clips of one project. A clip opens in a drawer for its details, scheduling and moving; picked clips get a bar to
 // download, schedule, move, copy or delete them together. Every change is a form posting to a server action.
 export function ClipGrid({
@@ -61,6 +158,7 @@ export function ClipGrid({
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [openId, setOpenId] = useState<string | null>(null);
+  const [openTab, setOpenTab] = useState<DrawerTab>("details");
   const [panel, setPanel] = useState<"export" | "schedule" | "move" | "copy" | null>(null);
   // Read through the current clips, so a clip deleted or replaced since it was picked or opened drops out.
   const selected = clips.filter((clip) => picked.has(clip.id));
@@ -87,42 +185,18 @@ export function ClipGrid({
       ) : (
         <div className={styles.clips}>
           {clips.map((clip) => (
-            <article key={clip.id} className={`${styles.clip} ${picked.has(clip.id) ? styles.selected : ""}`}>
-              <video src={clip.downloadUrl} controls playsInline preload="metadata" />
-              <div className={styles.clipBody}>
-                <strong>{clip.name}</strong>
-                {clip.aiGenerated ? <AiBadge title="Made with AI" /> : null}
-                <span className={styles.meta}>
-                  {formatTime(clip.start)} – {formatTime(clip.start + clip.length)}
-                </span>
-                <PlatformChips links={clip.links} />
-              </div>
-              <div className={styles.clipActions}>
-                <label className={styles.pick}>
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${clip.name}`}
-                    checked={picked.has(clip.id)}
-                    onChange={(event) => togglePick(clip.id, event.target.checked)}
-                  />
-                  Select
-                </label>
-                <Button type="button" aria-label={`Open ${clip.name}`} onClick={() => setOpenId(clip.id)}>
-                  Open
-                </Button>
-                <ActionForm
-                  action={deleteClipAction}
-                  className={styles.clipDelete}
-                  confirm={{ message: `Delete ${clip.name}? This cannot be undone.`, confirmLabel: "Delete clip" }}
-                >
-                  <input type="hidden" name="clipId" value={clip.id} />
-                  <input type="hidden" name="projectId" value={projectId} />
-                  <SubmitButton variant="danger" size="sm" disabled={busy} aria-label={`Delete ${clip.name}`} pendingLabel="Deleting…">
-                    Delete
-                  </SubmitButton>
-                </ActionForm>
-              </div>
-            </article>
+            <ClipCard
+              key={clip.id}
+              clip={clip}
+              projectId={projectId}
+              busy={busy}
+              picked={picked.has(clip.id)}
+              onPick={(on) => togglePick(clip.id, on)}
+              onOpen={(tab) => {
+                setOpenId(clip.id);
+                setOpenTab(tab);
+              }}
+            />
           ))}
         </div>
       )}
@@ -173,10 +247,12 @@ export function ClipGrid({
       ) : null}
 
       <Drawer open={openClip !== null} title={openClip?.name} onClose={() => setOpenId(null)}>
+        {openClip ? <video key={openClip.id} className={styles.player} src={openClip.downloadUrl} controls playsInline /> : null}
         {openClip ? (
           <Tabs
-            key={openClip.id}
+            key={`${openClip.id}-${openTab}`}
             label="Clip"
+            initial={openTab}
             tabs={[
               {
                 id: "details",
