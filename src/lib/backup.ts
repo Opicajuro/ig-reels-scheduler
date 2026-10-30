@@ -105,7 +105,7 @@ export function buildManifest(input: { now: Date; appBuild: string | null; datab
 }
 
 // The installer writes the build number to <install>\version.txt; a dev copy has none.
-async function readAppBuild(dataDir: string): Promise<string | null> {
+export async function readAppBuild(dataDir: string): Promise<string | null> {
   const file = path.join(dataDir, "..", "version.txt");
   try {
     await access(file);

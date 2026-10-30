@@ -5,7 +5,7 @@ declare module "archiver" {
   interface Archive {
     pipe(destination: Writable): Archive;
     file(filename: string, data: { name: string }): Archive;
-    append(source: string, data: { name: string }): Archive;
+    append(source: string | Buffer, data: { name: string }): Archive;
     finalize(): Promise<void>;
     on(event: "error", listener: (err: Error) => void): Archive;
   }

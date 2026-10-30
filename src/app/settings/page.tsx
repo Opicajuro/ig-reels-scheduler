@@ -29,6 +29,7 @@ import { EncoderSection } from "./encoder-section";
 import { EngineProgress } from "./engine-progress";
 import { R2Section } from "./r2-section";
 import { BackupsSection } from "./backups-section";
+import { ReportProblemButton } from "../help/report-problem";
 import styles from "./settings.module.css";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -216,6 +217,17 @@ export default async function SettingsPage() {
             </>
           )}
         </dl>
+      </Card>
+
+      <h2 id="report">Report a problem</h2>
+      <Card>
+        <div className={styles.row}>
+          <span className={styles.note}>
+            A ZIP with the end of each log, the version and a short summary of this PC, saved in{" "}
+            <code>data\reports</code>. It holds no passwords, tokens or keys.
+          </span>
+          <ReportProblemButton />
+        </div>
       </Card>
     </main>
   );

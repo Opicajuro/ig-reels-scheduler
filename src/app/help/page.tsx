@@ -9,6 +9,7 @@ import { requireEnv } from "@/lib/env";
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
 import styles from "./help.module.css";
+import { ReportProblemButton } from "./report-problem";
 
 export const metadata: Metadata = { title: "Help" };
 
@@ -32,6 +33,7 @@ export default async function HelpPage() {
         <a href="#ai">AI video</a>
         <a href="#update">Updating Localirs</a>
         <a href="#logs">Logs</a>
+        <a href="#report">Report a problem</a>
       </nav>
 
       <section id="videos">
@@ -162,6 +164,15 @@ export default async function HelpPage() {
           <strong>Open logs folder</strong>: they are the <code>.log</code> files in Localirs&apos; <code>data</code>{" "}
           folder (<code>data\*.log</code>). The <Link href="/settings">Settings</Link> page shows where that folder is.
         </p>
+      </section>
+
+      <section id="report">
+        <h2>Report a problem</h2>
+        <p>
+          Makes a ZIP in <code>data\reports</code> with the end of each log, the version and a short summary of this PC,
+          then opens that folder. Send the ZIP to whoever helps you. It holds no passwords, tokens or keys.
+        </p>
+        <ReportProblemButton />
       </section>
     </main>
   );
