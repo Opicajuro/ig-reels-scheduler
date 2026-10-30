@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
-      # The downloads folder also holds weed.exe, built once per SeaweedFS version (v2: the entries before it had none).
+      # The downloads folder also holds weed.exe, built once per SeaweedFS version (v3: v2 entries may hold a damaged Whisper model).
       # It is saved after the build step even when the build fails: Get-Tool deletes a failed download, and a failed
       # go build leaves no weed.exe.
       - name: Restore downloaded tools
@@ -32,7 +32,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: installer/downloads
-          key: installer-tools-v2-${{ hashFiles('installer/tools.json') }}
+          key: installer-tools-v3-${{ hashFiles('installer/tools.json') }}
       # Go is only needed to build weed.exe, which the restored tools may already hold.
       # SeaweedFS is built from its downloaded source, not a go.sum in this repository, so setup-go has nothing to cache.
       - uses: actions/setup-go@v7

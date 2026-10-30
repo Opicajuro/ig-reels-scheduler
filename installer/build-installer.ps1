@@ -42,7 +42,11 @@ function Get-Tool($name, $entry, $target) {
   }
   $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
   if ($entry.sha256) {
-    if ($hash -ne $entry.sha256.ToLower()) { throw "$name hash $hash does not match tools.json" }
+    if ($hash -ne $entry.sha256.ToLower()) {
+      # A damaged or cut-off download must not stay behind either, or the tools cache would keep it.
+      Remove-Item -Force $file
+      throw "$name hash $hash does not match tools.json (the download was removed; the next build fetches it again)"
+    }
   } else {
     Write-Host "$name sha256 $hash - add it to tools.json to pin this download"
   }
