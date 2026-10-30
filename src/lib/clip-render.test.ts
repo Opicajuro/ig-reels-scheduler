@@ -45,7 +45,7 @@ function fakeDb(project: Row) {
       },
     },
     clip: {
-      findMany: async () => state.clips.map((clip) => ({ storageKey: clip.storageKey })),
+      findMany: async () => state.clips.map((clip) => ({ id: clip.id, storageKey: clip.storageKey })),
       deleteMany: async () => {
         state.clips = [];
       },
@@ -84,6 +84,8 @@ function renderingProject(overrides: Row = {}): Row {
   return {
     id: "p1",
     status: "rendering",
+    renderId: "r1",
+    renderPlan: null,
     sourceKey: "clip-sources/p1.mp4",
     sourceUrl: null,
     durationSeconds: null,
@@ -102,7 +104,7 @@ describe("renderClipProject", () => {
     const deps = fakeDb(renderingProject());
     const bucket = bucketStore(root);
 
-    await renderClipProject({ db: deps.db, store: bucket.store, projectId: "p1", workDir: work });
+    await renderClipProject({ db: deps.db, store: bucket.store, projectId: "p1", renderId: "r1", workDir: work });
 
     expect(deps.state.project).toMatchObject({ status: "done", durationSeconds: 40, error: null });
     expect(deps.state.clips.map((clip) => clip.name)).toEqual(["clip-001", "clip-002"]);
@@ -122,7 +124,7 @@ describe("renderClipProject", () => {
     const work = await mkdtemp(path.join(workRoot, "run-"));
     const deps = fakeDb(renderingProject());
 
-    await renderClipProject({ db: deps.db, store: bucketStore(root).store, projectId: "p1", workDir: work });
+    await renderClipProject({ db: deps.db, store: bucketStore(root).store, projectId: "p1", renderId: "r1", workDir: work });
 
     expect(deps.state.steps).toEqual([
       "Downloading the video",
@@ -137,7 +139,7 @@ describe("renderClipProject", () => {
     const work = await mkdtemp(path.join(workRoot, "run-"));
     const deps = fakeDb(renderingProject({ clipCount: 10 }));
 
-    await renderClipProject({ db: deps.db, store: bucketStore(root).store, projectId: "p1", workDir: work });
+    await renderClipProject({ db: deps.db, store: bucketStore(root).store, projectId: "p1", renderId: "r1", workDir: work });
 
     expect(deps.state.clips).toHaveLength(2);
   });
@@ -145,13 +147,88 @@ describe("renderClipProject", () => {
   it("removes the previous clips before rendering again", async () => {
     const work = await mkdtemp(path.join(workRoot, "run-"));
     const deps = fakeDb(renderingProject());
-    deps.state.clips.push({ storageKey: "clips/p1/old.mp4", name: "old" });
+    deps.state.clips.push({ id: "old", storageKey: "clips/p1/old.mp4", name: "old" });
     const bucket = bucketStore(root);
 
-    await renderClipProject({ db: deps.db, store: bucket.store, projectId: "p1", workDir: work });
+    await renderClipProject({ db: deps.db, store: bucket.store, projectId: "p1", renderId: "r1", workDir: work });
 
     expect(bucket.removed).toEqual(["clips/p1/old.mp4"]);
     expect(deps.state.clips.some((clip) => clip.name === "old")).toBe(false);
+  });
+
+  it("stores the picked clips as this render's plan before making them", async () => {
+    const work = await mkdtemp(path.join(workRoot, "run-"));
+    const deps = fakeDb(renderingProject());
+
+    await renderClipProject({ db: deps.db, store: bucketStore(root).store, projectId: "p1", renderId: "r1", workDir: work });
+
+    expect(deps.state.project.renderPlan).toEqual({
+      renderId: "r1",
+      clips: deps.state.clips.map(({ id, start, length }) => ({ clipId: id, start, length })),
+    });
+  });
+
+  it("goes on from the clips an interrupted render saved, without picking again", async () => {
+    const work = await mkdtemp(path.join(workRoot, "run-"));
+    const plan = {
+      renderId: "r1",
+      clips: [
+        { clipId: "c1", start: 0, length: 15 },
+        { clipId: "c2", start: 20, length: 15 },
+      ],
+    };
+    const deps = fakeDb(renderingProject({ renderPlan: plan }));
+    deps.state.clips.push({ id: "c1", storageKey: "clips/p1/c1.mp4", name: "clip-001", start: 0, length: 15 });
+    const bucket = bucketStore(root);
+
+    await renderClipProject({ db: deps.db, store: bucket.store, projectId: "p1", renderId: "r1", workDir: work });
+
+    expect(bucket.removed).toEqual([]);
+    expect(bucket.uploaded).toEqual(["clips/p1/c2.mp4"]);
+    expect(deps.state.clips.map((clip) => [clip.id, clip.name, clip.start])).toEqual([
+      ["c1", "clip-001", 0],
+      ["c2", "clip-002", 20],
+    ]);
+    expect(deps.state.steps).toEqual(["Resuming… clip 2 of 2", "Resuming… clip 2 of 2"]);
+    expect(deps.state.project).toMatchObject({ status: "done", renderStep: null, renderPlan: plan });
+  });
+
+  it("finishes an interrupted render whose clips were all saved", async () => {
+    const work = await mkdtemp(path.join(workRoot, "run-"));
+    const deps = fakeDb(renderingProject({ renderPlan: { renderId: "r1", clips: [{ clipId: "c1", start: 0, length: 15 }] } }));
+    deps.state.clips.push({ id: "c1", storageKey: "clips/p1/c1.mp4", name: "clip-001" });
+    const bucket = bucketStore(root);
+
+    await renderClipProject({ db: deps.db, store: bucket.store, projectId: "p1", renderId: "r1", workDir: work });
+
+    expect(bucket.uploaded).toEqual([]);
+    expect(deps.state.project).toMatchObject({ status: "done", renderStep: null });
+  });
+
+  it("starts over, replacing the clips, when the stored plan is from an earlier render", async () => {
+    const work = await mkdtemp(path.join(workRoot, "run-"));
+    const deps = fakeDb(
+      renderingProject({ renderId: "r2", renderPlan: { renderId: "r1", clips: [{ clipId: "c1", start: 0, length: 15 }] } }),
+    );
+    deps.state.clips.push({ id: "c1", storageKey: "clips/p1/c1.mp4", name: "clip-001" });
+    const bucket = bucketStore(root);
+
+    await renderClipProject({ db: deps.db, store: bucket.store, projectId: "p1", renderId: "r2", workDir: work });
+
+    expect(bucket.removed).toEqual(["clips/p1/c1.mp4"]);
+    expect(deps.state.clips).toHaveLength(2);
+    expect(deps.state.clips.some((clip) => clip.id === "c1")).toBe(false);
+    expect(deps.state.project.renderPlan).toMatchObject({ renderId: "r2" });
+  });
+
+  it("refuses a job queued for an earlier render", async () => {
+    const work = await mkdtemp(path.join(workRoot, "run-"));
+    const deps = fakeDb(renderingProject({ renderId: "r2" }));
+
+    await expect(
+      renderClipProject({ db: deps.db, store: bucketStore(root).store, projectId: "p1", renderId: "r1", workDir: work }),
+    ).rejects.toThrow("earlier render");
+    expect(deps.state.project.status).toBe("rendering");
   });
 
   it("marks the project failed with the reason and rethrows when the source is missing", async () => {
@@ -159,7 +236,7 @@ describe("renderClipProject", () => {
     const deps = fakeDb(renderingProject({ sourceKey: "clip-sources/missing.mp4" }));
 
     await expect(
-      renderClipProject({ db: deps.db, store: bucketStore(root).store, projectId: "p1", workDir: work }),
+      renderClipProject({ db: deps.db, store: bucketStore(root).store, projectId: "p1", renderId: "r1", workDir: work }),
     ).rejects.toThrow();
 
     expect(deps.state.project.status).toBe("failed");
@@ -172,7 +249,7 @@ describe("renderClipProject", () => {
     const deps = fakeDb(renderingProject({ status: "ready" }));
 
     await expect(
-      renderClipProject({ db: deps.db, store: bucketStore(root).store, projectId: "p1", workDir: work }),
+      renderClipProject({ db: deps.db, store: bucketStore(root).store, projectId: "p1", renderId: "r1", workDir: work }),
     ).rejects.toThrow("is not rendering");
     expect(await readFile(fixture).then((bytes) => bytes.length > 0)).toBe(true);
   });

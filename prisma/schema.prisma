@@ -180,6 +180,11 @@ model ClipProject {
   renderStep      String?
   // When the current "Make clips" started, so the page can show how long it has been running.
   renderStartedAt DateTime?
+  // A new id for each "Make clips". A clip job carries it, so a job for an earlier render is refused.
+  renderId        String?
+  // The highlights a render picked, stored before its first clip is made: { renderId, clips: [{ clipId, start,
+  // length }] }. A render whose plan is already stored was interrupted, and goes on from the clips it finished.
+  renderPlan      Json?
   durationSeconds Int?
   clipSeconds     Int               @default(30)
   clipCount       Int?

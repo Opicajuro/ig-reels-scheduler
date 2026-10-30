@@ -24,7 +24,16 @@ export type PublishQueue = {
 };
 
 export type ClipQueue = {
-  send(projectId: string): Promise<string>;
+  send(projectId: string, renderId: string): Promise<string>;
+};
+
+export type ClipJob = { id: string; state: "created" | "retry" | "active"; renderId: unknown };
+
+// What the worker needs at start-up to queue again the renders that were interrupted.
+export type ClipJobs = ClipQueue & {
+  // The project's clip jobs that are waiting or marked as running.
+  open(projectId: string): Promise<ClipJob[]>;
+  cancel(jobIds: string[]): Promise<void>;
 };
 
 export type InsightQueue = {
@@ -72,13 +81,32 @@ export function getPublishQueue(): PublishQueue {
 }
 
 // Rendering a long video can take hours, and pg-boss expires a job after 15 minutes by default. A render gets 6 hours.
-// It is not retried: a failed render is recorded on the project, and the person starts it again.
+// It is not retried: a failed render is recorded on the project, and the person starts it again. A render cut off by
+// closing Localirs is queued again when the worker starts (requeueInterruptedRenders), not by a pg-boss retry, which
+// would wait out the 6 hours.
 export function getClipQueue(): ClipQueue {
   return {
-    async send(projectId) {
-      const jobId = await (await getBoss()).send(CLIP_QUEUE, { projectId }, { retryLimit: 0, expireInSeconds: 6 * 60 * 60 });
+    async send(projectId, renderId) {
+      const jobId = await (await getBoss()).send(CLIP_QUEUE, { projectId, renderId }, { retryLimit: 0, expireInSeconds: 6 * 60 * 60 });
       if (jobId === null) throw new Error(`clip job for project ${projectId} was not queued`);
       return jobId;
+    },
+  };
+}
+
+export function getClipJobs(): ClipJobs {
+  return {
+    ...getClipQueue(),
+    async open(projectId) {
+      const jobs = await (await getBoss()).findJobs<{ renderId?: unknown }>(CLIP_QUEUE, { data: { projectId } });
+      return jobs.flatMap((job) =>
+        job.state === "created" || job.state === "retry" || job.state === "active"
+          ? [{ id: job.id, state: job.state, renderId: job.data.renderId }]
+          : [],
+      );
+    },
+    async cancel(jobIds) {
+      await (await getBoss()).cancel(CLIP_QUEUE, jobIds);
     },
   };
 }
