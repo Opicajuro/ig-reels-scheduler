@@ -7,10 +7,11 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
-using Microsoft.Win32;
 
 static class Launcher
 {
@@ -154,7 +155,7 @@ static class Launcher
     }
 
     // Chromium browsers open Localirs as its own window, without tabs or an address bar (--app).
-    static readonly string[] AppModeBrowsers = { "brave.exe", "vivaldi.exe", "opera.exe", "chrome.exe", "msedge.exe" };
+    static readonly string[] AppModeBrowsers = { "brave.exe", "vivaldi.exe", "chrome.exe", "msedge.exe" };
 
     // Opens Localirs in the default browser: as its own window in a Chromium browser, as a tab in any other.
     static void OpenWindow()
@@ -173,25 +174,20 @@ static class Launcher
         Process.Start(info);
     }
 
-    // The program Windows opens http links with: the user's choice for http, then that ProgId's open command, whose
-    // first part is the program (quoted or not).
+    const int AssocfIsProtocol = 0x1000;
+    const int AssocstrExecutable = 2;
+
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
+    static extern int AssocQueryString(int flags, int str, string assoc, string extra, StringBuilder output, ref uint length);
+
+    // The program Windows opens http links with, asked from Windows itself: where the user's choice is stored in the
+    // registry differs between Windows versions.
     static string DefaultBrowserPath()
     {
-        string progId;
-        using (RegistryKey choice = Registry.CurrentUser.OpenSubKey(
-            @"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice"))
-        {
-            progId = choice == null ? null : choice.GetValue("ProgId") as string;
-        }
-        if (string.IsNullOrEmpty(progId)) return null;
-        string command;
-        using (RegistryKey open = Registry.ClassesRoot.OpenSubKey(progId + @"\shell\open\command"))
-        {
-            command = open == null ? null : open.GetValue("") as string;
-        }
-        if (string.IsNullOrEmpty(command)) return null;
-        Match program = Regex.Match(command.Trim(), "^\"([^\"]+)\"|^(\\S+)");
-        return program.Groups[1].Success ? program.Groups[1].Value : program.Groups[2].Value;
+        uint length = 1024;
+        StringBuilder output = new StringBuilder((int)length);
+        if (AssocQueryString(AssocfIsProtocol, AssocstrExecutable, "http", null, output, ref length) != 0) return null;
+        return output.ToString();
     }
 
     static WebClient NewWebClient()
