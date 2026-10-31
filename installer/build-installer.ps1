@@ -58,6 +58,10 @@ $ffmpegZip = Get-Tool "ffmpeg" $manifest.ffmpeg "ffmpeg.zip"
 $ytDlp = Get-Tool "yt-dlp" $manifest.ytDlp "yt-dlp.exe"
 $whisperZip = Get-Tool "whisper.cpp" $manifest.whisperCpp "whisper.zip"
 $whisperModel = Get-Tool "Whisper model" $manifest.whisperModel "ggml-large-v3-turbo-q5_0.bin"
+$kokoroModel = Get-Tool "Kokoro voice model" $manifest.kokoroModel "kokoro-model_quantized.onnx"
+$kokoroConfig = Get-Tool "Kokoro config" $manifest.kokoroConfig "kokoro-config.json"
+$kokoroTokenizer = Get-Tool "Kokoro tokenizer" $manifest.kokoroTokenizer "kokoro-tokenizer.json"
+$kokoroTokenizerConfig = Get-Tool "Kokoro tokenizer config" $manifest.kokoroTokenizerConfig "kokoro-tokenizer_config.json"
 $sevenZip = Get-Tool "7-Zip (7zr)" $manifest.sevenZip "7zr.exe"
 $chromeZip = Get-Tool "Chrome headless shell" $manifest.chromeHeadlessShell "chrome-headless-shell.zip"
 $pgZip = Get-Tool "PostgreSQL" $manifest.postgres "postgres.zip"
@@ -76,6 +80,14 @@ Copy-Item -Force $sevenZip (Join-Path $tools "7zr.exe")
 
 Expand-Archive -Force $whisperZip (Join-Path $tools "whisper")
 Copy-Item -Force $whisperModel (Join-Path $tools "whisper\ggml-large-v3-turbo-q5_0.bin")
+
+# The slideshow voice: kokoro-js loads the model folder the way Hugging Face lays it out; its voices are in the package.
+$kokoro = Join-Path $tools "kokoro\Kokoro-82M-v1.0-ONNX"
+New-Item -ItemType Directory -Force -Path (Join-Path $kokoro "onnx") | Out-Null
+Copy-Item -Force $kokoroModel (Join-Path $kokoro "onnx\model_quantized.onnx")
+Copy-Item -Force $kokoroConfig (Join-Path $kokoro "config.json")
+Copy-Item -Force $kokoroTokenizer (Join-Path $kokoro "tokenizer.json")
+Copy-Item -Force $kokoroTokenizerConfig (Join-Path $kokoro "tokenizer_config.json")
 
 Expand-Archive -Force $chromeZip (Join-Path $tools "chrome-unzip")
 Move-Item -Force (Join-Path $tools "chrome-unzip\chrome-headless-shell-win64") (Join-Path $tools "chrome")

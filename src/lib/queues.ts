@@ -1,6 +1,8 @@
 import { PgBoss } from "pg-boss";
 import type { AiEngineQueue } from "./ai-engine";
 import type { AiVideoQueue } from "./ai-video";
+import type { SlideshowQueue } from "./slideshow";
+import type { SlideshowEngineQueue } from "./slideshow-engines";
 import { requireEnv } from "./env";
 
 export const MEDIA_QUEUE = "media-process";
@@ -12,6 +14,8 @@ export const CLIP_QUEUE = "clip-project";
 export const AI_ENGINE_QUEUE = "ai-engine";
 export const AI_VIDEO_QUEUE = "ai-video";
 export const BACKUP_QUEUE = "backup";
+export const SLIDESHOW_ENGINE_QUEUE = "slideshow-engine";
+export const SLIDESHOW_QUEUE = "slideshow";
 
 // A publish job runs up to 5 times: the first try, then 4 retries 60 seconds apart, doubling each time.
 export const PUBLISH_RETRY_LIMIT = 4;
@@ -61,7 +65,7 @@ async function startBoss(): Promise<PgBoss> {
   const keyed = { policy: "short" as const };
   await instance.createQueue(MEDIA_QUEUE, keyed);
   await instance.createQueue(INSIGHTS_QUEUE, keyed);
-  for (const name of [PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE, AI_ENGINE_QUEUE, AI_VIDEO_QUEUE, BACKUP_QUEUE]) {
+  for (const name of [PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE, AI_ENGINE_QUEUE, AI_VIDEO_QUEUE, BACKUP_QUEUE, SLIDESHOW_ENGINE_QUEUE, SLIDESHOW_QUEUE]) {
     await instance.createQueue(name);
   }
   return instance;
@@ -129,6 +133,29 @@ export function getAiVideoQueue(): AiVideoQueue {
     async send(aiVideoJobId) {
       const jobId = await (await getBoss()).send(AI_VIDEO_QUEUE, { aiVideoJobId }, { retryLimit: 0, expireInSeconds: 2 * 60 * 60 });
       if (jobId === null) throw new Error(`AI video job ${aiVideoJobId} was not queued`);
+      return jobId;
+    },
+  };
+}
+
+// A slideshow engine downloads up to 7 GB; it gets a day, like the AI engine. Writing a script takes a minute or two;
+// making a slideshow takes up to half an hour on a laptop that draws several pictures (1-3 minutes each). Neither is
+// retried: the failure is shown on the Clips page or in Settings.
+export function getSlideshowEngineQueue(): SlideshowEngineQueue {
+  return {
+    async send(engine) {
+      const jobId = await (await getBoss()).send(SLIDESHOW_ENGINE_QUEUE, { engine }, { retryLimit: 0, expireInSeconds: 24 * 60 * 60 });
+      if (jobId === null) throw new Error(`the ${engine} engine install was not queued`);
+      return jobId;
+    },
+  };
+}
+
+export function getSlideshowQueue(): SlideshowQueue {
+  return {
+    async send(slideshowJobId, kind) {
+      const jobId = await (await getBoss()).send(SLIDESHOW_QUEUE, { slideshowJobId, kind }, { retryLimit: 0, expireInSeconds: 2 * 60 * 60 });
+      if (jobId === null) throw new Error(`slideshow ${slideshowJobId} was not queued`);
       return jobId;
     },
   };

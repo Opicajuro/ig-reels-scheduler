@@ -1,9 +1,9 @@
-import type { AiEngineStatus, AiVideoStatus, ClipProjectStatus, PostStatus } from "@/generated/prisma/enums";
+import type { AiEngineStatus, AiVideoStatus, ClipProjectStatus, PostStatus, SlideshowStatus } from "@/generated/prisma/enums";
 import styles from "./status-badge.module.css";
 
 type Tone = "neutral" | "info" | "success" | "danger";
 
-type Status = PostStatus | ClipProjectStatus | AiEngineStatus | AiVideoStatus;
+type Status = PostStatus | ClipProjectStatus | AiEngineStatus | AiVideoStatus | SlideshowStatus;
 
 const STATUSES: Record<Status, { label: string; tone: Tone }> = {
   scheduled: { label: "Scheduled", tone: "info" },
@@ -20,13 +20,15 @@ const STATUSES: Record<Status, { label: string; tone: Tone }> = {
   installed: { label: "Installed", tone: "success" },
   queued: { label: "Waiting", tone: "neutral" },
   running: { label: "Making video", tone: "info" },
+  writing: { label: "Writing script", tone: "info" },
+  draft: { label: "Draft", tone: "neutral" },
 };
 
 export function statusLabel(status: Status): string {
   return STATUSES[status].label;
 }
 
-// The state of a post, a clip project, an AI video or the AI engine as a coloured pill. label replaces the usual
+// The state of a post, a clip project, an AI video, a slideshow or an engine as a coloured pill. label replaces the usual
 // wording.
 export function StatusBadge({ status, label }: { status: Status; label?: string }) {
   const { label: usual, tone } = STATUSES[status];

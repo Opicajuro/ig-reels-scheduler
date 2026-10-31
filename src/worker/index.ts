@@ -12,6 +12,8 @@ import { aiDir, comfyRoot } from "@/lib/ai-engine";
 import { installAiEngine } from "@/lib/ai-install";
 import { runAiVideoJob } from "@/lib/ai-video";
 import { startComfy } from "@/lib/comfy";
+import { installSlideshowEngine, isSlideshowEngineId, slideshowDir } from "@/lib/slideshow-engines";
+import { localSlideshowTools, runSlideshowJob } from "@/lib/slideshow-render";
 import {
   AI_ENGINE_QUEUE,
   AI_VIDEO_QUEUE,
@@ -23,6 +25,8 @@ import {
   MEDIA_QUEUE,
   OWNER_ALERTS_QUEUE,
   PUBLISH_QUEUE,
+  SLIDESHOW_ENGINE_QUEUE,
+  SLIDESHOW_QUEUE,
   TOKEN_REFRESH_QUEUE,
 } from "@/lib/queues";
 import { processInsightsJob } from "./insights-processor";
@@ -91,6 +95,23 @@ async function main() {
     }
   });
 
+  await boss.work(SLIDESHOW_ENGINE_QUEUE, async ([job]: Job<{ engine: string }>[]) => {
+    const { engine } = job.data;
+    if (!isSlideshowEngineId(engine)) throw new Error(`unknown slideshow engine "${engine}"`);
+    await installSlideshowEngine({ db: prisma, root: slideshowDir(), engine });
+  });
+
+  // One slideshow at a time: the script writer and the picture maker each fill the graphics card.
+  await boss.work(SLIDESHOW_QUEUE, async ([job]: Job<{ slideshowJobId: string; kind: "script" | "render" }>[]) => {
+    const workDir = await mkdtemp(path.join(os.tmpdir(), "slideshow-"));
+    try {
+      const { slideshowJobId, kind } = job.data;
+      await runSlideshowJob({ db: prisma, store: s3ClipStore, jobId: slideshowJobId, kind, workDir, tools: localSlideshowTools() });
+    } finally {
+      await rm(workDir, { recursive: true, force: true });
+    }
+  });
+
   await boss.work(PUBLISH_QUEUE, createPublishProcessor());
   await boss.work(INSIGHTS_QUEUE, processInsightsJob);
 
@@ -123,7 +144,7 @@ async function main() {
     await runBackup({ db: prisma, env, now: new Date() });
   });
 
-  console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media, clips, AI videos and publishing enabled, backups at 03:30 ${timeZone}`);
+  console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media, clips, AI videos, slideshows and publishing enabled, backups at 03:30 ${timeZone}`);
 }
 
 main().catch((err) => {

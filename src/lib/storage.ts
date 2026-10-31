@@ -49,6 +49,11 @@ export function buildAiInputKey(id: string, extension: string): string {
   return `ai-inputs/${id}${extension.toLowerCase()}`;
 }
 
+// A photo for a slideshow slide, uploaded from the Clips page.
+export function buildSlideshowInputKey(id: string, extension: string): string {
+  return `slideshow-inputs/${id}${extension.toLowerCase()}`;
+}
+
 export async function presignUpload(key: string, contentType: string): Promise<string> {
   return getSignedUrl(
     client(),

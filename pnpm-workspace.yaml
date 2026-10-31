@@ -1,4 +1,7 @@
 ignoredBuiltDependencies:
+  # onnxruntime-node's install script only fetches the CUDA add-on; its CPU build, which the voice uses, is in the package.
+  - onnxruntime-node
+  - protobufjs
   - sharp
   - unrs-resolver
 # Their install scripts fetch Prisma's engines and esbuild's binary, so the installed app needs no download later.

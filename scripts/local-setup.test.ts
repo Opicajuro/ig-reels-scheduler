@@ -11,6 +11,7 @@ const install: LocalInstall = {
   chromePath: "C:\\Localirs\\tools\\chrome\\chrome.exe",
   whisperBin: "C:\\Localirs\\tools\\whisper\\whisper-cli.exe",
   whisperModel: "C:\\Localirs\\tools\\whisper\\ggml-large-v3-turbo-q5_0.bin",
+  kokoroModel: "C:\\Localirs\\tools\\kokoro\\Kokoro-82M-v1.0-ONNX",
   dataDir: "C:\\Localirs\\data",
   pgBin: "C:\\Localirs\\tools\\postgres\\bin",
 };
@@ -29,6 +30,7 @@ describe("buildLocalValues", () => {
     expect(values.CHROME_PATH).toBe(install.chromePath);
     expect(values.WHISPER_BIN).toBe(install.whisperBin);
     expect(values.WHISPER_MODEL).toBe(install.whisperModel);
+    expect(values.KOKORO_MODEL).toBe(install.kokoroModel);
     expect(values.LOCALIRS_DATA_DIR).toBe(install.dataDir);
     expect(values.PG_BIN).toBe(install.pgBin);
     expect(values.TOKEN_ENC_KEY).toBe("generated");

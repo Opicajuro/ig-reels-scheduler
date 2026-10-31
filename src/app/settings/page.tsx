@@ -29,6 +29,7 @@ import { AppearanceSection } from "./appearance-section";
 import { EncoderSection } from "./encoder-section";
 import { EngineProgress } from "./engine-progress";
 import { R2Section } from "./r2-section";
+import { SlideshowSection } from "./slideshow-section";
 import { BackupsSection } from "./backups-section";
 import { ReportProblemButton } from "../help/report-problem";
 import styles from "./settings.module.css";
@@ -182,6 +183,8 @@ export default async function SettingsPage() {
 
       <h2 id="ai-video">AI video</h2>
       <AiVideoSection />
+
+      <SlideshowSection />
 
       <BackupsSection />
 

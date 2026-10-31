@@ -166,8 +166,9 @@ function transcribe(mediaPath: string, workDir: string) {
   });
 }
 
-// Draws every caption of the project and returns, per clip, the ffconcat list that times its captions.
-async function captionOverlays(
+// Draws every caption of the project and returns, per clip, the ffconcat list that times its captions. Slideshows use
+// it too.
+export async function captionOverlays(
   lines: ReturnType<typeof captionLines>,
   highlights: { clipId: string; start: number; length: number }[],
   dir: string,

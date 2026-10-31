@@ -93,6 +93,8 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
     })),
   );
 
+  // The AI videos and Slideshows projects have no source video: their clips are made on the Clips page.
+  const noSource = project.aiVideos || project.slideshows;
   const busy = project.status === "rendering";
   const waiting = project.status === "awaiting_source";
   const preset = project.captionPreset ?? "classic";
@@ -112,7 +114,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       <PageHeader
         title={<ProjectTitle projectId={project.id} name={project.name} busy={busy} />}
         description={
-          project.aiVideos ? (
+          noSource ? (
             facts
           ) : (
             <>
@@ -123,7 +125,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
         }
         actions={
           <>
-            {project.aiVideos ? null : (
+            {noSource ? null : (
               <ActionForm action={copyProjectAction}>
                 <input type="hidden" name="projectId" value={project.id} />
                 <SubmitButton disabled={busy || waiting} pendingLabel="Copying…">
@@ -160,9 +162,8 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
         />
       ) : null}
 
-      {/* The AI videos project has no source video to make clips from: its clips are made from a description. */}
-      <div className={`${styles.project} ${project.aiVideos ? styles.single : ""}`}>
-        {project.aiVideos ? null : (
+      <div className={`${styles.project} ${noSource ? styles.single : ""}`}>
+        {noSource ? null : (
           <ActionForm
             className={styles.settings}
             action={startRenderAction}

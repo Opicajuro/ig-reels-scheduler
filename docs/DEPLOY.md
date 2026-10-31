@@ -45,6 +45,7 @@ Set these on both the web and the worker service, unless noted.
 | `CHROME_PATH` | Chrome or Chrome headless shell binary. Needed only for clips with captions. |
 | `WHISPER_BIN` | whisper.cpp `whisper-cli` binary. Needed only for clips with captions. |
 | `WHISPER_MODEL` | Path to a whisper.cpp model file, for example `ggml-large-v3-turbo-q5_0.bin`. Needed only for captions. |
+| `KOKORO_MODEL` | Folder of the Kokoro-82M ONNX model (`config.json`, `tokenizer.json`, `tokenizer_config.json`, `onnx/model_quantized.onnx`). Needed only for slideshows. |
 
 The Meta app ID and secret and the failure-email settings (address, Resend API key, sender) are not environment
 variables: set them on the app's Settings page after the first deploy.
