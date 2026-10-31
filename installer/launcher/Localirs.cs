@@ -1,4 +1,4 @@
-// Localirs.exe: starts Localirs with no console window, sits in the tray, and opens the app in its own Edge window.
+// Localirs.exe: starts Localirs with no console window, sits in the tray, and opens the app in the default browser.
 // Built by installer\build-installer.ps1 with the C# compiler that ships with .NET Framework 4, so it is C# 5.
 using System;
 using System.ComponentModel;
@@ -10,6 +10,7 @@ using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 static class Launcher
 {
@@ -152,21 +153,45 @@ static class Launcher
         }
     }
 
-    // Opens Localirs as its own window, without tabs or an address bar, using Edge's app mode.
+    // Chromium browsers open Localirs as its own window, without tabs or an address bar (--app).
+    static readonly string[] AppModeBrowsers = { "brave.exe", "vivaldi.exe", "opera.exe", "chrome.exe", "msedge.exe" };
+
+    // Opens Localirs in the default browser: as its own window in a Chromium browser, as a tab in any other.
     static void OpenWindow()
     {
-        ProcessStartInfo info = new ProcessStartInfo("msedge.exe", "--app=" + AppUrl);
+        string browser = DefaultBrowserPath();
+        if (browser == null)
+        {
+            MessageBox.Show("Windows has no default browser set. Open " + AppUrl + " in your browser.",
+                "Localirs", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        ProcessStartInfo info = AppModeBrowsers.Contains(Path.GetFileName(browser).ToLowerInvariant())
+            ? new ProcessStartInfo(browser, "--app=" + AppUrl)
+            : new ProcessStartInfo(AppUrl);
         info.UseShellExecute = true;
-        try
+        Process.Start(info);
+    }
+
+    // The program Windows opens http links with: the user's choice for http, then that ProgId's open command, whose
+    // first part is the program (quoted or not).
+    static string DefaultBrowserPath()
+    {
+        string progId;
+        using (RegistryKey choice = Registry.CurrentUser.OpenSubKey(
+            @"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice"))
         {
-            Process.Start(info);
+            progId = choice == null ? null : choice.GetValue("ProgId") as string;
         }
-        catch (Win32Exception)
+        if (string.IsNullOrEmpty(progId)) return null;
+        string command;
+        using (RegistryKey open = Registry.ClassesRoot.OpenSubKey(progId + @"\shell\open\command"))
         {
-            MessageBox.Show("Localirs opens in a Microsoft Edge window, and Edge was not found on this PC." +
-                Environment.NewLine + Environment.NewLine + "Install Microsoft Edge, or open " + AppUrl + " in any browser.",
-                "Localirs", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            command = open == null ? null : open.GetValue("") as string;
         }
+        if (string.IsNullOrEmpty(command)) return null;
+        Match program = Regex.Match(command.Trim(), "^\"([^\"]+)\"|^(\\S+)");
+        return program.Groups[1].Success ? program.Groups[1].Value : program.Groups[2].Value;
     }
 
     static WebClient NewWebClient()
