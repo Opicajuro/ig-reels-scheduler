@@ -19,6 +19,17 @@
     "url": "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-x64.zip",
     "sha256": "6ba69e3482d7826214f90a6a9c84ca07782aec1e1d0c6a7c30c994fd5d816ccb"
   },
+  "whisperCppVulkan": {
+    "version": "1.9.5",
+    "git": "https://github.com/ggml-org/whisper.cpp",
+    "tag": "v1.9.5",
+    "commit": "d1be6fde11ac6e0407606b4e42fe72d34add8037"
+  },
+  "vulkanSdk": {
+    "version": "1.4.363.0",
+    "url": "https://sdk.lunarg.com/sdk/download/1.4.363.0/windows/vulkansdk-windows-X64-1.4.363.0.exe",
+    "sha256": "94a82d378f7a5e3e54c9db7d2fb7016af136e14ac0a18dbf0f2f67a36352d141"
+  },
   "whisperModel": {
     "version": "large-v3-turbo-q5_0",
     "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin",

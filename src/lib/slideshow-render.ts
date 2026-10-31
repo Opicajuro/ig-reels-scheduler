@@ -4,7 +4,6 @@ import path from "node:path";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { captionLines } from "@/clip-engine/captions-timing.js";
 import { buildVoiceTrack, preparePicture, renderSlideshow, slideTimings } from "@/clip-engine/slideshow.js";
-import { transcribeToWords } from "@/clip-engine/transcribe.js";
 import { captionOverlays } from "./clip-render";
 import type { ClipStore } from "./clip-store";
 import { requireEnv } from "./env";
@@ -15,6 +14,7 @@ import type { ReadySlide, Slide } from "./slideshow-options";
 import { getSlideshowEngine, pictureMakerPaths, scriptWriterPaths, slideshowDir } from "./slideshow-engines";
 import { buildClipKey } from "./storage";
 import { kokoroSpeaker, type Speak } from "./voice";
+import { transcribeWithWhisper } from "./whisper";
 
 type Word = { text: string; startMs: number; endMs: number };
 
@@ -31,7 +31,7 @@ export type SlideshowTools = {
 const CAPTIONED = "slideshow";
 
 // The installed engines, Kokoro from the installer's tools, and the whisper and caption path the clips use.
-export function localSlideshowTools(): SlideshowTools {
+export function localSlideshowTools(db: PrismaClient): SlideshowTools {
   const root = slideshowDir();
   const script = scriptWriterPaths(root);
   const picture = pictureMakerPaths(root);
@@ -39,8 +39,7 @@ export function localSlideshowTools(): SlideshowTools {
     startLlm: () => startLlamaServer({ server: script.server, model: script.model, logPath: path.join(root, "llama-server.log") }),
     drawPicture: (prompt, output) => drawPicture({ models: picture, prompt, output, seed: randomInt(2 ** 31) }),
     speak: (lines, voice, dir) => kokoroSpeaker(requireEnv("KOKORO_MODEL"))(lines, voice, dir),
-    transcribe: (wav, workDir) =>
-      transcribeToWords({ mediaPath: wav, workDir, whisperBin: requireEnv("WHISPER_BIN"), model: requireEnv("WHISPER_MODEL") }),
+    transcribe: (wav, workDir) => transcribeWithWhisper(db, wav, workDir),
     captions: async (words, total, dir, preset) => {
       const lists = await captionOverlays(captionLines(words), [{ clipId: CAPTIONED, start: 0, length: total }], dir, {
         captionPreset: preset,

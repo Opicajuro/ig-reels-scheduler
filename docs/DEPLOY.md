@@ -43,7 +43,8 @@ Set these on both the web and the worker service, unless noted.
 | `APP_URL` | `https://<your-domain>` |
 | `AUTH_URL` | `https://<your-domain>`. Sign-in fails with "Host must be trusted" if this is missing. |
 | `CHROME_PATH` | Chrome or Chrome headless shell binary. Needed only for clips with captions. |
-| `WHISPER_BIN` | whisper.cpp `whisper-cli` binary. Needed only for clips with captions. |
+| `WHISPER_CPU` | whisper.cpp `whisper-cli` binary built for the processor. Needed only for clips with captions. |
+| `WHISPER_VULKAN` | whisper.cpp `whisper-cli` binary built with Vulkan (`-DGGML_VULKAN=ON`). The worker transcribes with it when it runs on a Vulkan graphics device, otherwise with `WHISPER_CPU`. Needed only for clips with captions. |
 | `WHISPER_MODEL` | Path to a whisper.cpp model file, for example `ggml-large-v3-turbo-q5_0.bin`. Needed only for captions. |
 | `KOKORO_MODEL` | Folder of the Kokoro-82M ONNX model (`config.json`, `tokenizer.json`, `tokenizer_config.json`, `onnx/model_quantized.onnx`). Needed only for slideshows. |
 

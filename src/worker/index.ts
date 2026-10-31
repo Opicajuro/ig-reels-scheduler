@@ -106,7 +106,7 @@ async function main() {
     const workDir = await mkdtemp(path.join(os.tmpdir(), "slideshow-"));
     try {
       const { slideshowJobId, kind } = job.data;
-      await runSlideshowJob({ db: prisma, store: s3ClipStore, jobId: slideshowJobId, kind, workDir, tools: localSlideshowTools() });
+      await runSlideshowJob({ db: prisma, store: s3ClipStore, jobId: slideshowJobId, kind, workDir, tools: localSlideshowTools(prisma) });
     } finally {
       await rm(workDir, { recursive: true, force: true });
     }

@@ -46,6 +46,7 @@ test("transcribeToWords runs whisper-cli in English without voice detection and 
     mediaPath: media,
     workDir: dir,
     whisperBin: fakeWhisper,
+    threads: 6,
     model: "model.bin",
   });
 
@@ -53,6 +54,7 @@ test("transcribeToWords runs whisper-cli in English without voice detection and 
   const after = (flag) => args[args.indexOf(flag) + 1];
   assert.equal(after("-m"), "model.bin");
   assert.equal(after("-l"), "en");
+  assert.equal(after("-t"), "6");
   // whisper.cpp 1.9.5 maps VAD times back to the video wrong: words after a silence come out seconds early.
   assert.ok(!args.includes("--vad") && !args.includes("-vm"), "voice detection is on");
   assert.equal(after("-ml"), "1");

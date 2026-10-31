@@ -9,7 +9,8 @@ const install: LocalInstall = {
   emailFrom: "Scheduler <alerts@example.test>",
   alertEmail: "me@example.test",
   chromePath: "C:\\Localirs\\tools\\chrome\\chrome.exe",
-  whisperBin: "C:\\Localirs\\tools\\whisper\\whisper-cli.exe",
+  whisperCpu: "C:\\Localirs\\tools\\whisper\\Release\\whisper-cli.exe",
+  whisperVulkan: "C:\\Localirs\\tools\\whisper-vulkan\\Release\\whisper-cli.exe",
   whisperModel: "C:\\Localirs\\tools\\whisper\\ggml-large-v3-turbo-q5_0.bin",
   kokoroModel: "C:\\Localirs\\tools\\kokoro\\Kokoro-82M-v1.0-ONNX",
   dataDir: "C:\\Localirs\\data",
@@ -28,7 +29,8 @@ describe("buildLocalValues", () => {
   it("uses the tool paths and generates the token key", () => {
     const values = buildLocalValues(install, () => "generated");
     expect(values.CHROME_PATH).toBe(install.chromePath);
-    expect(values.WHISPER_BIN).toBe(install.whisperBin);
+    expect(values.WHISPER_CPU).toBe(install.whisperCpu);
+    expect(values.WHISPER_VULKAN).toBe(install.whisperVulkan);
     expect(values.WHISPER_MODEL).toBe(install.whisperModel);
     expect(values.KOKORO_MODEL).toBe(install.kokoroModel);
     expect(values.LOCALIRS_DATA_DIR).toBe(install.dataDir);

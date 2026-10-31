@@ -270,17 +270,25 @@ model Setting {
 }
 
 // The H.264 encoder the worker found when it last started: the NVIDIA card's NVENC, AMD graphics' AMF, or x264 on the
-// processor.
+// processor. Also the whisper.cpp build it transcribes with, found at its first transcription since that start: the
+// Vulkan build on a graphics device (named as Vulkan reports it), or the processor build. Null until then.
 model VideoEncoding {
-  id        Int          @id @default(1)
-  encoder   VideoEncoder
-  checkedAt DateTime     @updatedAt
+  id                Int          @id @default(1)
+  encoder           VideoEncoder
+  checkedAt         DateTime     @updatedAt
+  transcriber       Transcriber?
+  transcriberDevice String?
 }
 
 enum VideoEncoder {
   nvenc
   amf
   x264
+}
+
+enum Transcriber {
+  vulkan
+  cpu
 }
 
 enum AiEngineStatus {

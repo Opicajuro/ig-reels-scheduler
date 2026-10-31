@@ -24,9 +24,10 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
-      # The downloads folder also holds weed.exe, built once per SeaweedFS version (v3: v2 entries may hold a damaged Whisper model).
+      # The downloads folder also holds weed.exe and the whisper.cpp Vulkan build, each built once per version (v3: v2
+      # entries may hold a damaged Whisper model).
       # It is saved after the build step even when the build fails: Get-Tool deletes a failed download, and a failed
-      # go build leaves no weed.exe.
+      # go build leaves no weed.exe (nor a failed whisper.cpp build its zip).
       - name: Restore downloaded tools
         id: tools
         uses: actions/cache/restore@v6

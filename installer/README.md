@@ -1,7 +1,7 @@
 # Localirs Windows installer
 
 One `Localirs-Setup.exe` that installs the app with everything it needs on the same PC: Node, ffmpeg,
-yt-dlp, whisper.cpp with its speech and voice-detection models, a headless Chrome for captions, the Kokoro voice model for slideshows, PostgreSQL 16, SeaweedFS for file storage, and 7zr.exe (7-Zip)
+yt-dlp, whisper.cpp (a processor build and a Vulkan build for graphics) with its speech model, a headless Chrome for captions, the Kokoro voice model for slideshows, PostgreSQL 16, SeaweedFS for file storage, and 7zr.exe (7-Zip)
 to unpack the AI video engine, which Settings downloads into `data\ai` when asked (the slideshow engines go into
 `data\slideshow` the same way). Nothing else
 needs installing by hand. The only things you type are a Resend API key and a sender address for sign-in email.
@@ -9,7 +9,9 @@ needs installing by hand. The only things you type are a Resend API key and a se
 ## Build it (on a Windows PC)
 
 1. Install [Inno Setup 6](https://jrsoftware.org/isdl.php) and [Git for Windows](https://git-scm.com).
-2. Install Node 22, pnpm 10.28.0 (`corepack enable`), and Go 1.26.6 on the build PC. Go compiles SeaweedFS.
+2. Install Node 22, pnpm 10.28.0 (`corepack enable`), Go 1.26.6, CMake and the Visual Studio C++ build tools on the
+   build PC. Go compiles SeaweedFS; CMake and Visual Studio compile whisper.cpp's Vulkan build, with the Vulkan SDK
+   the build downloads.
 3. In PowerShell, from the repository root:
 
        powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1 -Build 0
@@ -55,7 +57,9 @@ hand: download `Localirs-Setup.exe` from the latest release and run it over the 
   their CORS preflight, copy, download and delete, through the app's own storage functions.
 - Not verified: anything Windows-specific. `build-installer.ps1`, `setup-localirs.ps1`, `start-localirs.ps1`
   and `localirs.iss` have not been run. The download URLs in `tools.json` are not all checked. The whisper.cpp
-  zip layout (`Release\whisper-cli.exe`) was checked against the pinned zip.
+  zip layout (`Release\whisper-cli.exe`) was checked against the pinned zip. whisper.cpp publishes no Windows Vulkan
+  build (its release has CPU, BLAS and CUDA zips only), so the build compiles one from the pinned v1.9.5 commit; that
+  compile has not been run.
 - The hashes in `tools.json` are empty until the first build fills them in.
 - Captions need a Whisper model, which the build downloads from Hugging Face. Links need `yt-dlp`, which the build
   downloads from GitHub.
