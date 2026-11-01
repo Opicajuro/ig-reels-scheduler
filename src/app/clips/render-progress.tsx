@@ -9,7 +9,7 @@ import styles from "./clips.module.css";
 const POLL_MS = 2000;
 
 // 75 seconds → "1:15", an hour and more → "1:02:05".
-function formatElapsed(totalSeconds: number): string {
+export function formatElapsed(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = String(totalSeconds % 60).padStart(2, "0");

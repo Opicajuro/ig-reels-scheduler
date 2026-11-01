@@ -94,7 +94,7 @@ async function startFakeComfy(video: string): Promise<FakeComfy> {
 
 type Row = Record<string, unknown>;
 
-function fakeDb(job: Row, engineStatus = "installed") {
+function fakeDb(job: Row, engineStatus = "installed", onStep: (step: string, job: Row) => void = () => {}) {
   const state = { job: { ...job }, steps: [] as string[], projects: [] as Row[], clips: [] as Row[], created: [] as Row[] };
   const db = {
     aiEngine: { findUnique: async () => ({ id: 1, status: engineStatus }) },
@@ -108,6 +108,15 @@ function fakeDb(job: Row, engineStatus = "installed") {
         if (typeof data.step === "string") state.steps.push(data.step);
         Object.assign(state.job, data);
         return state.job;
+      },
+      updateMany: async ({ where, data }: { where: Row; data: Row }) => {
+        if (where.status !== state.job.status) return { count: 0 };
+        if (typeof data.step === "string") {
+          state.steps.push(data.step);
+          onStep(data.step, state.job);
+        }
+        Object.assign(state.job, data);
+        return { count: 1 };
       },
     },
     clipProject: {
@@ -260,6 +269,29 @@ describe("runAiVideoJob", () => {
     expect(lifecycle).toEqual(["started", "stopped"]);
     expect(state.clips).toEqual([]);
     expect(state.job).toMatchObject({ status: "failed", step: null, error: "ComfyUI failed: Allocation on device: out of memory" });
+  });
+
+  it("stops without a clip or an error when the video is cancelled while it is made", async () => {
+    const job = { id: "job-5", ownerId: "owner-1", prompt: "A fox", seconds: 3, startImageKey: null, status: "queued" };
+    const { db, state } = fakeDb(job, "installed", (step, row) => {
+      if (step === "Generating video 0%") Object.assign(row, { status: "failed", step: null, error: "Cancelled" });
+    });
+    const { promise, lifecycle } = await run(job, db);
+    await promise;
+
+    expect(lifecycle).toEqual(["started", "stopped"]);
+    expect(state.steps).toEqual(["Starting the AI engine", "Generating video 0%"]);
+    expect(state.clips).toEqual([]);
+    expect(state.job).toMatchObject({ status: "failed", error: "Cancelled" });
+  });
+
+  it("does not start a video cancelled before the worker took it", async () => {
+    const job = { id: "job-6", ownerId: "owner-1", prompt: "A fox", seconds: 3, startImageKey: null, status: "failed", error: "Cancelled" };
+    const { db, state } = fakeDb(job);
+    const { promise, lifecycle } = await run(job, db);
+    await promise;
+    expect(lifecycle).toEqual([]);
+    expect(state.job).toMatchObject({ status: "failed", error: "Cancelled" });
   });
 
   it("fails before starting ComfyUI when the engine is not installed", async () => {

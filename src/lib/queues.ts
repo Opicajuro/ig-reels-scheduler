@@ -36,6 +36,13 @@ export type ClipJobs = ClipQueue & {
   cancel(jobIds: string[]): Promise<void>;
 };
 
+// An AI video's pg-boss jobs, for cancelling it from the Queue page.
+export type AiVideoJobs = {
+  // The ids of the video's jobs that are waiting or marked as running.
+  open(aiVideoJobId: string): Promise<string[]>;
+  cancel(jobIds: string[]): Promise<void>;
+};
+
 export type InsightQueue = {
   send(postId: string, label: string, runAt: Date): Promise<string | null>;
 };
@@ -130,6 +137,18 @@ export function getAiVideoQueue(): AiVideoQueue {
       const jobId = await (await getBoss()).send(AI_VIDEO_QUEUE, { aiVideoJobId }, { retryLimit: 0, expireInSeconds: 2 * 60 * 60 });
       if (jobId === null) throw new Error(`AI video job ${aiVideoJobId} was not queued`);
       return jobId;
+    },
+  };
+}
+
+export function getAiVideoJobs(): AiVideoJobs {
+  return {
+    async open(aiVideoJobId) {
+      const jobs = await (await getBoss()).findJobs(AI_VIDEO_QUEUE, { data: { aiVideoJobId } });
+      return jobs.flatMap((job) => (job.state === "created" || job.state === "retry" || job.state === "active" ? [job.id] : []));
+    },
+    async cancel(jobIds) {
+      await (await getBoss()).cancel(AI_VIDEO_QUEUE, jobIds);
     },
   };
 }

@@ -49,6 +49,8 @@ export async function renderClipProject({
 
   // Tells the project page what is happening now, one write per step.
   const step = (renderStep: string) => db.clipProject.update({ where: { id: projectId }, data: { renderStep } });
+  // Cancelling a render changes the project's render id, and the render stops before its next clip.
+  const current = async () => (await db.clipProject.findUnique({ where: { id: projectId } }))?.renderId === renderId;
 
   try {
     const saved = await db.clip.findMany({ where: { projectId }, select: { id: true, storageKey: true } });
@@ -123,6 +125,7 @@ export async function renderClipProject({
       : null;
 
     for (const { index, clip } of todo) {
+      if (!(await current())) return;
       await step(resume ? resumeStep(index + 1, total) : `Making clip ${index + 1} of ${total}`);
       const { clipId } = clip;
       const output = path.join(workDir, `${clipId}.mp4`);
@@ -149,6 +152,7 @@ export async function renderClipProject({
       });
     }
 
+    if (!(await current())) return;
     await db.clipProject.update({ where: { id: projectId }, data: { status: "done", error: null, renderStep: null } });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

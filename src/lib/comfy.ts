@@ -8,7 +8,8 @@ import { pipeline } from "node:stream/promises";
 import type { ReadableStream } from "node:stream/web";
 import type { Workflow } from "./ai-workflow";
 
-// Talks to ComfyUI over its HTTP API and websocket, and starts and stops it. Only the worker uses it.
+// Talks to ComfyUI over its HTTP API and websocket, and starts and stops it. The worker uses it, and the Queue page
+// interrupts a video being made.
 
 export const COMFY_PORT = 8188;
 const START_TIMEOUT_MS = 5 * 60_000;
@@ -66,6 +67,21 @@ export async function startComfy(root: string): Promise<RunningComfy> {
 
 async function failure(response: Response, what: string): Promise<Error> {
   return new Error(`ComfyUI ${what} failed with HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
+}
+
+// Stops the video the worker's ComfyUI is making and drops any prompt waiting in it. The worker makes one AI video at a
+// time, so that is the one being cancelled. When ComfyUI does not answer, it is not started yet or already stopped, and
+// the worker notices the cancel before it queues the workflow.
+export async function interruptComfy(url = `http://127.0.0.1:${COMFY_PORT}`): Promise<void> {
+  if (!(await answers(url))) return;
+  const cleared = await fetch(`${url}/queue`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clear: true }),
+  });
+  if (!cleared.ok) throw await failure(cleared, "clearing the queue");
+  const interrupted = await fetch(`${url}/interrupt`, { method: "POST" });
+  if (!interrupted.ok) throw await failure(interrupted, "interrupt");
 }
 
 // Puts a picture in ComfyUI's input folder and returns the name a LoadImage node uses for it.
