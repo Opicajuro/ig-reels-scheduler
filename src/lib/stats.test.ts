@@ -3,12 +3,15 @@ import {
   byCaptionStyle,
   byHour,
   byLength,
+  bySource,
   byWeekday,
   captionStyleOf,
   filterPosts,
   latestPull,
   lengthBucket,
   sortPosts,
+  sourceOf,
+  type SourceProject,
   type StatPost,
 } from "./stats";
 
@@ -19,6 +22,7 @@ const post = (id: string, overrides: Partial<StatPost>): StatPost => ({
   publishedAt: new Date("2026-10-26T18:00:00Z"),
   seconds: 30,
   captionStyle: "classic",
+  source: "clip",
   metrics: {},
   ...overrides,
 });
@@ -42,17 +46,41 @@ describe("lengthBucket", () => {
   });
 });
 
+const project = (overrides: Partial<SourceProject>): SourceProject => ({
+  withCaptions: true,
+  captionPreset: null,
+  aiVideos: false,
+  slideshows: false,
+  ...overrides,
+});
+
 describe("captionStyleOf", () => {
   it("names the style of the project the video came from", () => {
     expect(captionStyleOf(null, undefined)).toBe("upload");
     expect(captionStyleOf("p1", undefined)).toBe("deleted");
-    expect(captionStyleOf("p1", { withCaptions: false, captionPreset: "box" })).toBe("none");
-    expect(captionStyleOf("p1", { withCaptions: true, captionPreset: null })).toBe("classic");
-    expect(captionStyleOf("p1", { withCaptions: true, captionPreset: "words" })).toBe("words");
+    expect(captionStyleOf("p1", project({ withCaptions: false, captionPreset: "box" }))).toBe("none");
+    expect(captionStyleOf("p1", project({}))).toBe("classic");
+    expect(captionStyleOf("p1", project({ captionPreset: "words" }))).toBe("words");
+  });
+
+  it("takes a slideshow's own style over its project's", () => {
+    const slideshows = project({ slideshows: true, captionPreset: "words" });
+    expect(captionStyleOf("p1", slideshows, "box")).toBe("box");
+    expect(captionStyleOf("p1", slideshows, undefined)).toBe("deleted");
   });
 
   it("refuses an unknown preset", () => {
-    expect(() => captionStyleOf("p1", { withCaptions: true, captionPreset: "neon" })).toThrow();
+    expect(() => captionStyleOf("p1", project({ captionPreset: "neon" }))).toThrow();
+  });
+});
+
+describe("sourceOf", () => {
+  it("tells clips, AI videos, slideshows and uploads apart", () => {
+    expect(sourceOf(null, undefined)).toBe("upload");
+    expect(sourceOf("p1", undefined)).toBe("deleted");
+    expect(sourceOf("p1", project({}))).toBe("clip");
+    expect(sourceOf("p1", project({ aiVideos: true, withCaptions: false }))).toBe("ai");
+    expect(sourceOf("p1", project({ slideshows: true }))).toBe("slideshow");
   });
 });
 
@@ -95,8 +123,20 @@ describe("breakdowns", () => {
   const posts = [
     post("a", { seconds: 12, captionStyle: "none", metrics: { views: 100, likes: 4 } }),
     post("b", { seconds: 28, metrics: { views: 300 } }),
-    post("c", { seconds: 30, publishedAt: new Date("2026-10-27T07:00:00Z"), metrics: {} }),
+    post("c", { seconds: 30, source: "slideshow", publishedAt: new Date("2026-10-27T07:00:00Z"), metrics: {} }),
   ];
+
+  it("groups by source", () => {
+    const rows = bySource(posts);
+    expect(rows.map((row) => [row.key, row.posts])).toEqual([
+      ["clip", 2],
+      ["ai", 0],
+      ["slideshow", 1],
+      ["upload", 0],
+      ["deleted", 0],
+    ]);
+    expect(rows[0].averages.views).toBe(200);
+  });
 
   it("averages each metric over the posts that have it, by length bucket", () => {
     const rows = byLength(posts);

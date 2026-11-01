@@ -85,7 +85,7 @@ export default async function HelpPage() {
             <Link href="/scheduled">Scheduled</Link>. Localirs must be running at the publish time.
           </li>
           <li>
-            Once posts are out, <Link href="/stats">Stats</Link> compares them by clip length, caption style and posting
+            Once posts are out, <Link href="/stats">Stats</Link> compares them by clip length, caption style, source and posting
             time, and lists your best weekday and hour to post. <strong>Use best time</strong> next to the publish time
             fills in the next of those slots.
           </li>

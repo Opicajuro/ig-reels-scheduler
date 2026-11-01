@@ -12,12 +12,14 @@ import {
   byCaptionStyle,
   byHour,
   byLength,
+  bySource,
   byWeekday,
   CAPTION_STYLES,
   filterPosts,
   LENGTH_BUCKETS,
   lengthBucket,
   sortPosts,
+  SOURCES,
   STAT_METRICS,
   type BreakdownRow,
   type SortColumn,
@@ -153,6 +155,7 @@ const COLUMNS: Array<{ column: SortColumn; label: string; number: boolean }> = [
   { column: "username", label: "Account", number: false },
   { column: "seconds", label: "Length", number: true },
   { column: "captionStyle", label: "Captions", number: false },
+  { column: "source", label: "Source", number: false },
   ...STAT_METRICS.map(({ metric, label }) => ({ column: metric, label, number: true })),
 ];
 
@@ -184,7 +187,7 @@ export function StatsView({ accounts, posts }: { accounts: Array<{ id: string; u
     setSort((current) =>
       current.column === column
         ? { column, direction: current.direction === "asc" ? "desc" : "asc" }
-        : { column, direction: column === "username" || column === "captionStyle" ? "asc" : "desc" },
+        : { column, direction: column === "username" || column === "captionStyle" || column === "source" ? "asc" : "desc" },
     );
   }
 
@@ -265,6 +268,7 @@ export function StatsView({ accounts, posts }: { accounts: Array<{ id: string; u
 
           <BreakdownTable title="By clip length" group="Length" rows={byLength(shown)} metric={metric} hideEmpty={false} />
           <BreakdownTable title="By caption style" group="Captions" rows={byCaptionStyle(shown)} metric={metric} hideEmpty />
+          <BreakdownTable title="By source" group="Source" rows={bySource(shown)} metric={metric} hideEmpty />
           <BreakdownTable title="By weekday" group="Weekday" rows={byWeekday(shown, utc)} metric={metric} hideEmpty={false} />
           <h2>By posting hour</h2>
           <HourChart rows={byHour(shown, utc)} metric={metric} />
@@ -305,6 +309,7 @@ export function StatsView({ accounts, posts }: { accounts: Array<{ id: string; u
                       {Math.round(post.seconds)} s
                     </td>
                     <td>{labelOf(CAPTION_STYLES, post.captionStyle)}</td>
+                    <td>{labelOf(SOURCES, post.source)}</td>
                     {STAT_METRICS.map((candidate) => (
                       <td key={candidate.metric} className={styles.number}>
                         {format(post.metrics[candidate.metric])}

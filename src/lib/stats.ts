@@ -1,5 +1,5 @@
 // The Stats page: published posts compared by their latest insight pull, and broken down by clip length, caption style,
-// posting weekday and posting hour. Weekday and hour follow slotOf: the viewer's timezone in the browser, UTC on the
+// source, posting weekday and posting hour. Weekday and hour follow slotOf: the viewer's timezone in the browser, UTC on the
 // server.
 import { slotOf, WEEKDAYS } from "./best-time";
 
@@ -20,6 +20,7 @@ export type StatPost = {
   publishedAt: Date;
   seconds: number;
   captionStyle: string;
+  source: string;
   /** the latest pull's values; a metric that pull did not return is missing */
   metrics: Partial<Record<string, number>>;
 };
@@ -57,21 +58,43 @@ export const CAPTION_STYLES = [
   { key: "words", label: "Word by word" },
   { key: "none", label: "No captions" },
   { key: "upload", label: "Uploaded video" },
-  { key: "deleted", label: "Project deleted" },
+  { key: "deleted", label: "Source deleted" },
 ];
 
+export type SourceProject = { withCaptions: boolean; captionPreset: string | null; aiVideos: boolean; slideshows: boolean };
+
 // The caption style of a post's video, from the project it was made in: none for a video uploaded directly, and
-// undefined when that project was deleted. The project settings are read as they are now.
+// undefined when that project was deleted. The project settings are read as they are now. A slideshow has its own
+// style, `slideshowPreset`, which is undefined once its clip is deleted.
 export function captionStyleOf(
   sourceProjectId: string | null,
-  project: { withCaptions: boolean; captionPreset: string | null } | undefined,
+  project: SourceProject | undefined,
+  slideshowPreset?: string,
 ): string {
   if (sourceProjectId === null) return "upload";
   if (!project) return "deleted";
   if (!project.withCaptions) return "none";
-  const preset = project.captionPreset ?? "classic";
+  if (project.slideshows && slideshowPreset === undefined) return "deleted";
+  const preset = (project.slideshows ? slideshowPreset : project.captionPreset) ?? "classic";
   if (!CAPTION_STYLES.some((style) => style.key === preset)) throw new Error(`unknown caption preset "${preset}"`);
   return preset;
+}
+
+export const SOURCES = [
+  { key: "clip", label: "Video clip" },
+  { key: "ai", label: "AI video" },
+  { key: "slideshow", label: "Slideshow" },
+  { key: "upload", label: "Uploaded video" },
+  { key: "deleted", label: "Project deleted" },
+];
+
+// Where a post's video came from: a clip of a source video, the "AI videos" project or the "Slideshows" project.
+export function sourceOf(sourceProjectId: string | null, project: SourceProject | undefined): string {
+  if (sourceProjectId === null) return "upload";
+  if (!project) return "deleted";
+  if (project.aiVideos) return "ai";
+  if (project.slideshows) return "slideshow";
+  return "clip";
 }
 
 // The values of a post's latest pull. Each pull stores all its metrics with the same fetchedAt.
@@ -125,6 +148,10 @@ export function byCaptionStyle(posts: StatPost[]): BreakdownRow[] {
   return breakdown(posts, CAPTION_STYLES, (post) => post.captionStyle);
 }
 
+export function bySource(posts: StatPost[]): BreakdownRow[] {
+  return breakdown(posts, SOURCES, (post) => post.source);
+}
+
 export function byWeekday(posts: StatPost[], utc: boolean): BreakdownRow[] {
   return breakdown(
     posts,
@@ -141,7 +168,7 @@ export function byHour(posts: StatPost[], utc: boolean): BreakdownRow[] {
   );
 }
 
-export type SortColumn = "publishedAt" | "username" | "seconds" | "captionStyle" | StatMetric;
+export type SortColumn = "publishedAt" | "username" | "seconds" | "captionStyle" | "source" | StatMetric;
 
 // Posts sorted by a column. A post without the metric goes last either way; ties keep the newest first.
 export function sortPosts(posts: StatPost[], column: SortColumn, direction: "asc" | "desc"): StatPost[] {
@@ -149,7 +176,7 @@ export function sortPosts(posts: StatPost[], column: SortColumn, direction: "asc
   const valueOf = (post: StatPost): string | number | undefined =>
     column === "publishedAt"
       ? post.publishedAt.getTime()
-      : column === "username" || column === "captionStyle" || column === "seconds"
+      : column === "username" || column === "captionStyle" || column === "source" || column === "seconds"
         ? post[column]
         : post.metrics[column];
   return [...posts].sort((a, b) => {
