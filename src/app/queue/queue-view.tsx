@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { EmptyState } from "@/components/empty-state";
 import { LocalTime } from "@/components/local-time";
@@ -9,16 +10,29 @@ import { StatusBadge } from "@/components/status-badge";
 import type { QueueListing } from "@/lib/work-queue";
 import { formatElapsed } from "../clips/render-progress";
 import { CancelPostForm } from "../scheduled/post-actions";
-import { cancelAiVideoAction, cancelRenderAction } from "./actions";
+import { cancelAiVideoAction, cancelRenderAction, cancelSlideshowAction } from "./actions";
 import styles from "./queue.module.css";
 
 const POLL_MS = 2000;
 
-// The queue as the page was rendered, then as the status route reports it every 2 seconds. Everything shown comes from
-// that JSON, so a row that finished or was cancelled just drops out, without reloading the page.
+// Every row's key, to tell when one has finished or was cancelled.
+function rowKeys(listing: QueueListing): string[] {
+  return [
+    ...listing.renders.map((row) => `render:${row.id}`),
+    ...listing.aiVideos.map((row) => `video:${row.id}`),
+    ...listing.slideshows.map((row) => `slideshow:${row.id}`),
+    ...listing.engines.map((row) => `engine:${row.id}`),
+    ...listing.posts.map((row) => `post:${row.id}`),
+  ];
+}
+
+// The queue as the page was rendered, then as the status route reports it every 2 seconds. When a row drops out, the
+// page is refreshed once, so the rest of the app shows what it finished.
 export function QueueView({ initial }: { initial: QueueListing }) {
+  const router = useRouter();
   const [listing, setListing] = useState(initial);
   const [now, setNow] = useState(() => Date.now());
+  const shown = useRef(rowKeys(initial));
 
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 1000);
@@ -29,12 +43,17 @@ export function QueueView({ initial }: { initial: QueueListing }) {
     const timer = setInterval(async () => {
       const response = await fetch("/api/queue", { cache: "no-store" });
       if (!response.ok) throw new Error(`queue check failed with ${response.status}`);
-      setListing((await response.json()) as QueueListing);
+      const next = (await response.json()) as QueueListing;
+      const keys = rowKeys(next);
+      const finished = shown.current.some((key) => !keys.includes(key));
+      shown.current = keys;
+      setListing(next);
+      if (finished) router.refresh();
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, []);
+  }, [router]);
 
-  const { renders, aiVideos, posts } = listing;
+  const { renders, aiVideos, slideshows, engines, posts } = listing;
   return (
     <div className={styles.queue}>
       <Section title="Clips being made" empty="No clips are being made.">
@@ -82,7 +101,7 @@ export function QueueView({ initial }: { initial: QueueListing }) {
         {aiVideos.map((video) => (
           <Row
             key={video.id}
-            href="/clips"
+            href="/clips?tab=ai"
             title={video.prompt}
             state={<StatusBadge status={video.status} />}
             detail={video.step ?? (video.status === "queued" ? "Waiting for the worker" : "")}
@@ -96,6 +115,52 @@ export function QueueView({ initial }: { initial: QueueListing }) {
                   Cancel
                 </SubmitButton>
               </ActionForm>
+            }
+          />
+        ))}
+      </Section>
+
+      <Section title="Slideshows" empty="No slideshow is being written or made.">
+        {slideshows.map((show) => (
+          <Row
+            key={show.id}
+            href="/clips?tab=slideshow"
+            title={show.topic}
+            state={<StatusBadge status={show.status} label={show.status === "running" ? "Making slideshow" : undefined} />}
+            detail={show.step ?? (show.status === "queued" ? "Waiting for the worker" : "")}
+            cancel={
+              <ActionForm
+                action={cancelSlideshowAction}
+                confirm={{
+                  message:
+                    show.status === "writing"
+                      ? "Stop writing this script? The slideshow is not made."
+                      : "Stop making this slideshow? Its draft is kept, so you can make it again.",
+                  confirmLabel: "Stop slideshow",
+                }}
+              >
+                <input type="hidden" name="jobId" value={show.id} />
+                <SubmitButton variant="danger" size="sm" pendingLabel="Cancelling…">
+                  Cancel
+                </SubmitButton>
+              </ActionForm>
+            }
+          />
+        ))}
+      </Section>
+
+      <Section title="Engine installs" empty="No engine is being installed.">
+        {engines.map((engine) => (
+          <Row
+            key={engine.id}
+            href={engine.id === "ai" ? "/settings#ai-video" : "/settings#slideshow-ai"}
+            title={engine.name}
+            state={<StatusBadge status="installing" />}
+            detail={engine.step ?? ""}
+            progress={
+              engine.percent === null ? null : (
+                <progress className={styles.progress} max={100} value={engine.percent} aria-label={`${engine.name} install progress`} />
+              )
             }
           />
         ))}
@@ -143,7 +208,8 @@ function Row({
   state: ReactNode;
   detail: ReactNode;
   progress?: ReactNode;
-  cancel: ReactNode;
+  // Engine installs cannot be cancelled: they keep what they downloaded, and are removed in Settings.
+  cancel?: ReactNode;
 }) {
   return (
     <li className={styles.row}>
@@ -155,7 +221,7 @@ function Row({
         <span className={styles.detail}>{detail}</span>
         {progress}
       </div>
-      <div className={styles.cancel}>{cancel}</div>
+      {cancel ? <div className={styles.cancel}>{cancel}</div> : null}
     </li>
   );
 }

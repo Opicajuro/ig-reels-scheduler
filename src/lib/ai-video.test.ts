@@ -17,6 +17,8 @@ type FakeComfy = {
   url: string;
   prompts: { prompt: Workflow; client_id: string; prompt_id: string }[];
   uploads: string[];
+  // The /queue and /interrupt calls, in order.
+  stops: string[];
   fail: string | null;
   close(): Promise<void>;
 };
@@ -38,7 +40,7 @@ async function body(request: IncomingMessage): Promise<Buffer> {
 
 async function startFakeComfy(video: string): Promise<FakeComfy> {
   const sockets = new Map<string, Socket>();
-  const fake = { prompts: [], uploads: [], fail: null } as unknown as FakeComfy;
+  const fake = { prompts: [], uploads: [], stops: [], fail: null } as unknown as FakeComfy;
   const server: Server = createServer(async (request, response) => {
     const url = new URL(request.url!, "http://fake");
     if (url.pathname === "/system_stats") {
@@ -62,6 +64,9 @@ async function startFakeComfy(video: string): Promise<FakeComfy> {
         if (fake.fail) send("execution_error", { prompt_id: id, exception_message: fake.fail });
         else send("execution_success", { prompt_id: id });
       }, 20);
+    } else if ((url.pathname === "/queue" || url.pathname === "/interrupt") && request.method === "POST") {
+      fake.stops.push(`${url.pathname} ${(await body(request)).toString()}`.trim());
+      response.end();
     } else if (url.pathname.startsWith("/history/")) {
       const id = url.pathname.slice("/history/".length);
       const images = [{ filename: "localirs_00001_.mp4", subfolder: "video", type: "output" }];
@@ -179,6 +184,7 @@ afterAll(async () => {
 beforeEach(() => {
   comfy.prompts.length = 0;
   comfy.uploads.length = 0;
+  comfy.stops.length = 0;
   comfy.fail = null;
 });
 
@@ -281,6 +287,8 @@ describe("runAiVideoJob", () => {
 
     expect(lifecycle).toEqual(["started", "stopped"]);
     expect(state.steps).toEqual(["Starting the AI engine", "Generating video 0%"]);
+    // The cancel came after the worker's last check, so the worker stopped ComfyUI when its progress write failed.
+    expect(comfy.stops.slice(0, 2)).toEqual(['/queue {"clear":true}', "/interrupt"]);
     expect(state.clips).toEqual([]);
     expect(state.job).toMatchObject({ status: "failed", error: "Cancelled" });
   });

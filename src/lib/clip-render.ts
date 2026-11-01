@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ClipProject, PrismaClient } from "@/generated/prisma/client";
+import type { ClipProject, Prisma, PrismaClient } from "@/generated/prisma/client";
 import { requireEnv } from "./env";
 import { buildClipKey, buildClipSourceKey } from "./storage";
 import type { ClipStore } from "./clip-store";
@@ -21,6 +21,9 @@ import { bundleCaptions, renderCaptionStills } from "@/clip-engine/render-captio
 import { captionPreset } from "@/clip-engine/remotion/caption-presets.js";
 import { remainingClips, requireRenderId, resumablePlan, resumeStep, type RenderPlan } from "./clip-resume";
 import { transcribeWithWhisper } from "./whisper";
+
+// Thrown by a render's write once the render is cancelled, to stop it.
+class RenderCancelled extends Error {}
 
 export function clipName(index: number): string {
   return `clip-${String(index + 1).padStart(3, "0")}`;
@@ -47,10 +50,14 @@ export async function renderClipProject({
   if (project.status !== "rendering") throw new Error(`clip project ${projectId} is not rendering`);
   if (requireRenderId(project) !== renderId) throw new Error(`clip job for project ${projectId} is for an earlier render`);
 
+  // Cancelling a render clears the project's render id: from then on its writes do not land, and it stops at the next
+  // one, before its next clip at the latest. The clips it made stay.
+  const write = async (data: Prisma.ClipProjectUpdateManyMutationInput) => {
+    const { count } = await db.clipProject.updateMany({ where: { id: projectId, renderId }, data });
+    if (count === 0) throw new RenderCancelled();
+  };
   // Tells the project page what is happening now, one write per step.
-  const step = (renderStep: string) => db.clipProject.update({ where: { id: projectId }, data: { renderStep } });
-  // Cancelling a render changes the project's render id, and the render stops before its next clip.
-  const current = async () => (await db.clipProject.findUnique({ where: { id: projectId } }))?.renderId === renderId;
+  const step = (renderStep: string) => write({ renderStep });
 
   try {
     const saved = await db.clip.findMany({ where: { projectId }, select: { id: true, storageKey: true } });
@@ -60,7 +67,7 @@ export async function renderClipProject({
       for (const clip of saved) await store.remove(clip.storageKey);
       await db.clip.deleteMany({ where: { projectId } });
     } else if (resume.remaining.length === 0) {
-      await db.clipProject.update({ where: { id: projectId }, data: { status: "done", error: null, renderStep: null } });
+      await write({ status: "done", error: null, renderStep: null });
       return;
     }
     // While resuming, the page shows the clip it goes on from until that clip is being made.
@@ -76,7 +83,7 @@ export async function renderClipProject({
       await downloadVideo(project.sourceUrl, workDir);
       const sourceKey = buildClipSourceKey(projectId, ".mp4");
       await store.upload(sourceKey, sourcePath, "video/mp4");
-      await db.clipProject.update({ where: { id: projectId }, data: { sourceKey } });
+      await write({ sourceKey });
     }
 
     let plan: RenderPlan;
@@ -90,7 +97,7 @@ export async function renderClipProject({
       if (durationSeconds < MIN_SEGMENT_SECONDS) {
         throw new Error(`video is shorter than ${MIN_SEGMENT_SECONDS} seconds`);
       }
-      await db.clipProject.update({ where: { id: projectId }, data: { durationSeconds } });
+      await write({ durationSeconds });
 
       const clipCount = resolveClipCount(project.clipCount, durationSeconds, project.clipSeconds);
       await step(project.withCaptions ? "Analysing motion and sound and transcribing" : "Analysing motion and sound");
@@ -108,7 +115,7 @@ export async function renderClipProject({
       }));
       // Stored before the first clip, so a render cut off from here on makes the same clips when it goes on.
       plan = { renderId, clips };
-      await db.clipProject.update({ where: { id: projectId }, data: { renderPlan: plan } });
+      await write({ renderPlan: plan });
     }
     const todo = resume ? resume.remaining : plan.clips.map((clip, index) => ({ index, clip }));
     const total = plan.clips.length;
@@ -125,7 +132,6 @@ export async function renderClipProject({
       : null;
 
     for (const { index, clip } of todo) {
-      if (!(await current())) return;
       await step(resume ? resumeStep(index + 1, total) : `Making clip ${index + 1} of ${total}`);
       const { clipId } = clip;
       const output = path.join(workDir, `${clipId}.mp4`);
@@ -152,11 +158,15 @@ export async function renderClipProject({
       });
     }
 
-    if (!(await current())) return;
-    await db.clipProject.update({ where: { id: projectId }, data: { status: "done", error: null, renderStep: null } });
+    await write({ status: "done", error: null, renderStep: null });
   } catch (err) {
+    if (err instanceof RenderCancelled) {
+      // Cancelled with no clips made, the project went back to ready; a clip finished since then makes it done.
+      await db.clipProject.updateMany({ where: { id: projectId, status: "ready", renderId: null, clips: { some: {} } }, data: { status: "done" } });
+      return;
+    }
     const message = err instanceof Error ? err.message : String(err);
-    await db.clipProject.update({ where: { id: projectId }, data: { status: "failed", error: message, renderStep: null } });
+    await db.clipProject.updateMany({ where: { id: projectId, renderId }, data: { status: "failed", error: message, renderStep: null } });
     throw err;
   }
 }

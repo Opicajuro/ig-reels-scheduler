@@ -40,10 +40,10 @@ export type ClipJobs = ClipQueue & {
   cancel(jobIds: string[]): Promise<void>;
 };
 
-// An AI video's pg-boss jobs, for cancelling it from the Queue page.
-export type AiVideoJobs = {
-  // The ids of the video's jobs that are waiting or marked as running.
-  open(aiVideoJobId: string): Promise<string[]>;
+// An AI video's or a slideshow's pg-boss jobs, for cancelling it from the Queue page.
+export type WorkJobs = {
+  // The ids of its jobs that are waiting or marked as running.
+  open(id: string): Promise<string[]>;
   cancel(jobIds: string[]): Promise<void>;
 };
 
@@ -145,16 +145,25 @@ export function getAiVideoQueue(): AiVideoQueue {
   };
 }
 
-export function getAiVideoJobs(): AiVideoJobs {
+// The open jobs of one queue whose data carries the id under key.
+function workJobs(queue: string, key: string): WorkJobs {
   return {
-    async open(aiVideoJobId) {
-      const jobs = await (await getBoss()).findJobs(AI_VIDEO_QUEUE, { data: { aiVideoJobId } });
+    async open(id) {
+      const jobs = await (await getBoss()).findJobs(queue, { data: { [key]: id } });
       return jobs.flatMap((job) => (job.state === "created" || job.state === "retry" || job.state === "active" ? [job.id] : []));
     },
     async cancel(jobIds) {
-      await (await getBoss()).cancel(AI_VIDEO_QUEUE, jobIds);
+      await (await getBoss()).cancel(queue, jobIds);
     },
   };
+}
+
+export function getAiVideoJobs(): WorkJobs {
+  return workJobs(AI_VIDEO_QUEUE, "aiVideoJobId");
+}
+
+export function getSlideshowJobs(): WorkJobs {
+  return workJobs(SLIDESHOW_QUEUE, "slideshowJobId");
 }
 
 // A slideshow engine downloads up to 7 GB; it gets a day, like the AI engine. Writing a script takes a minute or two;

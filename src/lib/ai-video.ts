@@ -5,7 +5,7 @@ import { convertAiVideo } from "@/clip-engine/ffmpeg.js";
 import { getAiEngine } from "./ai-engine";
 import { AI_VIDEO_SECONDS, fillWorkflow, OUTPUT_NODE, SAMPLER_NODE } from "./ai-workflow";
 import type { ClipStore } from "./clip-store";
-import { downloadOutput, runWorkflow, uploadImage, type StartComfy } from "./comfy";
+import { downloadOutput, interruptComfy, runWorkflow, uploadImage, type StartComfy } from "./comfy";
 import { buildAiInputKey, buildClipKey } from "./storage";
 import { UserError } from "./user-error";
 
@@ -96,7 +96,8 @@ export async function runAiVideoJob({
   if (!job) throw new Error(`AI video job ${jobId} not found`);
   // Cancelling marks the job failed, so writes only land while it is still running, and it stops at the next check.
   const running = { id: jobId, status: "running" as const };
-  const step = (text: string) => db.aiVideoJob.updateMany({ where: running, data: { step: text } });
+  // Whether the step was written, which it is not once the video is cancelled.
+  const step = async (text: string) => (await db.aiVideoJob.updateMany({ where: running, data: { step: text } })).count > 0;
   const stillRunning = async () => {
     if ((await db.aiVideoJob.findUnique({ where: { id: jobId } }))?.status !== "running") throw new Error(`AI video job ${jobId} was cancelled`);
   };
@@ -134,7 +135,10 @@ export async function runAiVideoJob({
           const percent = Math.floor(fraction * 100);
           if (percent <= shown) return;
           shown = percent;
-          writing = writing.then(() => step(`Generating video ${percent}%`));
+          // Cancelled after the check above, while ComfyUI was being handed the workflow: the worker stops it itself.
+          writing = writing.then(async () => {
+            if (!(await step(`Generating video ${percent}%`))) await interruptComfy(comfy.url);
+          });
         },
       });
       await writing;

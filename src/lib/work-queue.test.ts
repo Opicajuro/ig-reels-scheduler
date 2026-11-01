@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
-import type { AiVideoJobs, ClipJob, ClipJobs } from "./queues";
-import { cancelAiVideo, cancelRender, listQueue, PUBLISH_SOON_MS } from "./work-queue";
+import type { WorkJobs, ClipJob, ClipJobs } from "./queues";
+import { cancelAiVideo, cancelRender, cancelSlideshow, listQueue, PUBLISH_SOON_MS } from "./work-queue";
 
 type Row = Record<string, unknown>;
 
 const now = new Date("2026-10-30T12:00:00Z");
 
 describe("listQueue", () => {
-  it("lists renders with their progress, waiting and running AI videos, and posts publishing within the hour", async () => {
+  it("lists renders with their progress, AI videos, slideshows, engine installs and posts publishing within the hour", async () => {
     const where: Row = {};
     const db = {
       clipProject: {
@@ -43,6 +43,14 @@ describe("listQueue", () => {
           return [{ id: "v1", prompt: "A fox", status: "running", step: "Generating video 40%" }];
         },
       },
+      slideshowJob: {
+        findMany: async (args: { where: Row }) => {
+          where.slideshows = args.where;
+          return [{ id: "s1", topic: "Sleep", status: "writing", step: "Writing script" }];
+        },
+      },
+      aiEngine: { findFirst: async () => ({ step: "Downloading ComfyUI", percent: 12 }) },
+      slideshowEngine: { findMany: async () => [{ id: "picture", step: "Unpacking sd-cli", percent: 80 }] },
       post: {
         findMany: async (args: { where: Row }) => {
           where.posts = args.where;
@@ -67,10 +75,16 @@ describe("listQueue", () => {
         { id: "p2", name: "Podcast", step: null, startedAt: "2026-10-30T11:59:00.000Z", clipsDone: 0, clipsTotal: null },
       ],
       aiVideos: [{ id: "v1", prompt: "A fox", status: "running", step: "Generating video 40%" }],
+      slideshows: [{ id: "s1", topic: "Sleep", status: "writing", step: "Writing script" }],
+      engines: [
+        { id: "ai", name: "AI video engine", step: "Downloading ComfyUI", percent: 12 },
+        { id: "picture", name: "Picture maker", step: "Unpacking sd-cli", percent: 80 },
+      ],
       posts: [{ id: "post1", username: "me", caption: "Hello", status: "container_created", scheduledAt: "2026-10-30T12:20:00.000Z" }],
     });
     expect(where.projects).toEqual({ ownerId: "o1", status: "rendering" });
     expect(where.videos).toEqual({ ownerId: "o1", status: { in: ["queued", "running"] } });
+    expect(where.slideshows).toEqual({ ownerId: "o1", status: { in: ["writing", "queued", "running"] } });
     expect(where.posts).toEqual({
       account: { ownerId: "o1" },
       OR: [
@@ -86,6 +100,9 @@ describe("listQueue", () => {
         findMany: async () => [{ id: "p1", name: "x", renderStep: null, renderStartedAt: null, renderId: "r1", renderPlan: null, _count: { clips: 0 } }],
       },
       aiVideoJob: { findMany: async () => [] },
+      slideshowJob: { findMany: async () => [] },
+      aiEngine: { findFirst: async () => null },
+      slideshowEngine: { findMany: async () => [] },
       post: { findMany: async () => [] },
     } as unknown as PrismaClient;
     await expect(listQueue({ db, ownerId: "o1", now })).rejects.toThrow("no start time");
@@ -182,7 +199,7 @@ function fakeVideos(video: Row) {
 
 function fakeVideoJobs(open: string[]) {
   const cancelled: string[] = [];
-  const jobs: AiVideoJobs = { open: async () => open, cancel: async (ids) => void cancelled.push(...ids) };
+  const jobs: WorkJobs = { open: async () => open, cancel: async (ids) => void cancelled.push(...ids) };
   return { jobs, cancelled };
 }
 
@@ -218,5 +235,57 @@ describe("cancelAiVideo", () => {
     await expect(cancelAiVideo({ db: running, jobs, interrupt, ownerId: "o2", jobId: "v1" })).rejects.toThrow("not found");
     const done = fakeVideos({ id: "v1", ownerId: "o1", status: "done" }).db;
     await expect(cancelAiVideo({ db: done, jobs, interrupt, ownerId: "o1", jobId: "v1" })).rejects.toThrow("not waiting");
+  });
+});
+
+function fakeSlideshows(show: Row) {
+  const state = { show: { ...show } };
+  const db = {
+    slideshowJob: {
+      findFirst: async ({ where }: { where: Row }) =>
+        state.show.id === where.id && state.show.ownerId === where.ownerId ? { ...state.show } : null,
+      updateMany: async ({ where, data }: { where: { id: string; status: { in: string[] } }; data: Row }) => {
+        if (state.show.id !== where.id || !where.status.in.includes(String(state.show.status))) return { count: 0 };
+        Object.assign(state.show, data);
+        return { count: 1 };
+      },
+    },
+  };
+  return { db: db as unknown as PrismaClient, state };
+}
+
+describe("cancelSlideshow", () => {
+  it.each(["writing", "queued", "running"])("marks a %s slideshow cancelled and cancels its job", async (status) => {
+    const { db, state } = fakeSlideshows({ id: "s1", ownerId: "o1", status, step: "Voice" });
+    const { jobs, cancelled } = fakeVideoJobs(["j1"]);
+
+    await cancelSlideshow({ db, jobs, ownerId: "o1", jobId: "s1" });
+
+    expect(state.show).toMatchObject({ status: "failed", step: null, error: "Cancelled" });
+    expect(cancelled).toEqual(["j1"]);
+  });
+
+  it("refuses another owner's slideshow, a draft and one that finished meanwhile", async () => {
+    const { jobs, cancelled } = fakeVideoJobs(["j1"]);
+    const running = fakeSlideshows({ id: "s1", ownerId: "o1", status: "running" }).db;
+    await expect(cancelSlideshow({ db: running, jobs, ownerId: "o2", jobId: "s1" })).rejects.toThrow("not found");
+    const draft = fakeSlideshows({ id: "s1", ownerId: "o1", status: "draft" }).db;
+    await expect(cancelSlideshow({ db: draft, jobs, ownerId: "o1", jobId: "s1" })).rejects.toThrow("not being written or made");
+
+    const { db, state } = fakeSlideshows({ id: "s1", ownerId: "o1", status: "running" });
+    const finishing = {
+      ...db,
+      slideshowJob: {
+        ...db.slideshowJob,
+        findFirst: async () => {
+          const found = { ...state.show };
+          state.show.status = "done";
+          return found;
+        },
+      },
+    } as unknown as PrismaClient;
+    await expect(cancelSlideshow({ db: finishing, jobs, ownerId: "o1", jobId: "s1" })).rejects.toThrow("finished before");
+    expect(state.show.status).toBe("done");
+    expect(cancelled).toEqual([]);
   });
 });

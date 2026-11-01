@@ -13,16 +13,24 @@ import { runSlideshowJob, type SlideshowTools } from "./slideshow-render";
 
 type Row = Record<string, unknown>;
 
-function fakeDb(job: Row, engines: Record<string, string> = { script: "installed", picture: "installed" }) {
+function fakeDb(
+  job: Row,
+  engines: Record<string, string> = { script: "installed", picture: "installed" },
+  onStep: (step: string, job: Row) => void = () => {},
+) {
   const state = { job: { ...job }, steps: [] as string[], projects: [] as Row[], clips: [] as Row[] };
   const db = {
     slideshowEngine: { findUnique: async ({ where }: { where: { id: string } }) => ({ id: where.id, status: engines[where.id] }) },
     slideshowJob: {
       findUnique: async () => ({ ...state.job }),
-      update: async ({ data }: { data: Row }) => {
-        if (typeof data.step === "string") state.steps.push(data.step);
+      updateMany: async ({ where, data }: { where: Row; data: Row }) => {
+        if (where.status !== state.job.status) return { count: 0 };
         Object.assign(state.job, data);
-        return state.job;
+        if (typeof data.step === "string") {
+          state.steps.push(data.step);
+          onStep(data.step, state.job);
+        }
+        return { count: 1 };
       },
     },
     clip: {
@@ -71,8 +79,9 @@ function bucketStore(): ClipStore {
 function tools(): SlideshowTools {
   const models = { cli: fakes.cli, diffusion: "/m/z_image_turbo-Q4_K.gguf", llm: "/m/Qwen3-4B.gguf", vae: "/m/ae.safetensors" };
   return {
-    startLlm: () => startLlamaServer({ server: fakes.server, model: "/m/Qwen3.5-4B-Q4_K_M.gguf", logPath: path.join(root, "llama-server.log") }),
-    drawPicture: (prompt, output) => drawPicture({ models, prompt, output, seed: 7 }),
+    startLlm: (signal) =>
+      startLlamaServer({ server: fakes.server, model: "/m/Qwen3.5-4B-Q4_K_M.gguf", logPath: path.join(root, "llama-server.log"), signal }),
+    drawPicture: (prompt, output, signal) => drawPicture({ models, prompt, output, seed: 7, signal }),
     speak: async (lines, voice, dir) => {
       spoken.push({ lines, voice });
       return lines.map((line, index) => {
@@ -116,11 +125,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const name of ["FAKE_LLAMA_RECORD", "FAKE_SD_RECORD", "FAKE_SD_PICTURE"]) delete process.env[name];
+  for (const name of ["FAKE_LLAMA_REPLY", "FAKE_LLAMA_RECORD", "FAKE_SD_RECORD", "FAKE_SD_PICTURE"]) delete process.env[name];
   await rm(root, { recursive: true, force: true });
 });
 
 beforeEach(async () => {
+  delete process.env.FAKE_LLAMA_REPLY;
   await writeFile(llamaRecord, "");
   await writeFile(sdRecord, "");
   spoken.length = 0;
@@ -129,7 +139,7 @@ beforeEach(async () => {
 
 async function run(job: Row, kind: "script" | "render", db: PrismaClient) {
   const workDir = await mkdtemp(path.join(root, "work-"));
-  return runSlideshowJob({ db, store: bucketStore(), jobId: String(job.id), kind, workDir, tools: tools() });
+  return runSlideshowJob({ db, store: bucketStore(), jobId: String(job.id), kind, workDir, tools: tools(), checkEveryMs: 50 });
 }
 
 const records = async (file: string) =>
@@ -158,6 +168,27 @@ describe("runSlideshowJob: script", () => {
     const [asked, stopped] = await records(llamaRecord);
     expect(asked.request.messages[1].content).toContain("about: Better sleep");
     expect(stopped).toEqual({ stopped: true });
+  });
+
+  it("kills llama-server and keeps the cancel when the slideshow is cancelled while its script is written", async () => {
+    process.env.FAKE_LLAMA_REPLY = "slow";
+    const job = { id: "show-7", ownerId: "owner-1", topic: "x", slideCount: 3, status: "writing", slides: null };
+    const { db, state } = fakeDb(job, undefined, (step, row) => {
+      if (step === "Writing script") setTimeout(() => Object.assign(row, { status: "failed", step: null, error: "Cancelled" }), 600);
+    });
+    await run(job, "script", db);
+
+    expect((await records(llamaRecord)).at(-1)).toEqual({ stopped: true });
+    expect(state.job).toMatchObject({ status: "failed", slides: null, error: "Cancelled" });
+  });
+
+  it("does not start a slideshow cancelled before the worker took it", async () => {
+    const job = { id: "show-8", ownerId: "owner-1", topic: "x", slideCount: 3, status: "failed", slides: null, error: "Cancelled" };
+    const { db, state } = fakeDb(job);
+    await run(job, "script", db);
+    expect(await records(llamaRecord)).toEqual([]);
+    expect(state.steps).toEqual([]);
+    expect(state.job).toMatchObject({ status: "failed", error: "Cancelled" });
   });
 
   it("fails without starting llama-server when the script writer is not installed", async () => {
@@ -237,6 +268,21 @@ describe("runSlideshowJob: render", () => {
     await expect(run(job, "render", db)).rejects.toThrow("the picture maker exited with 1");
     expect(state.clips).toEqual([]);
     expect(state.job).toMatchObject({ status: "failed", step: null, error: expect.stringContaining("Device memory allocation") });
+  });
+
+  it("kills sd-cli and makes no clip when the slideshow is cancelled while a picture is drawn", async () => {
+    const drawing = [{ ...slides[0], picture: "slow sunrise" }, ...slides.slice(1, 3)];
+    const job = { id: "show-9", ownerId: "owner-1", topic: "x", slideCount: 3, status: "queued", slides: drawing, voice: "af_heart", captionPreset: "words" };
+    const { db, state } = fakeDb(job, undefined, (step, row) => {
+      if (step === "Drawing picture 1 of 3") setTimeout(() => Object.assign(row, { status: "failed", step: null, error: "Cancelled" }), 300);
+    });
+    await run(job, "render", db);
+
+    expect((await records(sdRecord)).at(-1)).toBe("stopped");
+    expect(state.steps).toEqual(["Getting the pictures", "Drawing picture 1 of 3"]);
+    expect(state.clips).toEqual([]);
+    expect(spoken).toEqual([]);
+    expect(state.job).toMatchObject({ status: "failed", error: "Cancelled" });
   });
 
   it("fails before drawing when an AI slide needs the picture maker and it is not installed", async () => {

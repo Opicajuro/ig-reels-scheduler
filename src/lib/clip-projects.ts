@@ -131,6 +131,7 @@ export async function startRender({
     data: {
       status: "rendering",
       error: null,
+      renderStep: null,
       renderStartedAt: new Date(),
       renderId,
       clipSeconds: seconds,

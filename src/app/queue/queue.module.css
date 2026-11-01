@@ -66,3 +66,25 @@
   grid-column: 2;
   grid-row: 1 / span 2;
 }
+
+.progress {
+  width: 8rem;
+  height: 8px;
+  appearance: none;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.progress::-webkit-progress-bar {
+  background: var(--surface-raised);
+}
+
+.progress::-webkit-progress-value {
+  background: var(--accent);
+}
+
+.progress::-moz-progress-bar {
+  background: var(--accent);
+}

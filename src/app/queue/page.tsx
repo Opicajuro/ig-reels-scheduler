@@ -15,7 +15,7 @@ export default async function QueuePage() {
     <main>
       <PageHeader
         title="Queue"
-        description="What is running or waiting: clips being made, AI videos, and posts publishing within the hour."
+        description="What is running or waiting: clips being made, AI videos, slideshows, engine installs, and posts publishing within the hour."
       />
       <QueueView initial={listing} />
     </main>
