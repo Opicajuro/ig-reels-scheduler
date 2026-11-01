@@ -57,7 +57,12 @@ export function CaptionStill({ words, highlight, emoji, preset, position, upperc
             </span>
           </Fragment>
         ))}
-        {emoji ? <span style={{ fontFamily: `"${EMOJI_FONT_FAMILY}"`, fontWeight: 400 }}> {emoji}</span> : null}
+        {emoji ? (
+          <>
+            {" "}
+            <span style={{ fontFamily: `"${EMOJI_FONT_FAMILY}"`, fontWeight: 400 }}>{emoji}</span>
+          </>
+        ) : null}
       </div>
     </AbsoluteFill>
   );

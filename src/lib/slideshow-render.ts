@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { captionLines } from "@/clip-engine/captions-timing.js";
+import { bundleCaptions } from "@/clip-engine/render-captions.js";
 import { buildVoiceTrack, preparePicture, renderSlideshow, slideTimings } from "@/clip-engine/slideshow.js";
 import { captionOverlays } from "./clip-render";
 import type { ClipStore } from "./clip-store";
@@ -41,11 +42,17 @@ export function localSlideshowTools(db: PrismaClient): SlideshowTools {
     speak: (lines, voice, dir) => kokoroSpeaker(requireEnv("KOKORO_MODEL"))(lines, voice, dir),
     transcribe: (wav, workDir) => transcribeWithWhisper(db, wav, workDir),
     captions: async (words, total, dir, preset) => {
-      const lists = await captionOverlays(captionLines(words), [{ clipId: CAPTIONED, start: 0, length: total }], dir, {
+      // Slideshows pick only the preset: the other caption options are not offered there and keep their defaults.
+      const look = {
         captionPreset: preset,
         captionPosition: "bottom",
         captionUppercase: false,
-      });
+        captionFont: "default",
+        captionHighlight: "yellow",
+        captionEmoji: false,
+      };
+      const clips = [{ clipId: CAPTIONED, start: 0, length: total }];
+      const lists = await captionOverlays(captionLines(words), clips, dir, look, await bundleCaptions());
       return lists.get(CAPTIONED)!;
     },
   };

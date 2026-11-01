@@ -294,6 +294,9 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
                   </label>
                 ))}
               </div>
+              <p className={`${styles.muted} ${styles.hookTitleHint}`}>
+                Each clip shows the title you gave it. Give the clips titles, then make clips again.
+              </p>
               <div className={styles.hookText}>
                 <Field label="Hook text" hint="Shown big at the top of every clip.">
                   <input type="text" name="hookText" maxLength={HOOK_TEXT_MAX} defaultValue={project.hookText ?? ""} />

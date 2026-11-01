@@ -255,6 +255,79 @@ describe("startRender", () => {
     expect(tables.clipProject[0]).toMatchObject({ captionPreset: "box", captionPosition: "top", captionUppercase: true });
   });
 
+  it("keeps the look clips have always had unless the new options are chosen", async () => {
+    const { db, tables } = fakeDb({ projects: [project()] });
+    await startRender({
+      db,
+      queue: { send: async () => "job-1" },
+      ...owned,
+      projectId: "p1",
+      clipSeconds: 30,
+      clipCount: 2,
+      withCaptions: true,
+      captionPreset: "words",
+      captionPosition: "bottom",
+    });
+    expect(tables.clipProject[0]).toMatchObject({
+      captionFont: "default",
+      captionHighlight: "yellow",
+      captionEmoji: false,
+      hookMode: "off",
+      hookText: null,
+      progressBar: null,
+      endCardText: null,
+    });
+  });
+
+  it("stores the font, highlight, emoji, hook, progress bar and end card", async () => {
+    const { db, tables } = fakeDb({ projects: [project()] });
+    await startRender({
+      db,
+      queue: { send: async () => "job-1" },
+      ...owned,
+      projectId: "p1",
+      clipSeconds: 30,
+      clipCount: 2,
+      withCaptions: true,
+      captionPreset: "words",
+      captionPosition: "bottom",
+      captionFont: "bebas",
+      captionHighlight: "pink",
+      captionEmoji: true,
+      hookMode: "text",
+      hookText: " Wait for it ",
+      progressBar: "cyan",
+      endCardText: "@myhandle",
+    });
+    expect(tables.clipProject[0]).toMatchObject({
+      captionFont: "bebas",
+      captionHighlight: "pink",
+      captionEmoji: true,
+      hookMode: "text",
+      hookText: "Wait for it",
+      progressBar: "cyan",
+      endCardText: "@myhandle",
+    });
+  });
+
+  it("rejects a text hook without text and an unknown font, before queueing", async () => {
+    const { db, tables } = fakeDb({ projects: [project()] });
+    const queued: string[] = [];
+    const base = {
+      db,
+      queue: { send: async (id: string) => (queued.push(id), "job-1") },
+      ...owned,
+      projectId: "p1",
+      clipSeconds: 30,
+      clipCount: 2,
+      withCaptions: false,
+    };
+    await expect(startRender({ ...base, hookMode: "text", hookText: "  " })).rejects.toThrow(UserError);
+    await expect(startRender({ ...base, captionFont: "comic" })).rejects.toThrow(UserError);
+    expect(queued).toEqual([]);
+    expect(tables.clipProject[0].status).toBe("done");
+  });
+
   it("refuses a project that is still waiting for its upload or is already rendering", async () => {
     const waiting = fakeDb({ projects: [project({ status: "awaiting_source" })] });
     await expect(

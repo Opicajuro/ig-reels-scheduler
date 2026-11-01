@@ -655,10 +655,12 @@
 }
 
 /* The hook text only matters when the hook shows it. Hidden, not removed, so its value stays. */
-.hookText {
+.hookText,
+.hookTitleHint {
   display: none;
 }
 
-.panel:has(input[name="hookMode"][value="text"]:checked) .hookText {
+.panel:has(input[name="hookMode"][value="text"]:checked) .hookText,
+.panel:has(input[name="hookMode"][value="clipTitle"]:checked) .hookTitleHint {
   display: block;
 }
