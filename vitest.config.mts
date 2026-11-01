@@ -8,5 +8,7 @@ export default defineConfig({
   },
   test: {
     testTimeout: 120_000,
+    // Fixture videos are made with ffmpeg in beforeAll, which is slow while the render tests share the CPU.
+    hookTimeout: 120_000,
   },
 });

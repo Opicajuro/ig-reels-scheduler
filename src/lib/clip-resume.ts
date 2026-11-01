@@ -1,7 +1,8 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { ClipJobs } from "./queues";
 
-export type PlannedClip = { clipId: string; start: number; length: number };
+// title is the title kept from the clip this one replaces, for a hook that shows the clip's title.
+export type PlannedClip = { clipId: string; start: number; length: number; title?: string };
 
 // The highlights a render picked, stored on the project (renderPlan) before its first clip is made.
 export type RenderPlan = { renderId: string; clips: PlannedClip[] };
@@ -9,7 +10,12 @@ export type RenderPlan = { renderId: string; clips: PlannedClip[] };
 function isPlannedClip(value: unknown): value is PlannedClip {
   if (!value || typeof value !== "object") return false;
   const clip = value as Record<string, unknown>;
-  return typeof clip.clipId === "string" && Number.isInteger(clip.start) && Number.isInteger(clip.length);
+  return (
+    typeof clip.clipId === "string" &&
+    Number.isInteger(clip.start) &&
+    Number.isInteger(clip.length) &&
+    (clip.title === undefined || typeof clip.title === "string")
+  );
 }
 
 export function parseRenderPlan(value: unknown): RenderPlan {

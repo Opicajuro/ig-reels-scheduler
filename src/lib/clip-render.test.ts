@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
-import { probeDuration } from "@/clip-engine/ffmpeg.js";
+import { END_CARD_SECONDS, HOOK_SECONDS, probeDuration } from "@/clip-engine/ffmpeg.js";
 import { renderClipProject } from "./clip-render";
 import type { ClipStore } from "./clip-store";
 
@@ -52,7 +52,8 @@ function fakeDb(project: Row, onStep: (step: string, project: Row) => void = () 
       },
     },
     clip: {
-      findMany: async () => state.clips.map((clip) => ({ id: clip.id, storageKey: clip.storageKey })),
+      findMany: async () =>
+        state.clips.map((clip) => ({ id: clip.id, storageKey: clip.storageKey, start: clip.start, title: clip.title ?? null })),
       deleteMany: async () => {
         state.clips = [];
       },
@@ -100,6 +101,11 @@ function renderingProject(overrides: Row = {}): Row {
     clipCount: 2,
     withCaptions: false,
     captionPreset: null,
+    captionFont: "default",
+    hookMode: "off",
+    hookText: null,
+    progressBar: null,
+    endCardText: null,
     error: null,
     ...overrides,
   };
@@ -289,4 +295,73 @@ describe("renderClipProject", () => {
     ).rejects.toThrow("is not rendering");
     expect(await readFile(fixture).then((bytes) => bytes.length > 0)).toBe(true);
   });
+
+  it("keeps the clip titles for a hook that shows them, and draws each clip's hook, end card and bar", async () => {
+    const deps = fakeDb(
+      renderingProject({ hookMode: "clipTitle", endCardText: "@myhandle", progressBar: "cyan", captionFont: "anton" }),
+    );
+    const bucket = bucketStore(root);
+    await renderClipProject({
+      db: deps.db,
+      store: bucket.store,
+      projectId: "p1",
+      renderId: "r1",
+      workDir: await mkdtemp(path.join(workRoot, "run-")),
+    });
+    // The first clips have no titles yet, so they have no hook.
+    expect(deps.state.clips.map((clip) => clip.title)).toEqual([null, null]);
+    deps.state.clips[0].title = "Watch this";
+    const titled = deps.state.clips[0].start;
+
+    Object.assign(deps.state.project, { status: "rendering", renderId: "r2" });
+    await renderClipProject({
+      db: deps.db,
+      store: bucket.store,
+      projectId: "p1",
+      renderId: "r2",
+      workDir: await mkdtemp(path.join(workRoot, "run-")),
+    });
+
+    expect(deps.state.clips.map((clip) => [clip.start, clip.title])).toEqual([
+      [titled, "Watch this"],
+      [deps.state.clips[1].start, null],
+    ]);
+    const [first, second] = deps.state.clips.map((clip) => ({
+      file: path.join(root, String(clip.storageKey)),
+      length: Number(clip.length),
+    }));
+    // The rows the hook's box covers.
+    const top = (file: string, seconds: number) => grayRows(file, seconds, 150, 100);
+    // testsrc moves, so each clip's top is compared with its frame a moment after the hook has gone: only the titled
+    // clip changes much.
+    const hookChange = (file: string) => changedShare(top(file, 1), top(file, HOOK_SECONDS + 0.1));
+    expect(hookChange(first.file) - hookChange(second.file)).toBeGreaterThan(0.3);
+    // The end card dims the whole picture in the last seconds, of every clip.
+    for (const clip of [first, second]) {
+      const before = meanGray(clip.file, clip.length - END_CARD_SECONDS - 0.5);
+      const during = meanGray(clip.file, clip.length - END_CARD_SECONDS + 0.3);
+      expect(before - during).toBeGreaterThan(30);
+    }
+  });
 });
+
+// The frame at seconds as gray rows y to y + height.
+function grayRows(file: string, seconds: number, y: number, height: number) {
+  return execFileSync("ffmpeg", [
+    "-v", "error", "-ss", String(seconds), "-i", file, "-frames:v", "1",
+    "-vf", `crop=iw:${height}:0:${y}`, "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1",
+  ], { maxBuffer: 16 * 1024 * 1024 });
+}
+
+function meanGray(file: string, seconds: number) {
+  const pixels = grayRows(file, seconds, 0, 1920);
+  let sum = 0;
+  for (const value of pixels) sum += value;
+  return sum / pixels.length;
+}
+
+function changedShare(a: Buffer, b: Buffer) {
+  let changed = 0;
+  for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 40) changed++;
+  return changed / a.length;
+}

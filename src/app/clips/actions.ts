@@ -47,6 +47,13 @@ export async function startRenderAction(_previous: ActionResult, formData: FormD
       captionPreset: text(formData, "captionPreset"),
       captionPosition: text(formData, "captionPosition"),
       captionUppercase: formData.get("captionUppercase") === "on",
+      captionFont: text(formData, "captionFont"),
+      captionHighlight: text(formData, "captionHighlight"),
+      captionEmoji: formData.get("captionEmoji") === "on",
+      hookMode: text(formData, "hookMode"),
+      hookText: text(formData, "hookText"),
+      progressBar: text(formData, "progressBar"),
+      endCardText: text(formData, "endCardText"),
     });
     revalidatePath(`/clips/${projectId}`);
     return "Making clips";

@@ -1,5 +1,5 @@
 import { UserError } from "../lib/user-error";
-import { CAPTION_POSITION_NAMES, CAPTION_PRESET_NAMES } from "./remotion/caption-presets.js";
+import { CAPTION_FONT_NAMES, CAPTION_POSITION_NAMES, CAPTION_PRESET_NAMES, VIDEO_COLOR_NAMES } from "./remotion/caption-presets.js";
 
 export const MIN_CLIP_SECONDS = 15;
 export const MAX_CLIP_SECONDS = 180;
@@ -40,6 +40,58 @@ export function parseCaptionPosition(value) {
     throw new UserError(`captionPosition must be one of ${CAPTION_POSITION_NAMES.join(", ")}`);
   }
   return value;
+}
+
+export function parseCaptionFont(value) {
+  if (!CAPTION_FONT_NAMES.includes(value)) {
+    throw new UserError(`captionFont must be one of ${CAPTION_FONT_NAMES.join(", ")}`);
+  }
+  return value;
+}
+
+export function parseCaptionHighlight(value) {
+  if (!VIDEO_COLOR_NAMES.includes(value)) {
+    throw new UserError(`captionHighlight must be one of ${VIDEO_COLOR_NAMES.join(", ")}`);
+  }
+  return value;
+}
+
+// "off", or the colour of the bar.
+export function parseProgressBar(value) {
+  if (value === "off") return null;
+  if (!VIDEO_COLOR_NAMES.includes(value)) {
+    throw new UserError(`progressBar must be off or one of ${VIDEO_COLOR_NAMES.join(", ")}`);
+  }
+  return value;
+}
+
+// Where a project's hook title comes from: none, the project's hook text, or each clip's own title.
+export const HOOK_MODES = ["off", "text", "clipTitle"];
+export const HOOK_TEXT_MAX = 80;
+export const END_CARD_TEXT_MAX = 40;
+
+export function parseHookMode(value) {
+  if (!HOOK_MODES.includes(value)) throw new UserError(`hookMode must be one of ${HOOK_MODES.join(", ")}`);
+  return value;
+}
+
+function optionalText(value, field, max) {
+  if (typeof value !== "string") throw new UserError(`${field} must be text`);
+  const text = value.trim();
+  if (text.length > max) throw new UserError(`${field} must be at most ${max} characters`);
+  return text.length === 0 ? null : text;
+}
+
+// The hook text, or null for none. The "text" hook mode needs one.
+export function parseHookText(value, mode) {
+  const text = optionalText(value, "the hook title", HOOK_TEXT_MAX);
+  if (mode === "text" && !text) throw new UserError("write the hook title, or choose another hook");
+  return text;
+}
+
+// The end card's text, such as "@myhandle", or null for no end card.
+export function parseEndCardText(value) {
+  return optionalText(value, "the end card text", END_CARD_TEXT_MAX);
 }
 
 export function parseClipSeconds(value) {

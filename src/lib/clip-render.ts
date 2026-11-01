@@ -17,9 +17,17 @@ import {
 } from "@/clip-engine/ffmpeg.js";
 import { loudnessPerSecond, motionPerSecond } from "@/clip-engine/analysis.js";
 import { combineScores, MIN_SEGMENT_SECONDS, pickHighlights, resolveClipCount } from "@/clip-engine/helpers.js";
-import { bundleCaptions, renderCaptionStills } from "@/clip-engine/render-captions.js";
-import { captionPreset } from "@/clip-engine/remotion/caption-presets.js";
-import { remainingClips, requireRenderId, resumablePlan, resumeStep, type RenderPlan } from "./clip-resume";
+import { lineEmoji } from "@/clip-engine/caption-emoji.js";
+import { bundleCaptions, renderCaptionStills, renderTitleStills } from "@/clip-engine/render-captions.js";
+import { captionPreset, videoColor } from "@/clip-engine/remotion/caption-presets.js";
+import {
+  remainingClips,
+  requireRenderId,
+  resumablePlan,
+  resumeStep,
+  type PlannedClip,
+  type RenderPlan,
+} from "./clip-resume";
 import { transcribeWithWhisper } from "./whisper";
 
 // Thrown by a render's write once the render is cancelled, to stop it.
@@ -60,9 +68,18 @@ export async function renderClipProject({
   const step = (renderStep: string) => write({ renderStep });
 
   try {
-    const saved = await db.clip.findMany({ where: { projectId }, select: { id: true, storageKey: true } });
+    const saved = await db.clip.findMany({
+      where: { projectId },
+      select: { id: true, storageKey: true, start: true, title: true },
+    });
     const stored = resumablePlan(renderId, project.renderPlan);
     const resume = stored ? { plan: stored, remaining: remainingClips(stored, saved.map((clip) => clip.id)) } : null;
+    // A hook that shows the clip's title keeps the titles of the clips being replaced, for the new clip that starts at
+    // the same second: the same video and settings pick the same highlights.
+    const keptTitles = new Map<number, string>();
+    if (!resume && project.hookMode === "clipTitle") {
+      for (const clip of saved) if (clip.title && !keptTitles.has(clip.start)) keptTitles.set(clip.start, clip.title);
+    }
     if (!resume) {
       for (const clip of saved) await store.remove(clip.storageKey);
       await db.clip.deleteMany({ where: { projectId } });
@@ -108,11 +125,12 @@ export async function renderClipProject({
         project.withCaptions ? transcribeWithWhisper(db, sourcePath, workDir) : null,
       ]);
       words = transcript;
-      const clips = pickHighlights(combineScores(motion, audio), project.clipSeconds, clipCount).map((highlight) => ({
-        clipId: randomUUID(),
-        start: highlight.start,
-        length: highlight.length,
-      }));
+      const clips: PlannedClip[] = pickHighlights(combineScores(motion, audio), project.clipSeconds, clipCount).map(
+        (highlight: { start: number; length: number }) => {
+          const title = keptTitles.get(highlight.start);
+          return { clipId: randomUUID(), start: highlight.start, length: highlight.length, ...(title ? { title } : {}) };
+        },
+      );
       // Stored before the first clip, so a render cut off from here on makes the same clips when it goes on.
       plan = { renderId, clips };
       await write({ renderPlan: plan });
@@ -120,16 +138,27 @@ export async function renderClipProject({
     const todo = resume ? resume.remaining : plan.clips.map((clip, index) => ({ index, clip }));
     const total = plan.clips.length;
 
-    // Each caption is drawn once as a PNG, all from one Remotion bundle, then laid over its clip by ffmpeg.
-    if (words && !resumeLabel) await step("Drawing captions");
-    const overlays = words
-      ? await captionOverlays(
-          captionLines(words),
-          todo.map(({ clip }) => clip),
-          path.join(workDir, "captions"),
-          project,
-        )
-      : null;
+    // Each caption, hook title and end card is drawn once as a PNG, all from one Remotion bundle, then laid over its
+    // clip by ffmpeg.
+    const todoClips = todo.map(({ clip }) => clip);
+    const titles = titleStills(project, todoClips, path.join(workDir, "titles"));
+    const drawing = Boolean(words) || titles.stills.length > 0;
+    if (drawing && !resumeLabel) await step(words ? "Drawing captions" : "Drawing the hook and end card");
+    const serveUrl = drawing ? await bundleCaptions() : null;
+    const overlays =
+      words && serveUrl
+        ? await captionOverlays(captionLines(words), todoClips, path.join(workDir, "captions"), project, serveUrl)
+        : null;
+    if (titles.stills.length > 0 && serveUrl) {
+      await mkdir(path.join(workDir, "titles"), { recursive: true });
+      await renderTitleStills({
+        serveUrl,
+        stills: titles.stills,
+        chromePath: requireEnv("CHROME_PATH"),
+        font: project.captionFont,
+      });
+    }
+    const progressColor = project.progressBar ? videoColor(project.progressBar) : null;
 
     for (const { index, clip } of todo) {
       await step(resume ? resumeStep(index + 1, total) : `Making clip ${index + 1} of ${total}`);
@@ -141,6 +170,9 @@ export async function renderClipProject({
         start: clip.start,
         length: clip.length,
         overlay: overlays?.get(clipId) ?? null,
+        hook: titles.hooks.get(clipId) ?? null,
+        endCard: titles.endCard,
+        progressColor,
       });
 
       // The key comes from the planned clip id, so a clip uploaded just before an interruption is overwritten.
@@ -154,6 +186,7 @@ export async function renderClipProject({
           start: clip.start,
           length: clip.length,
           storageKey,
+          title: clip.title ?? null,
         },
       });
     }
@@ -177,7 +210,11 @@ export async function captionOverlays(
   lines: ReturnType<typeof captionLines>,
   highlights: { clipId: string; start: number; length: number }[],
   dir: string,
-  look: Pick<ClipProject, "captionPreset" | "captionPosition" | "captionUppercase">,
+  look: Pick<
+    ClipProject,
+    "captionPreset" | "captionPosition" | "captionUppercase" | "captionFont" | "captionHighlight" | "captionEmoji"
+  >,
+  serveUrl: string,
 ): Promise<Map<string, string>> {
   await mkdir(dir, { recursive: true });
   const { wordByWord } = captionPreset(look.captionPreset);
@@ -190,6 +227,7 @@ export async function captionOverlays(
     const overlays = stills.map((still, index) => ({
       words: still.words,
       highlight: still.highlight,
+      emoji: look.captionEmoji ? lineEmoji(still.words) : null,
       image: path.join(dir, `${highlight.clipId}-${index}.png`),
       start: still.startMs / 1000,
       end: still.endMs / 1000,
@@ -197,14 +235,16 @@ export async function captionOverlays(
     return { ...highlight, overlays };
   });
   await renderCaptionStills({
-    serveUrl: await bundleCaptions(),
+    serveUrl,
     stills: clips.flatMap((clip) =>
-      clip.overlays.map(({ words, highlight, image }) => ({ words, highlight, output: image })),
+      clip.overlays.map(({ words, highlight, emoji, image }) => ({ words, highlight, emoji, output: image })),
     ),
     chromePath: requireEnv("CHROME_PATH"),
     preset: look.captionPreset,
     position: look.captionPosition,
     uppercase: look.captionUppercase,
+    font: look.captionFont,
+    highlightColor: look.captionHighlight,
   });
   const blank = path.join(dir, "blank.png");
   await renderBlankOverlay(blank);
@@ -216,4 +256,33 @@ export async function captionOverlays(
     lists.set(clip.clipId, list);
   }
   return lists;
+}
+
+// The hook titles and the end card to draw for the clips: the stills, which clip shows which hook, and the end card
+// every clip ends with (or null). A clip without a title has no hook when the hook shows the clip's title.
+function titleStills(
+  project: Pick<ClipProject, "hookMode" | "hookText" | "endCardText">,
+  clips: PlannedClip[],
+  dir: string,
+) {
+  const stills: { kind: "hook" | "endCard"; text: string; output: string }[] = [];
+  const hooks = new Map<string, string>();
+  if (project.hookMode === "text") {
+    if (!project.hookText) throw new Error("the hook shows the project's hook title, but it has none");
+    const output = path.join(dir, "hook.png");
+    stills.push({ kind: "hook", text: project.hookText, output });
+    for (const clip of clips) hooks.set(clip.clipId, output);
+  } else if (project.hookMode === "clipTitle") {
+    for (const clip of clips) {
+      if (!clip.title) continue;
+      const output = path.join(dir, `${clip.clipId}-hook.png`);
+      stills.push({ kind: "hook", text: clip.title, output });
+      hooks.set(clip.clipId, output);
+    }
+  } else if (project.hookMode !== "off") {
+    throw new Error(`unknown hook mode "${project.hookMode}"`);
+  }
+  const endCard = project.endCardText ? path.join(dir, "end-card.png") : null;
+  if (endCard && project.endCardText) stills.push({ kind: "endCard", text: project.endCardText, output: endCard });
+  return { stills, hooks, endCard };
 }

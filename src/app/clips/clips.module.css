@@ -644,3 +644,23 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* A colour burned into the video: the word-by-word highlight or the progress bar. */
+.colorDot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--dot);
+  border: 1px solid var(--border);
+}
+
+/* The hook text only matters when the hook shows it. Hidden, not removed, so its value stays. */
+.hookText,
+.hookTitleHint {
+  display: none;
+}
+
+.panel:has(input[name="hookMode"][value="text"]:checked) .hookText,
+.panel:has(input[name="hookMode"][value="clipTitle"]:checked) .hookTitleHint {
+  display: block;
+}

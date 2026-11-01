@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { convertAiVideo } from "./ffmpeg.js";
+import { clipVideoArgs, convertAiVideo } from "./ffmpeg.js";
 
 test("convertAiVideo turns a silent 704x1280 24 fps AI video into 1080x1920 30 fps H.264 with a silent AAC track", async () => {
   const workDir = mkdtempSync(path.join(os.tmpdir(), "local-clips-ai-convert-"));
@@ -39,4 +39,34 @@ test("convertAiVideo turns a silent 704x1280 24 fps AI video into 1080x1920 30 f
   } finally {
     rmSync(workDir, { recursive: true, force: true });
   }
+});
+
+test("clipVideoArgs without extras makes the picture as clips always had it", () => {
+  const plain = clipVideoArgs({ length: 20, overlay: null, hook: null, endCard: null, progressColor: null });
+  assert.deepEqual(plain.inputs, []);
+  assert.match(plain.filter, /^\[0:v\][^;]+\[out\]$/);
+  const captioned = clipVideoArgs({ length: 20, overlay: "list.ffconcat", hook: null, endCard: null, progressColor: null });
+  assert.deepEqual(captioned.inputs, ["-f", "concat", "-safe", "0", "-i", "list.ffconcat"]);
+  assert.match(captioned.filter, /;\[base\]\[1:v\]overlay\[out\]$/);
+});
+
+test("clipVideoArgs lays the hook, the end card and the bar over the captions, each timed", () => {
+  const { inputs, filter } = clipVideoArgs({
+    length: 20,
+    overlay: "list.ffconcat",
+    hook: "hook.png",
+    endCard: "end.png",
+    progressColor: "#22d3ee",
+  });
+  assert.deepEqual(inputs.filter((arg) => arg.endsWith(".png")), ["hook.png", "end.png"]);
+  assert.match(filter, /\[2:v\]overlay=enable='lt\(t,2\)'/);
+  assert.match(filter, /\[3:v\]overlay=enable='gte\(t,18.5\)'/);
+  assert.match(filter, /color=c=0x22d3ee/);
+  assert.match(filter, /\[bar\]overlay=x='W\*t\/20-w'[^;]*\[out\]$/);
+});
+
+test("clipVideoArgs throws on a bar colour that is not #rrggbb and on a clip too short for its end card", () => {
+  const args = { length: 20, overlay: null, hook: null, endCard: null };
+  assert.throws(() => clipVideoArgs({ ...args, progressColor: "cyan" }), /not #rrggbb/);
+  assert.throws(() => clipVideoArgs({ ...args, length: 1, endCard: "end.png", progressColor: null }), /too short/);
 });

@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -21,6 +22,8 @@ import { RenderProgress } from "../render-progress";
 import styles from "../clips.module.css";
 import { ClipGrid } from "./clip-grid";
 import { ProjectTitle } from "./project-title";
+import { VIDEO_COLOR_NAMES, videoColor } from "@/clip-engine/remotion/caption-presets.js";
+import { END_CARD_TEXT_MAX, HOOK_TEXT_MAX } from "@/clip-engine/helpers.js";
 
 export const metadata: Metadata = { title: "Clip project" };
 
@@ -37,6 +40,23 @@ const CAPTION_POSITIONS = [
   { value: "middle", label: "Middle" },
   { value: "top", label: "Top" },
 ];
+
+const CAPTION_FONTS = [
+  { value: "default", label: "Standard" },
+  { value: "montserrat", label: "Montserrat" },
+  { value: "anton", label: "Anton" },
+  { value: "bebas", label: "Bebas Neue" },
+];
+const HOOK_MODES = [
+  { value: "off", label: "None" },
+  { value: "text", label: "Hook text" },
+  { value: "clipTitle", label: "Use clip title" },
+];
+
+// A colour burned into the video, shown as a dot of that colour.
+function ColorDot({ name }: { name: string }) {
+  return <span className={styles.colorDot} style={{ "--dot": videoColor(name) } as CSSProperties} />;
+}
 
 // Every project that is making clips has a start time: "Make clips" sets it, and the migration that added it set it
 // for projects already rendering.
@@ -177,7 +197,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
             confirm={
               clips.length > 0
                 ? {
-                    message: `Making clips again replaces ${clips.length === 1 ? "the current clip" : `the ${clips.length} current clips`} and the titles and descriptions you edited. Continue?`,
+                    message: `Making clips again replaces ${clips.length === 1 ? "the current clip" : `the ${clips.length} current clips`} and the titles and descriptions you edited. A hook that uses the clip title keeps the titles. Continue?`,
                     confirmLabel: "Replace clips",
                   }
                 : undefined
@@ -208,6 +228,15 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
                   ))}
                 </select>
               </Field>
+              <span className={styles.label}>Font</span>
+              <div className={styles.choice}>
+                {CAPTION_FONTS.map((font) => (
+                  <label key={font.value} className={styles.pill}>
+                    <input type="radio" name="captionFont" value={font.value} defaultChecked={font.value === project.captionFont} />
+                    <span>{font.label}</span>
+                  </label>
+                ))}
+              </div>
               <label className={styles.toggle}>
                 <span>Burn in captions</span>
                 <input type="checkbox" name="withCaptions" defaultChecked={project.withCaptions} />
@@ -243,7 +272,65 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
                   <span>All capitals</span>
                   <input type="checkbox" name="captionUppercase" defaultChecked={project.captionUppercase} />
                 </label>
+                <span className={styles.label}>Word by word highlight</span>
+                <div className={styles.choice}>
+                  {VIDEO_COLOR_NAMES.map((name: string) => (
+                    <label key={name} className={styles.pill} title={name}>
+                      <input
+                        type="radio"
+                        name="captionHighlight"
+                        value={name}
+                        aria-label={name}
+                        defaultChecked={name === project.captionHighlight}
+                      />
+                      <ColorDot name={name} />
+                    </label>
+                  ))}
+                </div>
+                <label className={styles.toggle}>
+                  <span>An emoji on lines that suit one</span>
+                  <input type="checkbox" name="captionEmoji" defaultChecked={project.captionEmoji} />
+                </label>
               </div>
+              <span className={styles.label}>Hook title, for the first 2 seconds</span>
+              <div className={styles.choice}>
+                {HOOK_MODES.map((mode) => (
+                  <label key={mode.value} className={styles.pill}>
+                    <input type="radio" name="hookMode" value={mode.value} defaultChecked={mode.value === project.hookMode} />
+                    <span>{mode.label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className={`${styles.muted} ${styles.hookTitleHint}`}>
+                Each clip shows the title you gave it. Give the clips titles, then make clips again.
+              </p>
+              <div className={styles.hookText}>
+                <Field label="Hook text" hint="Shown big at the top of every clip.">
+                  <input type="text" name="hookText" maxLength={HOOK_TEXT_MAX} defaultValue={project.hookText ?? ""} />
+                </Field>
+              </div>
+              <span className={styles.label}>Progress bar</span>
+              <div className={styles.choice}>
+                <label className={styles.pill}>
+                  <input type="radio" name="progressBar" value="off" defaultChecked={project.progressBar === null} />
+                  <span>Off</span>
+                </label>
+                {VIDEO_COLOR_NAMES.map((name: string) => (
+                  <label key={name} className={styles.pill} title={name}>
+                    <input
+                      type="radio"
+                      name="progressBar"
+                      value={name}
+                      aria-label={name}
+                      defaultChecked={name === project.progressBar}
+                    />
+                    <ColorDot name={name} />
+                  </label>
+                ))}
+              </div>
+              <Field label="End card text" hint="Shown for the last 1.5 seconds, such as @myhandle. Leave empty for none.">
+                <input type="text" name="endCardText" maxLength={END_CARD_TEXT_MAX} defaultValue={project.endCardText ?? ""} />
+              </Field>
             </div>
             <div className={styles.settingsFooter}>
               <SubmitButton variant="primary" disabled={busy || waiting} pendingLabel="Starting…">

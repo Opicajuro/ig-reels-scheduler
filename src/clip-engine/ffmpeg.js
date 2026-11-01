@@ -103,17 +103,62 @@ function quoteConcatPath(file) {
   return `'${file.replaceAll("'", "'\\''")}'`;
 }
 
-// A finished clip, as it is uploaded. overlay is an ffconcat list from overlayList, or null for no overlay.
-export async function renderClip({ input, output, start, length, overlay }) {
-  const video = overlay
-    ? ["-f", "concat", "-safe", "0", "-i", overlay, "-filter_complex", `[0:v]${VERTICAL_FILTER}[v];[v][1:v]overlay[out]`]
-    : ["-filter_complex", `[0:v]${VERTICAL_FILTER}[out]`];
+export const HOOK_SECONDS = 2;
+export const END_CARD_SECONDS = 1.5;
+const PROGRESS_BAR_HEIGHT = 12;
+
+// The inputs and filters that make a clip's picture, each part laid over the one before: the captions (an ffconcat
+// list from overlayList), the hook title PNG for the first HOOK_SECONDS, the end card PNG for the last
+// END_CARD_SECONDS, then a progress bar along the bottom, a strip of progressColor ("#rrggbb") that slides in as the
+// clip plays. Every part is optional (null). The source is input 0.
+export function clipVideoArgs({ length, overlay, hook, endCard, progressColor }) {
+  if (endCard && length <= END_CARD_SECONDS) throw new Error(`a ${length}s clip is too short for an end card`);
+  const inputs = [];
+  const filters = [`[0:v]${VERTICAL_FILTER}[base]`];
+  let last = "base";
+  const layer = (filter) => {
+    const label = `v${filters.length}`;
+    filters.push(`[${last}]${filter}[${label}]`);
+    last = label;
+  };
+  const image = (args) => {
+    inputs.push(...args);
+    return `[${inputs.filter((arg) => arg === "-i").length}:v]`;
+  };
+  if (overlay) {
+    layer(`${image(["-f", "concat", "-safe", "0", "-i", overlay])}overlay`);
+  }
+  if (hook) {
+    layer(`${image(["-loop", "1", "-i", hook])}overlay=enable='lt(t,${HOOK_SECONDS})'`);
+  }
+  if (endCard) {
+    layer(`${image(["-loop", "1", "-i", endCard])}overlay=enable='gte(t,${length - END_CARD_SECONDS})'`);
+  }
+  if (progressColor) {
+    if (!/^#[0-9a-f]{6}$/i.test(progressColor)) throw new Error(`progress bar colour "${progressColor}" is not #rrggbb`);
+    // drawbox sizes its box once, so the bar is a strip moved along by overlay, whose x is worked out every frame.
+    filters.push(`color=c=0x${progressColor.slice(1)}:s=1080x${PROGRESS_BAR_HEIGHT}:r=30[bar]`);
+    layer(`[bar]overlay=x='W*t/${length}-w':y=H-h:eval=frame:shortest=1`);
+  }
+  filters[filters.length - 1] = filters.at(-1).replace(/\[[^\]]+\]$/, "[out]");
+  return { inputs, filter: filters.join(";") };
+}
+
+// A finished clip, as it is uploaded. overlay is an ffconcat list from overlayList, or null for no overlay; hook,
+// endCard and progressColor are as clipVideoArgs takes them.
+/**
+ * @param {{ input: string; output: string; start: number; length: number; overlay: string | null; hook?: string | null;
+ *   endCard?: string | null; progressColor?: string | null }} options
+ */
+export async function renderClip({ input, output, start, length, overlay, hook = null, endCard = null, progressColor = null }) {
+  const video = clipVideoArgs({ length, overlay, hook, endCard, progressColor });
   await run("ffmpeg", [
     "-y",
     "-v", "error",
     "-ss", String(start),
     "-i", input,
-    ...video,
+    ...video.inputs,
+    "-filter_complex", video.filter,
     "-t", String(length),
     "-map", "[out]",
     "-map", "0:a?",
