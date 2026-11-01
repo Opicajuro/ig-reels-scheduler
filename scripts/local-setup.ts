@@ -19,8 +19,12 @@ export type LocalInstall = {
   emailFrom: string;
   alertEmail: string;
   chromePath: string;
-  whisperBin: string;
+  /** whisper.cpp's processor build, and its Vulkan build for graphics; the worker picks one (whisper-backend.js) */
+  whisperCpu: string;
+  whisperVulkan: string;
   whisperModel: string;
+  /** the Kokoro voice model folder, for the slideshow voice */
+  kokoroModel: string;
   /** the install's data folder; the AI video engine goes in its ai folder, backups in its backups folder */
   dataDir: string;
   /** the shipped PostgreSQL's bin folder, whose pg_dump makes the backups */
@@ -38,8 +42,10 @@ export function buildLocalValues(install: LocalInstall, generate: () => string):
       APP_URL: "http://localhost:3000",
       IG_REDIRECT_URI: "http://localhost:3000/api/ig/callback",
       CHROME_PATH: install.chromePath,
-      WHISPER_BIN: install.whisperBin,
+      WHISPER_CPU: install.whisperCpu,
+      WHISPER_VULKAN: install.whisperVulkan,
       WHISPER_MODEL: install.whisperModel,
+      KOKORO_MODEL: install.kokoroModel,
       LOCALIRS_DATA_DIR: install.dataDir,
       PG_BIN: install.pgBin,
     },
@@ -104,8 +110,10 @@ async function main() {
     emailFrom: process.env.LOCALIRS_EMAIL_FROM ?? "",
     alertEmail: process.env.LOCALIRS_ALERT_EMAIL ?? "",
     chromePath: requireInstallValue("LOCALIRS_CHROME_PATH"),
-    whisperBin: requireInstallValue("LOCALIRS_WHISPER_BIN"),
+    whisperCpu: requireInstallValue("LOCALIRS_WHISPER_CPU"),
+    whisperVulkan: requireInstallValue("LOCALIRS_WHISPER_VULKAN"),
     whisperModel: requireInstallValue("LOCALIRS_WHISPER_MODEL"),
+    kokoroModel: requireInstallValue("LOCALIRS_KOKORO_MODEL"),
     dataDir: requireInstallValue("LOCALIRS_DATA_DIR"),
     pgBin: requireInstallValue("LOCALIRS_PG_BIN"),
   };

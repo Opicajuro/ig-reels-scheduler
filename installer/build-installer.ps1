@@ -1,4 +1,5 @@
-# Builds Localirs-Setup.exe on a Windows PC. Needs: Inno Setup 6 (iscc.exe), git, and Go (to build SeaweedFS, once per version).
+# Builds Localirs-Setup.exe on a Windows PC. Needs: Inno Setup 6 (iscc.exe), git, Go (to build SeaweedFS, once per version),
+# and CMake with the Visual Studio C++ build tools (to build whisper.cpp's Vulkan build, once per version).
 # Downloads the pinned tools into installer\downloads, unpacks them into installer\payload\tools, compiles node_modules for Windows,
 # and packs everything with Inno Setup. Downloads are checked against tools.json; a null hash is
 # filled in on the first build and checked on every build after that.
@@ -58,6 +59,10 @@ $ffmpegZip = Get-Tool "ffmpeg" $manifest.ffmpeg "ffmpeg.zip"
 $ytDlp = Get-Tool "yt-dlp" $manifest.ytDlp "yt-dlp.exe"
 $whisperZip = Get-Tool "whisper.cpp" $manifest.whisperCpp "whisper.zip"
 $whisperModel = Get-Tool "Whisper model" $manifest.whisperModel "ggml-large-v3-turbo-q5_0.bin"
+$kokoroModel = Get-Tool "Kokoro voice model" $manifest.kokoroModel "kokoro-model_quantized.onnx"
+$kokoroConfig = Get-Tool "Kokoro config" $manifest.kokoroConfig "kokoro-config.json"
+$kokoroTokenizer = Get-Tool "Kokoro tokenizer" $manifest.kokoroTokenizer "kokoro-tokenizer.json"
+$kokoroTokenizerConfig = Get-Tool "Kokoro tokenizer config" $manifest.kokoroTokenizerConfig "kokoro-tokenizer_config.json"
 $sevenZip = Get-Tool "7-Zip (7zr)" $manifest.sevenZip "7zr.exe"
 $chromeZip = Get-Tool "Chrome headless shell" $manifest.chromeHeadlessShell "chrome-headless-shell.zip"
 $pgZip = Get-Tool "PostgreSQL" $manifest.postgres "postgres.zip"
@@ -77,6 +82,46 @@ Copy-Item -Force $sevenZip (Join-Path $tools "7zr.exe")
 Expand-Archive -Force $whisperZip (Join-Path $tools "whisper")
 Copy-Item -Force $whisperModel (Join-Path $tools "whisper\ggml-large-v3-turbo-q5_0.bin")
 
+# whisper.cpp publishes no Windows Vulkan build, so it is built from the pinned tag with the pinned Vulkan SDK and the
+# options of whisper.cpp's own Windows x64 release. The build is kept with the downloads, named by its version, so
+# later builds (and the CI tools cache) skip it. It unpacks the way the release zip does, to Release\whisper-cli.exe.
+$whisperVulkan = $manifest.whisperCppVulkan
+$whisperVulkanZip = Join-Path $downloads "whisper-vulkan-$($whisperVulkan.version).zip"
+if (-not (Test-Path $whisperVulkanZip)) {
+  $vulkanSdkExe = Get-Tool "Vulkan SDK" $manifest.vulkanSdk "vulkansdk-$($manifest.vulkanSdk.version).exe"
+  $vulkanSdk = Join-Path ([System.IO.Path]::GetTempPath()) "localirs-vulkansdk-$($manifest.vulkanSdk.version)"
+  if (-not (Test-Path (Join-Path $vulkanSdk "Bin\glslc.exe"))) {
+    & $vulkanSdkExe --root $vulkanSdk --accept-licenses --default-answer --confirm-command install
+    if ($LASTEXITCODE -ne 0) { throw "Installing the Vulkan SDK failed" }
+  }
+  $env:VULKAN_SDK = $vulkanSdk
+  $whisperSrc = Join-Path ([System.IO.Path]::GetTempPath()) "localirs-whisper-vulkan"
+  if (Test-Path $whisperSrc) { Remove-Item -Recurse -Force $whisperSrc }
+  git -c advice.detachedHead=false clone --quiet --depth 1 --branch $whisperVulkan.tag $whisperVulkan.git $whisperSrc
+  if ($LASTEXITCODE -ne 0) { throw "git clone of whisper.cpp $($whisperVulkan.tag) failed" }
+  $commit = git -C $whisperSrc rev-parse HEAD
+  if ($commit -ne $whisperVulkan.commit) {
+    throw "whisper.cpp $($whisperVulkan.tag) is commit $commit, not $($whisperVulkan.commit) as tools.json pins"
+  }
+  $whisperBuild = Join-Path $whisperSrc "build"
+  cmake -S $whisperSrc -B $whisperBuild -A x64 -DBUILD_SHARED_LIBS=ON -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON `
+    -DGGML_CPU_ALL_VARIANTS=ON -DGGML_VULKAN=ON -DWHISPER_SDL2=OFF -DWHISPER_BUILD_TESTS=OFF
+  if ($LASTEXITCODE -ne 0) { throw "cmake could not configure whisper.cpp" }
+  cmake --build $whisperBuild --config Release --parallel
+  if ($LASTEXITCODE -ne 0) { throw "cmake could not build whisper.cpp" }
+  Compress-Archive -Path (Join-Path $whisperBuild "bin\Release") -DestinationPath $whisperVulkanZip
+  Remove-Item -Recurse -Force $whisperSrc
+}
+Expand-Archive -Force $whisperVulkanZip (Join-Path $tools "whisper-vulkan")
+
+# The slideshow voice: kokoro-js loads the model folder the way Hugging Face lays it out; its voices are in the package.
+$kokoro = Join-Path $tools "kokoro\Kokoro-82M-v1.0-ONNX"
+New-Item -ItemType Directory -Force -Path (Join-Path $kokoro "onnx") | Out-Null
+Copy-Item -Force $kokoroModel (Join-Path $kokoro "onnx\model_quantized.onnx")
+Copy-Item -Force $kokoroConfig (Join-Path $kokoro "config.json")
+Copy-Item -Force $kokoroTokenizer (Join-Path $kokoro "tokenizer.json")
+Copy-Item -Force $kokoroTokenizerConfig (Join-Path $kokoro "tokenizer_config.json")
+
 Expand-Archive -Force $chromeZip (Join-Path $tools "chrome-unzip")
 Move-Item -Force (Join-Path $tools "chrome-unzip\chrome-headless-shell-win64") (Join-Path $tools "chrome")
 Remove-Item -Recurse -Force (Join-Path $tools "chrome-unzip")
@@ -90,10 +135,10 @@ foreach ($extra in @("pgAdmin 4", "StackBuilder", "doc", "symbols")) {
 Move-Item -Force (Join-Path $tools "postgres-unzip\pgsql") (Join-Path $tools "postgres")
 Remove-Item -Recurse -Force (Join-Path $tools "postgres-unzip")
 
-# whisper.cpp and the PostgreSQL binaries zip need the Visual C++ runtime, which a clean PC may not have. The build
+# Both whisper.cpp builds and the PostgreSQL binaries zip need the Visual C++ runtime, which a clean PC may not have. The build
 # machine has it, so its DLLs go next to the programs that load them.
 $vcRuntime = @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll", "vcomp140.dll")
-foreach ($target in @((Join-Path $tools "whisper\Release"), (Join-Path $tools "postgres\bin"))) {
+foreach ($target in @((Join-Path $tools "whisper\Release"), (Join-Path $tools "whisper-vulkan\Release"), (Join-Path $tools "postgres\bin"))) {
   foreach ($dll in $vcRuntime) {
     $source = Join-Path $env:SystemRoot "System32\$dll"
     if (-not (Test-Path $source)) { throw "$dll is missing on the build machine; install the Visual C++ 2015-2022 x64 runtime" }

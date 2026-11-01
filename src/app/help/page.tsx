@@ -14,6 +14,7 @@ import { ReportProblemButton } from "./report-problem";
 export const metadata: Metadata = { title: "Help" };
 
 const META_DOCS = "https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login";
+const META_HOME = "https://developers.facebook.com/";
 const META_APPS = "https://developers.facebook.com/apps/";
 const LATEST_RELEASE = "https://github.com/Opicajuro/ig-reels-scheduler/releases/latest";
 
@@ -105,6 +106,11 @@ export default async function HelpPage() {
           </li>
         </ul>
         <ol>
+          <li>
+            Log in at <ExternalLink href={META_HOME}>Meta for Developers</ExternalLink> with your Facebook account
+            (Login, top right). The first time, Meta asks you to register as a developer: confirm your phone or email and
+            accept the terms. The app dashboard only opens once you are logged in.
+          </li>
           <li>
             Create an app on the <ExternalLink href={META_APPS}>Meta app dashboard</ExternalLink> and add Instagram to
             it, following Meta&apos;s guide{" "}
