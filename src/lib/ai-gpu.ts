@@ -3,7 +3,10 @@ import { UserError } from "./user-error";
 
 export type Gpu = { name: string; vramMiB: number; driver: string };
 
-export type GpuCheck = { found: true; gpu: Gpu; ready: boolean; recommended: boolean } | { found: false; reason: string };
+// noNvidia: the PC simply has no NVIDIA card (or no driver for it), as opposed to a driver that fails.
+export type GpuCheck =
+  | { found: true; gpu: Gpu; ready: boolean; recommended: boolean }
+  | { found: false; noNvidia: boolean; reason: string };
 
 // Wan 2.2 5B runs in 12 GB with ComfyUI moving weights between the card and memory; 16 GB is comfortable. A 16 GB
 // card reports a little under 16384 MiB, so "recommended" starts at 15 GB.
@@ -34,18 +37,22 @@ export function checkGpu(): Promise<GpuCheck> {
   return new Promise((resolve) => {
     execFile("nvidia-smi", NVIDIA_SMI_ARGS, { timeout: 15_000, windowsHide: true }, (err, stdout, stderr) => {
       if (err && (err as NodeJS.ErrnoException).code === "ENOENT") {
-        resolve({ found: false, reason: "No NVIDIA graphics card found: this PC has no NVIDIA driver (nvidia-smi is missing)." });
+        resolve({
+          found: false,
+          noNvidia: true,
+          reason: "No NVIDIA graphics card found: this PC has no NVIDIA driver (nvidia-smi is missing).",
+        });
         return;
       }
       if (err) {
         const detail = (stderr || stdout || err.message).trim().split(/\r?\n/)[0];
-        resolve({ found: false, reason: `The NVIDIA driver did not answer: ${detail}` });
+        resolve({ found: false, noNvidia: false, reason: `The NVIDIA driver did not answer: ${detail}` });
         return;
       }
       try {
         resolve(judgeGpu(parseNvidiaSmi(stdout)));
       } catch (parseError) {
-        resolve({ found: false, reason: (parseError as Error).message });
+        resolve({ found: false, noNvidia: false, reason: (parseError as Error).message });
       }
     });
   });
@@ -53,6 +60,18 @@ export function checkGpu(): Promise<GpuCheck> {
 
 export function formatVram(vramMiB: number): string {
   return `${(vramMiB / 1024).toFixed(1)} GB`;
+}
+
+// What the AI pages say, as information rather than an error, on a PC that cannot make AI videos.
+export const NO_AI_GPU_NOTE =
+  "AI videos need an NVIDIA graphics card with at least 12 GB of video memory, and this PC doesn't have one. Make AI " +
+  "videos on a PC that has one; everything else in Localirs works here.";
+
+// The specific reason under that note, or null when the PC simply has no NVIDIA card.
+export function aiGpuShortfall(check: GpuCheck): string | null {
+  if (!check.found) return check.noNvidia ? null : check.reason;
+  if (check.ready) throw new Error("this graphics card is good enough for AI videos");
+  return `The ${check.gpu.name} here has ${formatVram(check.gpu.vramMiB)} of video memory.`;
 }
 
 // The pages hide the AI video controls when the graphics card is not good enough; a form sent anyway gets this answer.

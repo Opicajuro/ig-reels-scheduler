@@ -7,14 +7,23 @@ import styles from "./settings.module.css";
 
 const POLL_MS = 2000;
 
-// While the engine installs, show the worker's step and how far it is. When it finishes, the page reloads once.
-export function EngineProgress({ initialStep, initialPercent }: { initialStep: string | null; initialPercent: number | null }) {
+// While an engine installs, show the worker's step and how far it is. When it finishes, the page reloads once.
+// statusUrl answers with the engine's state: the AI video engine's by default.
+export function EngineProgress({
+  initialStep,
+  initialPercent,
+  statusUrl = "/api/ai/engine",
+}: {
+  initialStep: string | null;
+  initialPercent: number | null;
+  statusUrl?: string;
+}) {
   const router = useRouter();
   const [progress, setProgress] = useState({ step: initialStep, percent: initialPercent });
 
   useEffect(() => {
     const timer = setInterval(async () => {
-      const response = await fetch("/api/ai/engine", { cache: "no-store" });
+      const response = await fetch(statusUrl, { cache: "no-store" });
       if (!response.ok) throw new Error(`status check failed with ${response.status}`);
       const { status, step, percent } = (await response.json()) as { status: AiEngineStatus; step: string | null; percent: number | null };
       if (status === "installing") {
@@ -25,7 +34,7 @@ export function EngineProgress({ initialStep, initialPercent }: { initialStep: s
       router.refresh();
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [router]);
+  }, [router, statusUrl]);
 
   return (
     <div className={styles.progress} role="status">

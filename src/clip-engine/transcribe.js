@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -8,8 +7,9 @@ const execFileAsync = promisify(execFile);
 
 // Transcribes the English speech in the media into words, each with its time in ms. No voice detection (--vad):
 // whisper.cpp 1.9.5 maps a VAD segment's times back to the video by interpolating across each cut-out silence, which
-// squeezes to 0.1 s, so a word stamped a few ms early there lands seconds before it is said.
-export async function transcribeToWords({ mediaPath, workDir, whisperBin, model }) {
+// squeezes to 0.1 s, so a word stamped a few ms early there lands seconds before it is said. threads is null for the
+// Vulkan build (whisper-backend.js), which runs on the graphics.
+export async function transcribeToWords({ mediaPath, workDir, whisperBin, threads, model }) {
   const wav = path.join(workDir, "audio.wav");
   await execFileAsync("ffmpeg", ["-v", "error", "-y", "-i", mediaPath, "-vn", "-ar", "16000", "-ac", "1", wav]);
 
@@ -18,7 +18,7 @@ export async function transcribeToWords({ mediaPath, workDir, whisperBin, model 
   await execFileAsync(whisperBin, [
     "-m", model,
     "-l", "en",
-    "-t", String(os.cpus().length),
+    ...(threads === null ? [] : ["-t", String(threads)]),
     "-ml", "1", "-sow",
     "-oj", "-of", prefix,
     "-f", wav,

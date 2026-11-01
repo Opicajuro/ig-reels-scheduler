@@ -19,8 +19,8 @@ import { loudnessPerSecond, motionPerSecond } from "@/clip-engine/analysis.js";
 import { combineScores, MIN_SEGMENT_SECONDS, pickHighlights, resolveClipCount } from "@/clip-engine/helpers.js";
 import { bundleCaptions, renderCaptionStills } from "@/clip-engine/render-captions.js";
 import { captionPreset } from "@/clip-engine/remotion/caption-presets.js";
-import { transcribeToWords } from "@/clip-engine/transcribe.js";
 import { remainingClips, requireRenderId, resumablePlan, resumeStep, type RenderPlan } from "./clip-resume";
+import { transcribeWithWhisper } from "./whisper";
 
 export function clipName(index: number): string {
   return `clip-${String(index + 1).padStart(3, "0")}`;
@@ -78,11 +78,11 @@ export async function renderClipProject({
     }
 
     let plan: RenderPlan;
-    let words: Awaited<ReturnType<typeof transcribe>> | null;
+    let words: Awaited<ReturnType<typeof transcribeWithWhisper>> | null;
     if (resume) {
       // The highlights are not picked again, but captions need the words.
       plan = resume.plan;
-      words = project.withCaptions ? await transcribe(sourcePath, workDir) : null;
+      words = project.withCaptions ? await transcribeWithWhisper(db, sourcePath, workDir) : null;
     } else {
       const durationSeconds = Math.floor(await probeDuration(sourcePath));
       if (durationSeconds < MIN_SEGMENT_SECONDS) {
@@ -96,7 +96,7 @@ export async function renderClipProject({
       const [motion, audio, transcript] = await Promise.all([
         motionPerSecond(motionFrames(sourcePath), durationSeconds),
         loudnessPerSecond(audioSamples(sourcePath), durationSeconds),
-        project.withCaptions ? transcribe(sourcePath, workDir) : null,
+        project.withCaptions ? transcribeWithWhisper(db, sourcePath, workDir) : null,
       ]);
       words = transcript;
       const clips = pickHighlights(combineScores(motion, audio), project.clipSeconds, clipCount).map((highlight) => ({
@@ -157,17 +157,9 @@ export async function renderClipProject({
   }
 }
 
-function transcribe(mediaPath: string, workDir: string) {
-  return transcribeToWords({
-    mediaPath,
-    workDir,
-    whisperBin: requireEnv("WHISPER_BIN"),
-    model: requireEnv("WHISPER_MODEL"),
-  });
-}
-
-// Draws every caption of the project and returns, per clip, the ffconcat list that times its captions.
-async function captionOverlays(
+// Draws every caption of the project and returns, per clip, the ffconcat list that times its captions. Slideshows use
+// it too.
+export async function captionOverlays(
   lines: ReturnType<typeof captionLines>,
   highlights: { clipId: string; start: number; length: number }[],
   dir: string,
