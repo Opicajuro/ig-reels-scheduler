@@ -24,7 +24,7 @@ export default async function Home() {
   const ownerId = await getOwnerId();
   const now = new Date();
 
-  const [upcoming, failed, accounts, projects, settings, profiles] = await Promise.all([
+  const [igUpcoming, failed, accounts, projects, settings, profiles, ytUpcoming, ytFailed, channels] = await Promise.all([
     prisma.post.findMany({
       where: { status: { in: ["scheduled", "container_created"] }, account: { ownerId } },
       orderBy: { scheduledAt: "asc" },
@@ -43,7 +43,30 @@ export default async function Home() {
     prisma.clipProject.findMany({ where: { ownerId }, orderBy: { createdAt: "desc" }, take: RECENT_PROJECTS }),
     getSettings(prisma),
     prisma.profileLink.findMany({ where: { ownerId }, orderBy: { createdAt: "asc" } }),
+    prisma.ytPost.findMany({
+      where: { status: { in: ["scheduled", "container_created"] }, ytAccount: { ownerId } },
+      orderBy: { scheduledAt: "asc" },
+      take: NEXT_POSTS,
+      include: { ytAccount: { select: { channelTitle: true } } },
+    }),
+    prisma.ytPost.findMany({
+      where: { status: "failed", ytAccount: { ownerId } },
+      orderBy: { scheduledAt: "desc" },
+      include: { ytAccount: { select: { channelTitle: true } } },
+    }),
+    prisma.ytAccount.findMany({ where: { ownerId, status: "reauth_required" } }),
   ]);
+  const upcoming = [
+    ...igUpcoming.map((post) => ({ ...post, destination: `@${post.account.username}` })),
+    ...ytUpcoming.map((post) => ({
+      ...post,
+      caption: post.title,
+      destination: `YouTube: ${post.ytAccount.channelTitle}`,
+      aiTitle: "Disclosed to YouTube as altered or synthetic content",
+    })),
+  ]
+    .sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())
+    .slice(0, NEXT_POSTS);
 
   const metaReady = metaAppConfig(settings, process.env.IG_REDIRECT_URI) !== null;
   const r2Ready = r2Settings(settings) !== null;
@@ -51,13 +74,20 @@ export default async function Home() {
     (account) => account.status === "reauth_required" || (account.token !== null && account.token.expiresAt <= now),
   );
   const rateLimited = accounts.filter((account) => account.rateLimitedUntil && account.rateLimitedUntil > now);
-  const nothingNeedsAttention = metaReady && r2Ready && failed.length === 0 && reconnect.length === 0 && rateLimited.length === 0;
+  const nothingNeedsAttention =
+    metaReady &&
+    r2Ready &&
+    failed.length === 0 &&
+    reconnect.length === 0 &&
+    rateLimited.length === 0 &&
+    ytFailed.length === 0 &&
+    channels.length === 0;
 
   return (
     <main>
       <PageHeader
         title="Localirs"
-        description="Cut long videos into clips and schedule them to Instagram Reels."
+        description="Cut long videos into clips and schedule them to Instagram Reels and YouTube Shorts."
         actions={
           <ButtonLink href="/clips" variant="primary">
             New clips from a video
@@ -102,6 +132,18 @@ export default async function Home() {
             <li key={account.id}>
               @{account.username} is paused by Instagram&apos;s rate limit until <LocalTime date={account.rateLimitedUntil!} />.
               Publishing continues after that on its own.
+            </li>
+          ))}
+          {channels.map((channel) => (
+            <li key={channel.id}>
+              YouTube channel {channel.channelTitle} needs to be reconnected before it can publish.{" "}
+              <a href="/api/youtube/connect">Reconnect</a>
+            </li>
+          ))}
+          {ytFailed.map((post) => (
+            <li key={post.id}>
+              <Link href={`/posts/${post.id}`}>YouTube post to {post.ytAccount.channelTitle}</Link> for{" "}
+              <LocalTime date={post.scheduledAt} /> failed: {post.lastError ?? "Failed for an unknown reason."}
             </li>
           ))}
           {failed.map((post) => (

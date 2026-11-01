@@ -17,7 +17,8 @@ import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
 import { presignDownload } from "@/lib/storage";
 import { CancelPostForm, RetryPostForm } from "../../scheduled/post-actions";
-import { InsightBars } from "./insight-bars";
+import { InsightsTable } from "./insights-table";
+import { YouTubePost } from "./youtube-post";
 import styles from "./post.module.css";
 
 export const metadata: Metadata = { title: "Post" };
@@ -46,7 +47,14 @@ export default async function PostPage({ params }: PageProps<"/posts/[id]">) {
       insights: true,
     },
   });
-  if (!post) notFound();
+  if (!post) {
+    const ytPost = await prisma.ytPost.findFirst({
+      where: { id, ytAccount: { ownerId } },
+      include: { ytAccount: { select: { channelTitle: true } }, insights: true },
+    });
+    if (!ytPost) notFound();
+    return <YouTubePost post={ytPost} />;
+  }
 
   const videoUrl = post.media.reelKey ? await presignDownload(post.media.reelKey, VIDEO_LINK_SECONDS) : null;
   const sourceClipId = post.media.sourceClipId;
@@ -131,40 +139,7 @@ export default async function PostPage({ params }: PageProps<"/posts/[id]">) {
       )}
 
       <h2>Insights</h2>
-      {insights.rows.length === 0 ? (
-        <EmptyState>No insights yet. They are pulled 1 hour, 24 hours and 7 days after publishing.</EmptyState>
-      ) : (
-        <div className={styles.tableWrap}>
-          <table>
-            <thead>
-              <tr>
-                <th>Metric</th>
-                {insights.pulls.map((pull) => (
-                  <th key={pull} className={styles.number}>
-                    {pull}
-                  </th>
-                ))}
-                <th>Trend</th>
-              </tr>
-            </thead>
-            <tbody>
-              {insights.rows.map((row) => (
-                <tr key={row.metric}>
-                  <td>{row.label}</td>
-                  {row.values.map((value, index) => (
-                    <td key={insights.pulls[index]} className={styles.number}>
-                      {value === null ? "–" : value.toLocaleString("en")}
-                    </td>
-                  ))}
-                  <td>
-                    <InsightBars label={row.label} pulls={insights.pulls} values={row.values} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <InsightsTable insights={insights} />
     </main>
   );
 }

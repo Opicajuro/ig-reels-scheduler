@@ -8,7 +8,8 @@ import { statusLabel } from "@/components/status-badge";
 import { addMonths, dayKeyOf, monthGrid, monthOf } from "@/lib/calendar";
 import styles from "./scheduled.module.css";
 
-export type CalendarPost = { id: string; scheduledAt: string; status: PostStatus; username: string; caption: string };
+/** destination is "@foo" for Instagram or "YouTube: My channel" */
+export type CalendarPost = { id: string; scheduledAt: string; status: PostStatus; destination: string; caption: string };
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -83,10 +84,10 @@ export function PostCalendar({ posts, now }: { posts: CalendarPost[]; now: strin
                       href={`/posts/${post.id}`}
                       className={styles.entry}
                       data-status={post.status}
-                      aria-label={`${post.time} @${post.username}, ${statusLabel(post.status)}`}
+                      aria-label={`${post.time} ${post.destination}, ${statusLabel(post.status)}`}
                       title={post.caption || "No caption"}
                     >
-                      <time dateTime={post.scheduledAt}>{post.time}</time> <span>@{post.username}</span>
+                      <time dateTime={post.scheduledAt}>{post.time}</time> <span>{post.destination}</span>
                     </Link>
                   ))}
                 </td>

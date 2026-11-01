@@ -34,6 +34,7 @@ export type ClipView = {
 };
 
 export type AccountView = { id: string; username: string };
+export type ChannelView = { id: string; title: string };
 
 // What a clip is posted with on Instagram, the same fallback the server uses.
 function captionOf(clip: ClipView): string {
@@ -143,6 +144,7 @@ export function ClipGrid({
   busy,
   clips,
   accounts,
+  channels,
   alreadyScheduledTo,
   projects,
   bestTimeSamples,
@@ -151,6 +153,7 @@ export function ClipGrid({
   busy: boolean;
   clips: ClipView[];
   accounts: AccountView[];
+  channels: ChannelView[];
   alreadyScheduledTo: string[];
   projects: ProjectChoice[];
   bestTimeSamples: BestTimeSample[];
@@ -238,7 +241,7 @@ export function ClipGrid({
                 </SubmitButton>
               </ActionForm>
               <Button type="button" variant="primary" onClick={() => setPanel("schedule")}>
-                Schedule on Instagram
+                Schedule…
               </Button>
             </div>
           </div>
@@ -260,13 +263,15 @@ export function ClipGrid({
               },
               {
                 id: "instagram",
-                label: "Instagram",
+                label: "Schedule",
                 content: (
                   <ScheduleForm
                     clipId={openClip.id}
                     projectId={projectId}
                     accounts={accounts}
+                    channels={channels}
                     defaultCaption={captionOf(openClip)}
+                    defaultTitle={(openClip.title || openClip.name).slice(0, 100)}
                     clipAiGenerated={openClip.aiGenerated}
                     alreadyScheduledTo={alreadyScheduledTo}
                     bestTimeSamples={bestTimeSamples}
@@ -307,16 +312,18 @@ export function ClipGrid({
         <MoveForm mode="copy" clips={selected} projectId={projectId} projects={projects} busy={busy} />
       </Drawer>
 
-      <Drawer open={panel === "schedule"} title="Schedule on Instagram" onClose={() => setPanel(null)}>
+      <Drawer open={panel === "schedule"} title="Schedule" onClose={() => setPanel(null)}>
         <BulkScheduleForm
           projectId={projectId}
           clips={selected.map((clip) => ({
             id: clip.id,
             name: clip.name,
             caption: captionOf(clip),
+            youTubeTitle: clip.title || clip.name,
             aiGenerated: clip.aiGenerated,
           }))}
           accounts={accounts}
+          channels={channels}
           alreadyScheduledTo={alreadyScheduledTo}
           bestTimeSamples={bestTimeSamples}
         />

@@ -13,7 +13,10 @@ export type PostListItem = {
   status: PostStatus;
   caption: string;
   aiGenerated: boolean;
-  account: { username: string };
+  // Where it goes, such as "@foo" or "YouTube: My channel".
+  destination: string;
+  // What the AI badge says, by platform.
+  aiTitle?: string;
   // Where the post's clip was also posted, outside Localirs.
   elsewhere?: Array<{ id: string; url: string }>;
   // Extra lines under the caption, such as an error, and buttons on the right.
@@ -21,7 +24,7 @@ export type PostListItem = {
   actions?: ReactNode;
 };
 
-// Posts as rows: publish time, account, caption, status and the AI label, each linking to the post's page.
+// Posts as rows: publish time, account or channel, caption, status and the AI label, each linking to the post's page.
 export function PostList({ posts }: { posts: PostListItem[] }) {
   return (
     <ul className={styles.list}>
@@ -31,9 +34,9 @@ export function PostList({ posts }: { posts: PostListItem[] }) {
             <Link href={`/posts/${post.id}`} className={styles.when}>
               <LocalTime date={post.scheduledAt} />
             </Link>
-            <span className={styles.account}>@{post.account.username}</span>
+            <span className={styles.account}>{post.destination}</span>
             <StatusBadge status={post.status} />
-            {post.aiGenerated ? <AiBadge title="Posted with Instagram's AI info label" /> : null}
+            {post.aiGenerated ? <AiBadge title={post.aiTitle ?? "Posted with Instagram's AI info label"} /> : null}
             <p className={styles.caption}>{post.caption || "No caption"}</p>
             {post.elsewhere ? <PlatformChips links={post.elsewhere} /> : null}
             {post.details}

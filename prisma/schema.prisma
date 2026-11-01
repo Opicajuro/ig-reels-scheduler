@@ -21,6 +21,7 @@ model User {
   slideshowJobs SlideshowJob[]
   profileLinks  ProfileLink[]
   guideLinks    GuideLink[]
+  ytAccounts    YtAccount[]
 }
 
 enum AccountStatus {
@@ -139,6 +140,66 @@ model PublishAttempt {
   errorCode Int?
   response  Json
   at        DateTime    @default(now())
+}
+
+// A YouTube channel connected with the owner's own Google Cloud OAuth client. The refresh token is sealed with
+// TOKEN_ENC_KEY (src/lib/settings.ts) and removed on disconnect.
+model YtAccount {
+  id           String        @id @default(cuid())
+  ownerId      String
+  owner        User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  channelId    String        @unique
+  channelTitle String
+  status       AccountStatus @default(active)
+  refreshToken String?
+  createdAt    DateTime      @default(now())
+  posts        YtPost[]
+}
+
+enum YtPrivacy {
+  public
+  unlisted
+  private
+}
+
+// A clip scheduled as a YouTube Short. container_created means the upload is under way. videoKey is the post's own
+// copy of the clip; uploadUrl is the resumable upload session, so a retried job goes on from where the last one
+// stopped.
+model YtPost {
+  id                String     @id @default(cuid())
+  ytAccountId       String
+  ytAccount         YtAccount  @relation(fields: [ytAccountId], references: [id], onDelete: Cascade)
+  videoKey          String
+  durationMs        Int
+  sourceProjectId   String?
+  sourceClipId      String?
+  title             String
+  description       String
+  privacy           YtPrivacy
+  madeForKids       Boolean
+  // Sent as status.containsSyntheticMedia, YouTube's altered or synthetic content disclosure.
+  aiGenerated       Boolean    @default(false)
+  scheduledAt       DateTime
+  status            PostStatus @default(scheduled)
+  queueJobId        String?
+  uploadUrl         String?
+  videoId           String?
+  url               String?
+  attempts          Int        @default(0)
+  lastError         String?
+  rightsConfirmedAt DateTime?
+  createdAt         DateTime   @default(now())
+  insights          YtInsight[]
+}
+
+// viewCount, likeCount and commentCount from videos.list, stored as views, likes and comments like Instagram's insights.
+model YtInsight {
+  id        String   @id @default(cuid())
+  ytPostId  String
+  ytPost    YtPost   @relation(fields: [ytPostId], references: [id], onDelete: Cascade)
+  metric    String
+  value     Float
+  fetchedAt DateTime @default(now())
 }
 
 model Insight {
@@ -285,6 +346,9 @@ model Setting {
   r2AccessKeyId     String?
   r2SecretAccessKey String?
   r2Bucket          String?
+  // The owner's own Google Cloud OAuth client, for connecting YouTube channels. The secret is sealed too.
+  googleClientId     String?
+  googleClientSecret String?
   // The look of the app (src/lib/appearance.ts): a design, Night Spring's colour palette, and a colour shift in degrees.
   design            String  @default("night")
   palette           String  @default("default")

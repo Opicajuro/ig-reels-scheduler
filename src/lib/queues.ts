@@ -16,6 +16,8 @@ export const AI_VIDEO_QUEUE = "ai-video";
 export const BACKUP_QUEUE = "backup";
 export const SLIDESHOW_ENGINE_QUEUE = "slideshow-engine";
 export const SLIDESHOW_QUEUE = "slideshow";
+export const YOUTUBE_PUBLISH_QUEUE = "youtube-publish";
+export const YOUTUBE_STATS_QUEUE = "youtube-stats";
 
 // A publish job runs up to 5 times: the first try, then 4 retries 60 seconds apart, doubling each time.
 export const PUBLISH_RETRY_LIMIT = 4;
@@ -72,23 +74,34 @@ async function startBoss(): Promise<PgBoss> {
   const keyed = { policy: "short" as const };
   await instance.createQueue(MEDIA_QUEUE, keyed);
   await instance.createQueue(INSIGHTS_QUEUE, keyed);
-  for (const name of [PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE, AI_ENGINE_QUEUE, AI_VIDEO_QUEUE, BACKUP_QUEUE, SLIDESHOW_ENGINE_QUEUE, SLIDESHOW_QUEUE]) {
+  await instance.createQueue(YOUTUBE_STATS_QUEUE, keyed);
+  for (const name of [PUBLISH_QUEUE, YOUTUBE_PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE, AI_ENGINE_QUEUE, AI_VIDEO_QUEUE, BACKUP_QUEUE, SLIDESHOW_ENGINE_QUEUE, SLIDESHOW_QUEUE]) {
     await instance.createQueue(name);
   }
   return instance;
 }
 
-export function getPublishQueue(): PublishQueue {
+function publishQueue(name: string): PublishQueue {
   return {
     async send(postId, runAt) {
-      const jobId = await (await getBoss()).sendAfter(PUBLISH_QUEUE, { postId }, PUBLISH_JOB_OPTIONS, runAt);
-      if (jobId === null) throw new Error(`publish job for post ${postId} was not queued`);
+      const jobId = await (await getBoss()).sendAfter(name, { postId }, PUBLISH_JOB_OPTIONS, runAt);
+      if (jobId === null) throw new Error(`${name} job for post ${postId} was not queued`);
       return jobId;
     },
     async cancel(jobId) {
-      await (await getBoss()).cancel(PUBLISH_QUEUE, jobId);
+      await (await getBoss()).cancel(name, jobId);
     },
   };
+}
+
+export function getPublishQueue(): PublishQueue {
+  return publishQueue(PUBLISH_QUEUE);
+}
+
+// The same retries as Instagram's: a 5xx that outlasts the upload's own retries is tried again a minute later, then
+// 2, 4 and 8 minutes after that, each going on from the stored upload session.
+export function getYouTubePublishQueue(): PublishQueue {
+  return publishQueue(YOUTUBE_PUBLISH_QUEUE);
 }
 
 // Rendering a long video can take hours, and pg-boss expires a job after 15 minutes by default. A render gets 6 hours.
@@ -198,10 +211,19 @@ export async function enqueueBackup(): Promise<string> {
 }
 
 export function getInsightsQueue(): InsightQueue {
+  return insightQueue(INSIGHTS_QUEUE);
+}
+
+// A YouTube post's view, like and comment counts, pulled on the same 1 h, 24 h and 7 d schedule.
+export function getYouTubeStatsQueue(): InsightQueue {
+  return insightQueue(YOUTUBE_STATS_QUEUE);
+}
+
+function insightQueue(name: string): InsightQueue {
   return {
     async send(postId, label, runAt) {
       return (await getBoss()).sendAfter(
-        INSIGHTS_QUEUE,
+        name,
         { postId },
         { ...INSIGHT_JOB_OPTIONS, singletonKey: `${postId}:${label}` },
         runAt,

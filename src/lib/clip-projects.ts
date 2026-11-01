@@ -24,8 +24,10 @@ import { parseHighlightsJson } from "./highlights";
 import type { ClipQueue, PublishQueue } from "./queues";
 import { checkRights, type AudioSourceValue } from "./rights";
 import { publishJobRunAt } from "./scheduling";
-import { buildClipKey, buildClipSourceKey, buildReelKey } from "./storage";
+import { buildClipKey, buildClipSourceKey, buildReelKey, buildYouTubeKey } from "./storage";
 import { UserError } from "./user-error";
+import { checkYouTubePost, shortsDescription } from "./youtube";
+import { youTubeJobRunAt } from "./youtube-posts";
 
 export const SOURCE_CONTENT_TYPES: Record<string, string> = {
   ".mp4": "video/mp4",
@@ -477,61 +479,133 @@ export async function copyClipsToProject({
   return { projectName: target.name, count: clips.length };
 }
 
-// Checks one post's caption and time before anything is made.
-function checkPost(caption: string, scheduledAt: Date, now: Date) {
-  const problems = validateCaption(caption);
-  if (problems.length > 0) throw new UserError(problems.join("; "));
+// Checks one post's time before anything is made.
+function checkTime(scheduledAt: Date, now: Date) {
   if (Number.isNaN(scheduledAt.getTime())) throw new UserError("the publish time is not valid");
   if (scheduledAt.getTime() <= now.getTime()) throw new UserError("the publish time must be in the future");
 }
 
-async function activeAccount(db: PrismaClient, ownerId: string, accountId: string) {
-  const account = await db.igAccount.findFirst({ where: { id: accountId, ownerId, status: "active" } });
-  if (!account) throw new UserError("account is not connected and active");
-  return account;
+function checkInstagramCaption(caption: string, clipName?: string) {
+  const problems = validateCaption(caption);
+  if (problems.length > 0) throw new UserError(`${clipName ? `${clipName}: ` : ""}${problems.join("; ")}`);
 }
 
-// Makes checked posts all or none. Each clip is copied to its own reel key, so deleting the account later removes
-// that copy without touching the project's clip. The publish jobs are queued with the posts' ids before one
-// transaction creates every media, post and rights record; if anything fails, the jobs are canceled and the copies
+async function activeAccounts(db: PrismaClient, ownerId: string, accountIds: string[]) {
+  for (const accountId of accountIds) {
+    const account = await db.igAccount.findFirst({ where: { id: accountId, ownerId, status: "active" } });
+    if (!account) throw new UserError("account is not connected and active");
+  }
+}
+
+// Where a clip goes on YouTube, and how. Each post is uploaded at its publish time by its own youtube-publish job.
+export type YouTubeTarget = {
+  queue: PublishQueue;
+  ytAccountIds: string[];
+  privacy: string;
+  /** "yes" or "no": YouTube requires the answer */
+  madeForKids: string;
+  /** the one-clip form's title; several clips each use their title, or their name */
+  title?: string;
+};
+
+// Every Localirs clip is rendered 1080×1920 (src/clip-engine).
+const CLIP_WIDTH = 1080;
+const CLIP_HEIGHT = 1920;
+const PRIVACIES = ["public", "unlisted", "private"] as const;
+
+async function checkYouTubeTarget(db: PrismaClient, ownerId: string, youtube: YouTubeTarget) {
+  const privacy = PRIVACIES.find((value) => value === youtube.privacy);
+  if (!privacy) throw new UserError("choose whether the YouTube Short is public, unlisted or private");
+  if (youtube.madeForKids !== "yes" && youtube.madeForKids !== "no") {
+    throw new UserError("say whether the YouTube Short is made for kids; YouTube requires it");
+  }
+  for (const ytAccountId of youtube.ytAccountIds) {
+    const channel = await db.ytAccount.findFirst({ where: { id: ytAccountId, ownerId, status: "active" } });
+    if (!channel) throw new UserError("the YouTube channel is not connected and active");
+  }
+  return { privacy, madeForKids: youtube.madeForKids === "yes" };
+}
+
+// A clip's YouTube title and description, checked against YouTube's limits and the Shorts rules.
+function youTubeText(clip: { name: string; length: number }, title: string, caption: string) {
+  const description = shortsDescription(caption);
+  const problems = checkYouTubePost({ title, description, seconds: clip.length, width: CLIP_WIDTH, height: CLIP_HEIGHT });
+  if (problems.length > 0) throw new UserError(`${clip.name}: ${problems.join("; ")}`);
+  return { title: title.trim(), description };
+}
+
+type ClipRef = { id: string; projectId: string; storageKey: string; length: number };
+
+type InstagramPlan = {
+  accountId: string;
+  clip: ClipRef;
+  caption: string;
+  scheduledAt: Date;
+  aiGenerated: boolean;
+  siblingAccountCount: number;
+  warnings: string[];
+};
+
+type YouTubePlan = {
+  ytAccountId: string;
+  clip: ClipRef;
+  title: string;
+  description: string;
+  scheduledAt: Date;
+  aiGenerated: boolean;
+  privacy: (typeof PRIVACIES)[number];
+  madeForKids: boolean;
+};
+
+// Makes checked posts all or none. Each clip is copied to the post's own key (a reel key for Instagram, a YouTube key),
+// so deleting the clip or the account later leaves the other untouched. The jobs are queued with the posts' ids before
+// one transaction creates every media, post and rights record; if anything fails, the jobs are canceled and the copies
 // removed. A job that starts before the transaction commits finds no post yet and is retried.
 async function createClipPosts({
   db,
   store,
   queue,
+  ytQueue,
   ownerId,
-  accountId,
   audioSource,
   now,
   posts,
+  ytPosts,
 }: {
   db: PrismaClient;
   store: ClipStore;
   queue: PublishQueue;
+  ytQueue: PublishQueue | null;
   ownerId: string;
-  accountId: string;
   audioSource: AudioSourceValue;
   now: Date;
-  posts: Array<{
-    clip: { id: string; projectId: string; storageKey: string; length: number };
-    caption: string;
-    scheduledAt: Date;
-    aiGenerated: boolean;
-    siblingAccountCount: number;
-    warnings: string[];
-  }>;
+  posts: InstagramPlan[];
+  ytPosts: YouTubePlan[];
 }) {
   const planned = posts.map((post) => ({ ...post, mediaId: randomUUID(), postId: randomUUID() }));
+  const ytPlanned = ytPosts.map((post) => {
+    const postId = randomUUID();
+    return { ...post, postId, videoKey: buildYouTubeKey(postId) };
+  });
+  if (ytPlanned.length > 0 && !ytQueue) throw new Error("YouTube posts need the youtube-publish queue");
   const copied: string[] = [];
-  const jobs: string[] = [];
+  const jobs: Array<{ queue: PublishQueue; id: string }> = [];
   try {
     for (const item of planned) {
       const reelKey = buildReelKey(item.mediaId);
       await store.copy(item.clip.storageKey, reelKey);
       copied.push(reelKey);
     }
+    for (const item of ytPlanned) {
+      await store.copy(item.clip.storageKey, item.videoKey);
+      copied.push(item.videoKey);
+    }
     for (const item of planned) {
-      jobs.push(await queue.send(item.postId, publishJobRunAt(item.scheduledAt, now)));
+      jobs.push({ queue, id: await queue.send(item.postId, publishJobRunAt(item.scheduledAt, now)) });
+    }
+    for (const item of ytPlanned) {
+      const yt = ytQueue as PublishQueue;
+      jobs.push({ queue: yt, id: await yt.send(item.postId, youTubeJobRunAt(item.scheduledAt, now)) });
     }
     return await db.$transaction(async (tx) => {
       const created = [];
@@ -540,13 +614,13 @@ async function createClipPosts({
         await tx.media.create({
           data: {
             id: item.mediaId,
-            accountId,
+            accountId: item.accountId,
             rawKey: reelKey,
             reelKey,
             status: "ready",
             durationMs: item.clip.length * 1000,
-            width: 1080,
-            height: 1920,
+            width: CLIP_WIDTH,
+            height: CLIP_HEIGHT,
             audioSource,
             sourceProjectId: item.clip.projectId,
             sourceClipId: item.clip.id,
@@ -555,14 +629,14 @@ async function createClipPosts({
         const post = await tx.post.create({
           data: {
             id: item.postId,
-            accountId,
+            accountId: item.accountId,
             mediaId: item.mediaId,
             caption: item.caption,
             shareToFeed: true,
             aiGenerated: item.aiGenerated,
             scheduledAt: item.scheduledAt,
             rightsConfirmedAt: now,
-            queueJobId: jobs[index],
+            queueJobId: jobs[index].id,
           },
         });
         await tx.auditLog.create({
@@ -581,24 +655,57 @@ async function createClipPosts({
         });
         created.push(post);
       }
-      return created;
+      const ytCreated = [];
+      for (const [index, item] of ytPlanned.entries()) {
+        const post = await tx.ytPost.create({
+          data: {
+            id: item.postId,
+            ytAccountId: item.ytAccountId,
+            videoKey: item.videoKey,
+            durationMs: item.clip.length * 1000,
+            sourceProjectId: item.clip.projectId,
+            sourceClipId: item.clip.id,
+            title: item.title,
+            description: item.description,
+            privacy: item.privacy,
+            madeForKids: item.madeForKids,
+            aiGenerated: item.aiGenerated,
+            scheduledAt: item.scheduledAt,
+            rightsConfirmedAt: now,
+            queueJobId: jobs[planned.length + index].id,
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: ownerId,
+            action: "rights_confirmed",
+            targetType: "YtPost",
+            targetId: post.id,
+            data: { audioSource },
+          },
+        });
+        ytCreated.push(post);
+      }
+      return { posts: created, ytPosts: ytCreated };
     });
   } catch (err) {
-    for (const job of jobs) await queue.cancel(job);
+    for (const job of jobs) await job.queue.cancel(job.id);
     for (const key of copied) await store.remove(key);
     throw err;
   }
 }
 
-// Posts a clip to an Instagram account. A clip made with AI always carries Instagram's AI info label; aiGenerated adds
-// it to any other clip.
+// Posts a clip to Instagram accounts and YouTube channels, at least one of them. A clip made with AI always carries
+// Instagram's AI info label and YouTube's altered or synthetic content disclosure; aiGenerated adds them to any other
+// clip. The caption is the YouTube description too, with #Shorts.
 export async function scheduleClip({
   db,
   store,
   queue,
   ownerId,
   clipId,
-  accountId,
+  accountIds,
+  youtube,
   caption,
   scheduledAt,
   aiGenerated,
@@ -611,7 +718,8 @@ export async function scheduleClip({
   queue: PublishQueue;
   ownerId: string;
   clipId: string;
-  accountId: string;
+  accountIds: string[];
+  youtube?: YouTubeTarget;
   caption: string;
   scheduledAt: string;
   aiGenerated: boolean;
@@ -619,49 +727,48 @@ export async function scheduleClip({
   audioSource: AudioSourceValue;
   now: Date;
 }) {
+  const igIds = [...new Set(accountIds)];
+  const ytIds = [...new Set(youtube?.ytAccountIds ?? [])];
+  if (igIds.length === 0 && ytIds.length === 0) throw new UserError("choose at least one Instagram account or YouTube channel");
   const clip = await ownedClip(db, ownerId, clipId);
   if (clip.project.status === "rendering") throw new UserError("clips are rendering for this project");
-  await activeAccount(db, ownerId, accountId);
+  await activeAccounts(db, ownerId, igIds);
+  const ytChoice = youtube && ytIds.length > 0 ? await checkYouTubeTarget(db, ownerId, youtube) : null;
 
   // Safe-clip gate: nothing is copied or created until the operator confirms the clip's rights.
-  const siblingAccountCount = await countOtherAccounts(db, clip.projectId, accountId);
-  const rights = checkRights({ rightsConfirmed, audioSource, siblingAccountCount });
+  const rights = checkRights({ rightsConfirmed, audioSource, siblingAccountCount: 0 });
   if (!rights.canSchedule) throw new UserError(rights.warnings[0]);
   const at = new Date(scheduledAt);
-  checkPost(caption, at, now);
+  checkTime(at, now);
+  if (igIds.length > 0) checkInstagramCaption(caption);
+  const ai = clip.aiGenerated || aiGenerated;
 
-  const [post] = await createClipPosts({
-    db,
-    store,
-    queue,
-    ownerId,
-    accountId,
-    audioSource,
-    now,
-    posts: [
-      {
-        clip,
-        caption,
-        scheduledAt: at,
-        aiGenerated: clip.aiGenerated || aiGenerated,
-        siblingAccountCount,
-        warnings: rights.warnings,
-      },
-    ],
-  });
-  return post;
+  const posts: InstagramPlan[] = [];
+  for (const accountId of igIds) {
+    const siblingAccountCount = await countOtherAccounts(db, clip.projectId, accountId);
+    const { warnings } = checkRights({ rightsConfirmed, audioSource, siblingAccountCount });
+    posts.push({ accountId, clip, caption, scheduledAt: at, aiGenerated: ai, siblingAccountCount, warnings });
+  }
+  const ytPosts: YouTubePlan[] = [];
+  if (ytChoice) {
+    const text = youTubeText(clip, youtube?.title ?? clip.title ?? clip.name, caption);
+    for (const ytAccountId of ytIds) ytPosts.push({ ytAccountId, clip, ...text, scheduledAt: at, aiGenerated: ai, ...ytChoice });
+  }
+
+  return createClipPosts({ db, store, queue, ytQueue: youtube?.queue ?? null, ownerId, audioSource, now, posts, ytPosts });
 }
 
-// Posts several clips to one account under one rights confirmation. Every check runs before the first post is made,
-// and the posts are made all or none. Clip i is published at the first time plus i gaps. Clips made with AI always carry
-// Instagram's AI info label; aiGenerated adds it to the others.
+// Posts several clips to Instagram accounts and YouTube channels under one rights confirmation. Every check runs before
+// the first post is made, and the posts are made all or none. Clip i is published at the first time plus i gaps, on
+// every destination. Clips made with AI always carry the AI label and disclosure; aiGenerated adds them to the others.
 export async function scheduleClips({
   db,
   store,
   queue,
   ownerId,
   clipIds,
-  accountId,
+  accountIds,
+  youtube,
   firstScheduledAt,
   gapHours,
   aiGenerated,
@@ -674,7 +781,8 @@ export async function scheduleClips({
   queue: PublishQueue;
   ownerId: string;
   clipIds: string[];
-  accountId: string;
+  accountIds: string[];
+  youtube?: YouTubeTarget;
   firstScheduledAt: string;
   gapHours: number;
   aiGenerated: boolean;
@@ -684,6 +792,9 @@ export async function scheduleClips({
 }) {
   const ids = [...new Set(clipIds)];
   if (ids.length === 0) throw new UserError("select at least one clip");
+  const igIds = [...new Set(accountIds)];
+  const ytIds = [...new Set(youtube?.ytAccountIds ?? [])];
+  if (igIds.length === 0 && ytIds.length === 0) throw new UserError("choose at least one Instagram account or YouTube channel");
   if (!Number.isInteger(gapHours) || gapHours < 1 || gapHours > 720) {
     throw new UserError("the gap between posts must be a whole number of hours from 1 to 720");
   }
@@ -697,23 +808,31 @@ export async function scheduleClips({
   const clips = await db.clip.findMany({ where: { id: { in: ids }, project: { ownerId } }, include: { project: true } });
   if (clips.length !== ids.length) throw new UserError("clip not found");
   if (clips.some((clip) => clip.project.status === "rendering")) throw new UserError("clips are rendering for this project");
-  await activeAccount(db, ownerId, accountId);
+  await activeAccounts(db, ownerId, igIds);
+  const ytChoice = youtube && ytIds.length > 0 ? await checkYouTubeTarget(db, ownerId, youtube) : null;
 
   const byId = new Map(clips.map((clip) => [clip.id, clip]));
-  const posts = [];
+  const posts: InstagramPlan[] = [];
+  const ytPosts: YouTubePlan[] = [];
   for (const [index, clipId] of ids.entries()) {
     const clip = byId.get(clipId);
     if (!clip) throw new UserError("clip not found");
     const caption = clip.description || clip.title || clip.name;
     const scheduledAt = new Date(first.getTime() + index * gapHours * 60 * 60 * 1000);
-    const problems = validateCaption(caption);
-    if (problems.length > 0) throw new UserError(`${clip.name}: ${problems.join("; ")}`);
-    const siblingAccountCount = await countOtherAccounts(db, clip.projectId, accountId);
-    const { warnings } = checkRights({ rightsConfirmed, audioSource, siblingAccountCount });
-    posts.push({ clip, caption, scheduledAt, aiGenerated: clip.aiGenerated || aiGenerated, siblingAccountCount, warnings });
+    const ai = clip.aiGenerated || aiGenerated;
+    if (igIds.length > 0) checkInstagramCaption(caption, clip.name);
+    for (const accountId of igIds) {
+      const siblingAccountCount = await countOtherAccounts(db, clip.projectId, accountId);
+      const { warnings } = checkRights({ rightsConfirmed, audioSource, siblingAccountCount });
+      posts.push({ accountId, clip, caption, scheduledAt, aiGenerated: ai, siblingAccountCount, warnings });
+    }
+    if (ytChoice) {
+      const text = youTubeText(clip, clip.title || clip.name, caption);
+      for (const ytAccountId of ytIds) ytPosts.push({ ytAccountId, clip, ...text, scheduledAt, aiGenerated: ai, ...ytChoice });
+    }
   }
 
-  return createClipPosts({ db, store, queue, ownerId, accountId, audioSource, now, posts });
+  return createClipPosts({ db, store, queue, ytQueue: youtube?.queue ?? null, ownerId, audioSource, now, posts, ytPosts });
 }
 
 // Other accounts that already have a live post (scheduled, in progress, or published) made from this clip project.

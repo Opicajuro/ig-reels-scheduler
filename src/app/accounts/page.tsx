@@ -6,7 +6,8 @@ import { PAUSE_OPTIONS } from "@/lib/account-management";
 import { metaAppConfig } from "@/lib/ig-connect";
 import { mockConnectEnabled } from "@/lib/mock-accounts";
 import { getSettings } from "@/lib/settings";
-import { disconnectAccountAction, pauseAccountAction, resumeAccountAction } from "./actions";
+import { youTubeAppConfig } from "@/lib/youtube";
+import { disconnectAccountAction, disconnectYouTubeAction, pauseAccountAction, resumeAccountAction } from "./actions";
 import { prisma } from "@/lib/prisma";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Alert } from "@/components/alert";
@@ -25,18 +26,20 @@ export default async function AccountsPage() {
   await connection();
   const ownerId = await getOwnerId();
 
-  const [accounts, settings] = await Promise.all([
+  const [accounts, channels, settings] = await Promise.all([
     prisma.igAccount.findMany({ where: { ownerId }, orderBy: { createdAt: "asc" }, include: { token: true } }),
+    prisma.ytAccount.findMany({ where: { ownerId }, orderBy: { createdAt: "asc" } }),
     getSettings(prisma),
   ]);
   const metaReady = metaAppConfig(settings, process.env.IG_REDIRECT_URI) !== null;
+  const youTubeReady = youTubeAppConfig(settings, process.env.APP_URL) !== null;
   const now = new Date();
 
   return (
     <main>
       <PageHeader
         title="Accounts"
-        description="The Instagram accounts Localirs publishes to."
+        description="The Instagram accounts and YouTube channels Localirs publishes to."
         actions={
           metaReady ? (
             <ButtonLink href="/api/ig/connect" variant="primary">
@@ -145,6 +148,64 @@ export default async function AccountsPage() {
               </li>
             );
           })}
+        </ul>
+      )}
+
+      <div className={styles.section}>
+        <h2>YouTube</h2>
+        {youTubeReady ? (
+          <ButtonLink href="/api/youtube/connect" variant="primary">
+            Connect YouTube
+          </ButtonLink>
+        ) : null}
+      </div>
+      {youTubeReady ? null : (
+        <Alert tone="info">
+          Connecting YouTube needs your own Google OAuth client. Add its client ID and secret on the{" "}
+          <Link href="/settings">Settings</Link> page; the <Link href="/help#youtube">Help</Link> page shows how to make one.
+        </Alert>
+      )}
+      {channels.length === 0 ? (
+        <EmptyState>No YouTube channel connected yet.</EmptyState>
+      ) : (
+        <ul className={styles.list}>
+          {channels.map((channel) => (
+            <li key={channel.id}>
+              <Card>
+                <div className={styles.head}>
+                  <h2>{channel.channelTitle}</h2>
+                  <span className={channel.status === "reauth_required" ? styles.warning : styles.muted}>
+                    {STATUS_TEXT[channel.status]} · YouTube
+                  </span>
+                </div>
+                <div className={styles.actions}>
+                  {channel.status !== "active" ? (
+                    youTubeReady ? (
+                      <ButtonLink href="/api/youtube/connect" variant="primary" size="sm">
+                        Reconnect
+                      </ButtonLink>
+                    ) : (
+                      <Link href="/settings">Set up the Google OAuth client to reconnect</Link>
+                    )
+                  ) : null}
+                  {channel.status !== "revoked" ? (
+                    <ActionForm
+                      action={disconnectYouTubeAction}
+                      confirm={{
+                        message: `Disconnect ${channel.channelTitle}? Its scheduled posts will be canceled.`,
+                        confirmLabel: "Disconnect",
+                      }}
+                    >
+                      <input type="hidden" name="ytAccountId" value={channel.id} />
+                      <SubmitButton variant="danger" size="sm" pendingLabel="Disconnecting…">
+                        Disconnect
+                      </SubmitButton>
+                    </ActionForm>
+                  ) : null}
+                </div>
+              </Card>
+            </li>
+          ))}
         </ul>
       )}
       {mockConnectEnabled(process.env) ? (

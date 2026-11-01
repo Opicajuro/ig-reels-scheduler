@@ -28,11 +28,14 @@ import {
   SLIDESHOW_ENGINE_QUEUE,
   SLIDESHOW_QUEUE,
   TOKEN_REFRESH_QUEUE,
+  YOUTUBE_PUBLISH_QUEUE,
+  YOUTUBE_STATS_QUEUE,
 } from "@/lib/queues";
 import { processInsightsJob } from "./insights-processor";
 import { processMedia } from "@/lib/media-jobs";
 import { downloadToFile, uploadFromFile } from "@/lib/storage";
 import { createPublishProcessor } from "./publish-processor";
+import { createYouTubePublishProcessor, processYouTubeStatsJob } from "./youtube-processor";
 import { sendOwnerAlerts } from "@/lib/alert-job";
 import { sendEmail } from "@/lib/alerts";
 import { getOwnerId } from "@/lib/owner";
@@ -114,6 +117,8 @@ async function main() {
 
   await boss.work(PUBLISH_QUEUE, createPublishProcessor());
   await boss.work(INSIGHTS_QUEUE, processInsightsJob);
+  await boss.work(YOUTUBE_PUBLISH_QUEUE, createYouTubePublishProcessor());
+  await boss.work(YOUTUBE_STATS_QUEUE, processYouTubeStatsJob);
 
   // Failure emails are optional. The settings are read at each run, so saving them on /settings turns the emails on
   // or off without restarting the worker.
@@ -144,7 +149,7 @@ async function main() {
     await runBackup({ db: prisma, env, now: new Date() });
   });
 
-  console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media, clips, AI videos, slideshows and publishing enabled, backups at 03:30 ${timeZone}`);
+  console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media, clips, AI videos, slideshows, Instagram and YouTube publishing enabled, backups at 03:30 ${timeZone}`);
 }
 
 main().catch((err) => {

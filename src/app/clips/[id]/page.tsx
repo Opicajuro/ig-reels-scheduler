@@ -113,6 +113,10 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
     where: { ownerId, status: "active" },
     orderBy: { createdAt: "asc" },
   });
+  const channels = await prisma.ytAccount.findMany({
+    where: { ownerId, status: "active" },
+    orderBy: { createdAt: "asc" },
+  });
   // Accounts that already have a live post made from this project, for the duplicate-content warning.
   const livePosts = await prisma.post.findMany({
     where: {
@@ -410,6 +414,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
               busy={busy}
               clips={clips}
               accounts={accounts.map((account) => ({ id: account.id, username: account.username }))}
+              channels={channels.map((channel) => ({ id: channel.id, title: channel.channelTitle }))}
               alreadyScheduledTo={alreadyScheduledTo}
               projects={otherProjects}
               bestTimeSamples={bestTimeSamples}
