@@ -36,11 +36,17 @@ export async function markSourceUploadedAction(formData: FormData) {
 export async function startRenderAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
     const projectId = text(formData, "projectId");
+    // The button pressed: "reviewed" makes the clips from the timeline's highlights, "pick" finds them again.
+    const intent = text(formData, "intent");
+    if (!["", "pick", "reviewed"].includes(intent)) throw new Error(`unknown intent "${intent}"`);
+    const review = intent === "pick" || (intent === "" && formData.get("review") === "on");
     await clips.startRender({
       db: prisma,
       queue: getClipQueue(),
       ownerId: await getOwnerId(),
       projectId,
+      review,
+      highlights: intent === "reviewed" ? text(formData, "highlights") : undefined,
       clipSeconds: Number(text(formData, "clipSeconds")),
       clipCount: text(formData, "clipCount") === "auto" ? null : Number(text(formData, "clipCount")),
       withCaptions: formData.get("withCaptions") === "on",
@@ -56,7 +62,16 @@ export async function startRenderAction(_previous: ActionResult, formData: FormD
       endCardText: text(formData, "endCardText"),
     });
     revalidatePath(`/clips/${projectId}`);
-    return "Making clips";
+    return review ? "Finding highlights" : "Making clips";
+  });
+}
+
+export async function discardHighlightsAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    const projectId = text(formData, "projectId");
+    await clips.discardHighlights({ db: prisma, ownerId: await getOwnerId(), projectId });
+    revalidatePath(`/clips/${projectId}`);
+    return "Highlights discarded";
   });
 }
 

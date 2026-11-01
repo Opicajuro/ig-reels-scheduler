@@ -15,6 +15,8 @@ export const SLIDESHOW_CANCELLED = "Cancelled";
 export type QueueRender = {
   id: string;
   name: string;
+  // "picking" while "Find highlights" analyses the video, "rendering" while clips are made.
+  status: "picking" | "rendering";
   step: string | null;
   startedAt: string;
   clipsDone: number;
@@ -43,11 +45,12 @@ export type QueueListing = {
 export async function listQueue({ db, ownerId, now }: { db: PrismaClient; ownerId: string; now: Date }): Promise<QueueListing> {
   const [projects, videos, slideshows, aiEngine, slideshowEngines, posts] = await Promise.all([
     db.clipProject.findMany({
-      where: { ownerId, status: "rendering" },
+      where: { ownerId, status: { in: ["picking", "rendering"] } },
       orderBy: { renderStartedAt: "asc" },
       select: {
         id: true,
         name: true,
+        status: true,
         renderStep: true,
         renderStartedAt: true,
         renderId: true,
@@ -83,10 +86,12 @@ export async function listQueue({ db, ownerId, now }: { db: PrismaClient; ownerI
   return {
     renders: projects.map((project) => {
       if (!project.renderStartedAt) throw new Error(`rendering project ${project.id} has no start time`);
-      const plan = resumablePlan(requireRenderId(project), project.renderPlan);
+      if (project.status !== "picking" && project.status !== "rendering") throw new Error(`project ${project.id} is ${project.status}`);
+      const plan = project.status === "rendering" ? resumablePlan(requireRenderId(project), project.renderPlan) : null;
       return {
         id: project.id,
         name: project.name,
+        status: project.status,
         step: project.renderStep,
         startedAt: project.renderStartedAt.toISOString(),
         clipsDone: project._count.clips,
@@ -121,8 +126,9 @@ export async function listQueue({ db, ownerId, now }: { db: PrismaClient; ownerI
   };
 }
 
-// Stops a render: its waiting job is dropped, and a running one stops before its next clip, as the project no longer
-// carries its render id. The clips already made stay; the project is "done" with them, or "ready" without any.
+// Stops a render or "Find highlights": its waiting job is dropped, and a running one stops before its next clip or step,
+// as the project no longer carries its render id. The clips already made stay; the project is "done" with them, or
+// "ready" without any.
 export async function cancelRender({
   db,
   jobs,
@@ -139,13 +145,15 @@ export async function cancelRender({
     select: { id: true, status: true, renderId: true, _count: { select: { clips: true } } },
   });
   if (!project) throw new UserError("project not found");
-  if (project.status !== "rendering") throw new UserError("this project is not making clips");
+  if (project.status !== "rendering" && project.status !== "picking") {
+    throw new UserError("this project is not making clips or finding highlights");
+  }
   const renderId = requireRenderId(project);
 
   const open = await jobs.open(projectId);
   if (open.length > 0) await jobs.cancel(open.map((job) => job.id));
   const { count } = await db.clipProject.updateMany({
-    where: { id: projectId, status: "rendering", renderId },
+    where: { id: projectId, status: project.status, renderId },
     data: {
       status: project._count.clips > 0 ? "done" : "ready",
       renderStep: RENDER_CANCELLED,

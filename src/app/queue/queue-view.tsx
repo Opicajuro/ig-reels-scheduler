@@ -64,7 +64,7 @@ export function QueueView({ initial }: { initial: QueueListing }) {
               key={render.id}
               href={`/clips/${render.id}`}
               title={render.name}
-              state={<StatusBadge status="rendering" />}
+              state={<StatusBadge status={render.status} />}
               detail={render.step ?? "Waiting for the worker to start…"}
               progress={
                 <>
@@ -82,8 +82,11 @@ export function QueueView({ initial }: { initial: QueueListing }) {
                 <ActionForm
                   action={cancelRenderAction}
                   confirm={{
-                    message: `Stop making clips for "${render.name}"? The clips already made are kept.`,
-                    confirmLabel: "Stop making clips",
+                    message:
+                      render.status === "picking"
+                        ? `Stop finding highlights for "${render.name}"?`
+                        : `Stop making clips for "${render.name}"? The clips already made are kept.`,
+                    confirmLabel: render.status === "picking" ? "Stop finding highlights" : "Stop making clips",
                   }}
                 >
                   <input type="hidden" name="projectId" value={render.id} />

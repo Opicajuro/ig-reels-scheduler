@@ -22,11 +22,14 @@ export function formatElapsed(totalSeconds: number): string {
 // Localirs was closed says "Resuming… clip N of M", and its time still counts from when "Make clips" was pressed.
 export function RenderProgress({
   projectId,
+  status,
   initialStep,
   startedAt,
   initialClipsDone,
 }: {
   projectId: string;
+  // "picking" while "Find highlights" runs; the page is reloaded once the highlights are found.
+  status: "picking" | "rendering";
   initialStep: string | null;
   startedAt: string;
   initialClipsDone: number;
@@ -46,7 +49,7 @@ export function RenderProgress({
       const response = await fetch(`/api/clips/${projectId}/status`, { cache: "no-store" });
       if (!response.ok) throw new Error(`status check failed with ${response.status}`);
       const state = (await response.json()) as { status: ClipProjectStatus; renderStep: string | null; clipsDone: number };
-      if (state.status !== "rendering") {
+      if (state.status !== status) {
         clearInterval(timer);
         router.refresh();
         return;
@@ -58,12 +61,12 @@ export function RenderProgress({
       }
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [projectId, initialClipsDone, router]);
+  }, [projectId, status, initialClipsDone, router]);
 
   const elapsed = formatElapsed(Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1000)));
   return (
     <p className={styles.progress} role="status">
-      <StatusBadge status="rendering" />
+      <StatusBadge status={status} />
       <span>{step ?? "Waiting for the worker to start…"}</span>
       <span className={styles.elapsed} aria-label={`running for ${elapsed}`}>
         {elapsed}

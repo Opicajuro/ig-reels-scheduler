@@ -29,6 +29,7 @@ import {
   type RenderPlan,
 } from "./clip-resume";
 import { transcribeWithWhisper } from "./whisper";
+import { parseTranscript, validateHighlights, type Highlight, type Word } from "./highlights";
 
 // Thrown by a render's write once the render is cancelled, to stop it.
 class RenderCancelled extends Error {}
@@ -37,9 +38,11 @@ export function clipName(index: number): string {
   return `clip-${String(index + 1).padStart(3, "0")}`;
 }
 
-// Renders a project's clips from its source video. The project must already be in the "rendering" state, for the
-// render the job was queued for. A render whose plan is already stored was interrupted: it keeps the clips it saved
-// and makes the rest; otherwise it replaces the project's clips.
+// Runs a project's clip job. "Find highlights" ("picking") downloads and analyses the source and leaves the picked
+// highlights for review. "Make clips" ("rendering") renders the project's clips: exactly its reviewed highlights when
+// it has them, otherwise the ones it picks. The project must be in the state the job was queued for, for that render.
+// A render whose plan is already stored was interrupted: it keeps the clips it saved and makes the rest; otherwise it
+// replaces the project's clips.
 export async function renderClipProject({
   db,
   store,
@@ -55,7 +58,9 @@ export async function renderClipProject({
 }) {
   const project = await db.clipProject.findUnique({ where: { id: projectId } });
   if (!project) throw new Error(`clip project ${projectId} not found`);
-  if (project.status !== "rendering") throw new Error(`clip project ${projectId} is not rendering`);
+  if (project.status !== "rendering" && project.status !== "picking") {
+    throw new Error(`clip project ${projectId} is not rendering or finding highlights`);
+  }
   if (requireRenderId(project) !== renderId) throw new Error(`clip job for project ${projectId} is for an earlier render`);
 
   // Cancelling a render clears the project's render id: from then on its writes do not land, and it stops at the next
@@ -66,8 +71,54 @@ export async function renderClipProject({
   };
   // Tells the project page what is happening now, one write per step.
   const step = (renderStep: string) => write({ renderStep });
+  const sourcePath = path.join(workDir, "source.mp4");
+  // The source video in the work folder. A linked video is downloaded once and stored with the project.
+  const fetchSource = async () => {
+    if (project.sourceKey) return store.downloadTo(project.sourceKey, sourcePath);
+    if (!project.sourceUrl) throw new Error("project has neither an uploaded source nor a link");
+    await downloadVideo(project.sourceUrl, workDir);
+    const sourceKey = buildClipSourceKey(projectId, ".mp4");
+    await store.upload(sourceKey, sourcePath, "video/mp4");
+    await write({ sourceKey });
+  };
+  // The source's words for captions, transcribed once and then kept on the project.
+  const transcript = async (): Promise<Word[]> => {
+    if (project.transcript !== null) return parseTranscript(project.transcript);
+    const words: Word[] = await transcribeWithWhisper(db, sourcePath, workDir);
+    await write({ transcript: words });
+    return words;
+  };
+  // Measures the video and picks its highlights by motion and loudness, transcribing it at the same time for captions.
+  const pick = async () => {
+    const durationSeconds = Math.floor(await probeDuration(sourcePath));
+    if (durationSeconds < MIN_SEGMENT_SECONDS) {
+      throw new Error(`video is shorter than ${MIN_SEGMENT_SECONDS} seconds`);
+    }
+    await write({ durationSeconds });
+    const clipCount = resolveClipCount(project.clipCount, durationSeconds, project.clipSeconds);
+    const transcribing = project.withCaptions && project.transcript === null;
+    await step(transcribing ? "Analysing motion and sound and transcribing" : "Analysing motion and sound");
+    // Each of these reads the whole video in its own process, so they run at the same time.
+    const [motion, audio, words] = await Promise.all([
+      motionPerSecond(motionFrames(sourcePath), durationSeconds),
+      loudnessPerSecond(audioSamples(sourcePath), durationSeconds),
+      project.withCaptions ? transcript() : null,
+    ]);
+    const highlights: Highlight[] = pickHighlights(combineScores(motion, audio), project.clipSeconds, clipCount).map(
+      ({ start, length }: Highlight) => ({ start, length }),
+    );
+    return { highlights, words };
+  };
 
   try {
+    if (project.status === "picking") {
+      await step("Downloading the video");
+      await fetchSource();
+      const { highlights } = await pick();
+      await write({ status: "review", renderStep: null, highlights });
+      return;
+    }
+
     const saved = await db.clip.findMany({
       where: { projectId },
       select: { id: true, storageKey: true, start: true, title: true },
@@ -91,46 +142,30 @@ export async function renderClipProject({
     const resumeLabel = resume ? resumeStep(resume.remaining[0].index + 1, resume.plan.clips.length) : null;
 
     await step(resumeLabel ?? "Downloading the video");
-    const sourcePath = path.join(workDir, "source.mp4");
-    if (project.sourceKey) {
-      await store.downloadTo(project.sourceKey, sourcePath);
-    } else {
-      if (resume) throw new Error("an interrupted render has no stored source video");
-      if (!project.sourceUrl) throw new Error("project has neither an uploaded source nor a link");
-      await downloadVideo(project.sourceUrl, workDir);
-      const sourceKey = buildClipSourceKey(projectId, ".mp4");
-      await store.upload(sourceKey, sourcePath, "video/mp4");
-      await write({ sourceKey });
-    }
+    if (resume && !project.sourceKey) throw new Error("an interrupted render has no stored source video");
+    await fetchSource();
 
     let plan: RenderPlan;
-    let words: Awaited<ReturnType<typeof transcribeWithWhisper>> | null;
+    let words: Word[] | null;
     if (resume) {
       // The highlights are not picked again, but captions need the words.
       plan = resume.plan;
-      words = project.withCaptions ? await transcribeWithWhisper(db, sourcePath, workDir) : null;
+      words = project.withCaptions ? await transcript() : null;
     } else {
-      const durationSeconds = Math.floor(await probeDuration(sourcePath));
-      if (durationSeconds < MIN_SEGMENT_SECONDS) {
-        throw new Error(`video is shorter than ${MIN_SEGMENT_SECONDS} seconds`);
+      let highlights: Highlight[];
+      if (project.highlights !== null) {
+        // Reviewed on the timeline: the video is not analysed again.
+        if (project.durationSeconds === null) throw new Error("reviewed highlights without the video's length");
+        highlights = validateHighlights(project.highlights, project.durationSeconds);
+        if (project.withCaptions && project.transcript === null) await step("Transcribing");
+        words = project.withCaptions ? await transcript() : null;
+      } else {
+        ({ highlights, words } = await pick());
       }
-      await write({ durationSeconds });
-
-      const clipCount = resolveClipCount(project.clipCount, durationSeconds, project.clipSeconds);
-      await step(project.withCaptions ? "Analysing motion and sound and transcribing" : "Analysing motion and sound");
-      // Each of these reads the whole video in its own process, so they run at the same time.
-      const [motion, audio, transcript] = await Promise.all([
-        motionPerSecond(motionFrames(sourcePath), durationSeconds),
-        loudnessPerSecond(audioSamples(sourcePath), durationSeconds),
-        project.withCaptions ? transcribeWithWhisper(db, sourcePath, workDir) : null,
-      ]);
-      words = transcript;
-      const clips: PlannedClip[] = pickHighlights(combineScores(motion, audio), project.clipSeconds, clipCount).map(
-        (highlight: { start: number; length: number }) => {
-          const title = keptTitles.get(highlight.start);
-          return { clipId: randomUUID(), start: highlight.start, length: highlight.length, ...(title ? { title } : {}) };
-        },
-      );
+      const clips: PlannedClip[] = highlights.map((highlight) => {
+        const title = keptTitles.get(highlight.start);
+        return { clipId: randomUUID(), start: highlight.start, length: highlight.length, ...(title ? { title } : {}) };
+      });
       // Stored before the first clip, so a render cut off from here on makes the same clips when it goes on.
       plan = { renderId, clips };
       await write({ renderPlan: plan });

@@ -18,6 +18,7 @@ import { ScheduleForm } from "./schedule-form";
 import { BulkScheduleForm } from "./bulk-schedule-form";
 import { MoveForm, type ProjectChoice } from "./move-form";
 import styles from "../clips.module.css";
+import { formatTime } from "@/lib/highlights";
 
 export type ClipView = {
   id: string;
@@ -33,11 +34,6 @@ export type ClipView = {
 };
 
 export type AccountView = { id: string; username: string };
-
-function formatTime(seconds: number): string {
-  const whole = Math.round(seconds);
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
-}
 
 // What a clip is posted with on Instagram, the same fallback the server uses.
 function captionOf(clip: ClipView): string {

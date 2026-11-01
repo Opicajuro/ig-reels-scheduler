@@ -7,6 +7,7 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import { END_CARD_SECONDS, HOOK_SECONDS, probeDuration } from "@/clip-engine/ffmpeg.js";
 import { renderClipProject } from "./clip-render";
 import type { ClipStore } from "./clip-store";
+import { validateHighlights } from "./highlights";
 
 let fixture: string;
 let root: string;
@@ -94,6 +95,8 @@ function renderingProject(overrides: Row = {}): Row {
     status: "rendering",
     renderId: "r1",
     renderPlan: null,
+    highlights: null,
+    transcript: null,
     sourceKey: "clip-sources/p1.mp4",
     sourceUrl: null,
     durationSeconds: null,
@@ -106,6 +109,10 @@ function renderingProject(overrides: Row = {}): Row {
     hookText: null,
     progressBar: null,
     endCardText: null,
+    captionPosition: "bottom",
+    captionUppercase: false,
+    captionHighlight: "yellow",
+    captionEmoji: false,
     error: null,
     ...overrides,
   };
@@ -342,6 +349,127 @@ describe("renderClipProject", () => {
       const during = meanGray(clip.file, clip.length - END_CARD_SECONDS + 0.3);
       expect(before - during).toBeGreaterThan(30);
     }
+  });
+});
+
+describe("renderClipProject in two phases", () => {
+  it("finds the highlights for review without making clips, then makes exactly the reviewed ones", async () => {
+    const deps = fakeDb(renderingProject({ status: "picking" }));
+    const bucket = bucketStore(root);
+    deps.state.clips.push({ id: "old", storageKey: "clips/p1/old.mp4", name: "old", start: 0 });
+
+    await renderClipProject({
+      db: deps.db,
+      store: bucket.store,
+      projectId: "p1",
+      renderId: "r1",
+      workDir: await mkdtemp(path.join(workRoot, "run-")),
+    });
+
+    expect(deps.state.steps).toEqual(["Downloading the video", "Analysing motion and sound"]);
+    expect(deps.state.project).toMatchObject({ status: "review", renderStep: null, durationSeconds: 40, renderPlan: null });
+    const picked = deps.state.project.highlights as { start: number; length: number }[];
+    expect(picked).toHaveLength(2);
+    expect(validateHighlights(picked, 40)).toEqual(picked);
+    // Nothing is made or replaced until "Make clips".
+    expect(bucket.uploaded).toEqual([]);
+    expect(bucket.removed).toEqual([]);
+    expect(deps.state.clips.map((clip) => clip.id)).toEqual(["old"]);
+
+    // Adjusted on the timeline, by half seconds.
+    const reviewed = [
+      { start: 2.5, length: 15.5 },
+      { start: 21, length: 16 },
+    ];
+    Object.assign(deps.state.project, { status: "rendering", renderId: "r2", highlights: reviewed });
+    deps.state.steps = [];
+    await renderClipProject({
+      db: deps.db,
+      store: bucket.store,
+      projectId: "p1",
+      renderId: "r2",
+      workDir: await mkdtemp(path.join(workRoot, "run-")),
+    });
+
+    // The video is not analysed again.
+    expect(deps.state.steps).toEqual(["Downloading the video", "Making clip 1 of 2", "Making clip 2 of 2"]);
+    expect(bucket.removed).toEqual(["clips/p1/old.mp4"]);
+    expect(deps.state.clips.map(({ start, length }) => ({ start, length }))).toEqual(reviewed);
+    expect(deps.state.project).toMatchObject({ status: "done", renderStep: null, highlights: reviewed });
+    expect(deps.state.project.renderPlan).toEqual({
+      renderId: "r2",
+      clips: deps.state.clips.map(({ id, start, length }) => ({ clipId: id, start, length })),
+    });
+    for (const [index, clip] of deps.state.clips.entries()) {
+      const duration = await probeDuration(path.join(root, String(clip.storageKey)));
+      expect(duration).toBeGreaterThan(reviewed[index].length - 0.2);
+      expect(duration).toBeLessThan(reviewed[index].length + 0.2);
+    }
+  });
+
+  it("captions reviewed clips from the stored words, without transcribing again", async () => {
+    const transcript = [
+      { text: "hello", startMs: 3000, endMs: 3600 },
+      { text: "world", startMs: 3600, endMs: 4200 },
+    ];
+    const previous = process.env.WHISPER_MODEL;
+    // Transcribing would need the whisper model.
+    delete process.env.WHISPER_MODEL;
+    try {
+      const deps = fakeDb(
+        renderingProject({
+          withCaptions: true,
+          captionPreset: "classic",
+          durationSeconds: 40,
+          transcript,
+          highlights: [{ start: 2, length: 15 }],
+        }),
+      );
+      await renderClipProject({
+        db: deps.db,
+        store: bucketStore(root).store,
+        projectId: "p1",
+        renderId: "r1",
+        workDir: await mkdtemp(path.join(workRoot, "run-")),
+      });
+
+      expect(deps.state.steps).toEqual(["Downloading the video", "Drawing captions", "Making clip 1 of 1"]);
+      expect(deps.state.project).toMatchObject({ status: "done", transcript });
+    } finally {
+      if (previous !== undefined) process.env.WHISPER_MODEL = previous;
+    }
+  });
+
+  it("refuses reviewed highlights that do not fit the video", async () => {
+    const deps = fakeDb(renderingProject({ durationSeconds: 40, highlights: [{ start: 30, length: 15 }] }));
+
+    await expect(
+      renderClipProject({
+        db: deps.db,
+        store: bucketStore(root).store,
+        projectId: "p1",
+        renderId: "r1",
+        workDir: await mkdtemp(path.join(workRoot, "run-")),
+      }),
+    ).rejects.toThrow("within the 40s video");
+    expect(deps.state.project).toMatchObject({ status: "failed" });
+    expect(deps.state.clips).toEqual([]);
+  });
+
+  it("stops finding highlights once cancelled, leaving none to review", async () => {
+    const deps = fakeDb(renderingProject({ status: "picking" }), (step, project) => {
+      if (step === "Analysing motion and sound") Object.assign(project, { status: "ready", renderStep: "Cancelled", renderId: null });
+    });
+
+    await renderClipProject({
+      db: deps.db,
+      store: bucketStore(root).store,
+      projectId: "p1",
+      renderId: "r1",
+      workDir: await mkdtemp(path.join(workRoot, "run-")),
+    });
+
+    expect(deps.state.project).toMatchObject({ status: "ready", renderStep: "Cancelled", highlights: null });
   });
 });
 

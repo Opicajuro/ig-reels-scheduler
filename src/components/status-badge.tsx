@@ -12,6 +12,8 @@ const STATUSES: Record<Status, { label: string; tone: Tone }> = {
   canceled: { label: "Canceled", tone: "neutral" },
   awaiting_source: { label: "Waiting for upload", tone: "neutral" },
   ready: { label: "Ready", tone: "neutral" },
+  picking: { label: "Finding highlights", tone: "info" },
+  review: { label: "Review highlights", tone: "info" },
   rendering: { label: "Making clips", tone: "info" },
   done: { label: "Clips ready", tone: "success" },
   failed: { label: "Failed", tone: "danger" },

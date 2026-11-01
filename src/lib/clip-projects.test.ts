@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PrismaClient } from "@/generated/prisma/client";
+import { Prisma, type PrismaClient } from "@/generated/prisma/client";
 import type { ClipStore } from "./clip-store";
 import {
   copyClip,
@@ -10,6 +10,7 @@ import {
   deleteClip,
   deleteClips,
   deleteProject,
+  discardHighlights,
   markSourceUploaded,
   moveClipsToProject,
   renameClip,
@@ -195,6 +196,20 @@ describe("markSourceUploaded and createLinkProject", () => {
   });
 });
 
+describe("discardHighlights", () => {
+  it("goes back to the clips, or to ready without any", async () => {
+    const withClips = fakeDb({ projects: [project({ status: "review", highlights: [] })], clips: [clip()] });
+    await discardHighlights({ db: withClips.db, ...owned, projectId: "p1" });
+    expect(withClips.tables.clipProject[0]).toMatchObject({ status: "done", highlights: Prisma.DbNull });
+
+    const empty = fakeDb({ projects: [project({ status: "review", highlights: [] })] });
+    await discardHighlights({ db: empty.db, ...owned, projectId: "p1" });
+    expect(empty.tables.clipProject[0].status).toBe("ready");
+
+    await expect(discardHighlights({ db: empty.db, ...owned, projectId: "p1" })).rejects.toThrow("no highlights");
+  });
+});
+
 describe("startRender", () => {
   it("stores the options, marks the project rendering, and queues it", async () => {
     const { db, tables } = fakeDb({ projects: [project()] });
@@ -326,6 +341,79 @@ describe("startRender", () => {
     await expect(startRender({ ...base, captionFont: "comic" })).rejects.toThrow(UserError);
     expect(queued).toEqual([]);
     expect(tables.clipProject[0].status).toBe("done");
+  });
+
+  it("only finds the highlights with review on, dropping the ones reviewed before", async () => {
+    const { db, tables } = fakeDb({ projects: [project({ status: "review", highlights: [{ start: 0, length: 15 }] })] });
+    const queued: string[] = [];
+    await startRender({
+      db,
+      queue: { send: async (id, renderId) => (queued.push(`${id}:${renderId}`), "job-1") },
+      ...owned,
+      projectId: "p1",
+      review: true,
+      clipSeconds: 30,
+      clipCount: null,
+      withCaptions: false,
+    });
+    expect(tables.clipProject[0]).toMatchObject({ status: "picking", highlights: Prisma.DbNull, clipSeconds: 30 });
+    expect(queued).toEqual([`p1:${tables.clipProject[0].renderId}`]);
+  });
+
+  it("makes clips from the reviewed highlights, in time order", async () => {
+    const { db, tables } = fakeDb({ projects: [project({ status: "review", highlights: [{ start: 0, length: 15 }] })] });
+    const queued: string[] = [];
+    await startRender({
+      db,
+      queue: { send: async (id) => (queued.push(id), "job-1") },
+      ...owned,
+      projectId: "p1",
+      highlights: JSON.stringify([
+        { start: 40.5, length: 19.5 },
+        { start: 2, length: 15.5 },
+      ]),
+      clipSeconds: 15,
+      clipCount: 2,
+      withCaptions: false,
+    });
+    expect(tables.clipProject[0]).toMatchObject({
+      status: "rendering",
+      highlights: [
+        { start: 2, length: 15.5 },
+        { start: 40.5, length: 19.5 },
+      ],
+    });
+    expect(queued).toEqual(["p1"]);
+  });
+
+  it("refuses reviewed highlights that overlap or leave the video, or when none are being reviewed", async () => {
+    const queued: string[] = [];
+    const base = {
+      queue: { send: async (id: string) => (queued.push(id), "job-1") },
+      ...owned,
+      projectId: "p1",
+      clipSeconds: 15,
+      clipCount: 2,
+      withCaptions: false,
+    };
+    const reviewing = fakeDb({ projects: [project({ status: "review" })] });
+    const overlapping = JSON.stringify([
+      { start: 0, length: 20 },
+      { start: 19, length: 20 },
+    ]);
+    await expect(startRender({ ...base, db: reviewing.db, highlights: overlapping })).rejects.toThrow("overlap");
+    await expect(startRender({ ...base, db: reviewing.db, highlights: JSON.stringify([{ start: 50, length: 15 }]) })).rejects.toThrow(
+      "within the 60s video",
+    );
+    expect(reviewing.tables.clipProject[0].status).toBe("review");
+
+    const done = fakeDb({ projects: [project()] });
+    await expect(startRender({ ...base, db: done.db, highlights: JSON.stringify([{ start: 0, length: 15 }]) })).rejects.toThrow(
+      "no longer being reviewed",
+    );
+    const picking = fakeDb({ projects: [project({ status: "picking" })] });
+    await expect(startRender({ ...base, db: picking.db })).rejects.toThrow("still being found");
+    expect(queued).toEqual([]);
   });
 
   it("refuses a project that is still waiting for its upload or is already rendering", async () => {

@@ -18,6 +18,7 @@ describe("listQueue", () => {
             {
               id: "p1",
               name: "Talk",
+              status: "rendering",
               renderStep: "Making clip 2 of 3",
               renderStartedAt: new Date("2026-10-30T11:50:00Z"),
               renderId: "r1",
@@ -27,12 +28,24 @@ describe("listQueue", () => {
             {
               id: "p2",
               name: "Podcast",
+              status: "rendering",
               renderStep: null,
               renderStartedAt: new Date("2026-10-30T11:59:00Z"),
               renderId: "r2",
               // An earlier render's plan: this one has not picked its clips yet.
               renderPlan: { renderId: "r0", clips: [] },
               _count: { clips: 0 },
+            },
+            {
+              id: "p3",
+              name: "Lecture",
+              status: "picking",
+              renderStep: "Analysing motion and sound",
+              renderStartedAt: new Date("2026-10-30T11:59:30Z"),
+              renderId: "r3",
+              // Finding highlights makes no clips, so the clips of the last render are not counted against a plan.
+              renderPlan: { renderId: "r3", clips: [] },
+              _count: { clips: 2 },
             },
           ];
         },
@@ -71,8 +84,9 @@ describe("listQueue", () => {
 
     expect(listing).toEqual({
       renders: [
-        { id: "p1", name: "Talk", step: "Making clip 2 of 3", startedAt: "2026-10-30T11:50:00.000Z", clipsDone: 1, clipsTotal: 3 },
-        { id: "p2", name: "Podcast", step: null, startedAt: "2026-10-30T11:59:00.000Z", clipsDone: 0, clipsTotal: null },
+        { id: "p1", name: "Talk", status: "rendering", step: "Making clip 2 of 3", startedAt: "2026-10-30T11:50:00.000Z", clipsDone: 1, clipsTotal: 3 },
+        { id: "p2", name: "Podcast", status: "rendering", step: null, startedAt: "2026-10-30T11:59:00.000Z", clipsDone: 0, clipsTotal: null },
+        { id: "p3", name: "Lecture", status: "picking", step: "Analysing motion and sound", startedAt: "2026-10-30T11:59:30.000Z", clipsDone: 2, clipsTotal: null },
       ],
       aiVideos: [{ id: "v1", prompt: "A fox", status: "running", step: "Generating video 40%" }],
       slideshows: [{ id: "s1", topic: "Sleep", status: "writing", step: "Writing script" }],
@@ -82,7 +96,7 @@ describe("listQueue", () => {
       ],
       posts: [{ id: "post1", username: "me", caption: "Hello", status: "container_created", scheduledAt: "2026-10-30T12:20:00.000Z" }],
     });
-    expect(where.projects).toEqual({ ownerId: "o1", status: "rendering" });
+    expect(where.projects).toEqual({ ownerId: "o1", status: { in: ["picking", "rendering"] } });
     expect(where.videos).toEqual({ ownerId: "o1", status: { in: ["queued", "running"] } });
     expect(where.slideshows).toEqual({ ownerId: "o1", status: { in: ["writing", "queued", "running"] } });
     expect(where.posts).toEqual({
@@ -97,7 +111,7 @@ describe("listQueue", () => {
   it("throws on a rendering project without a start time", async () => {
     const db = {
       clipProject: {
-        findMany: async () => [{ id: "p1", name: "x", renderStep: null, renderStartedAt: null, renderId: "r1", renderPlan: null, _count: { clips: 0 } }],
+        findMany: async () => [{ id: "p1", name: "x", status: "rendering", renderStep: null, renderStartedAt: null, renderId: "r1", renderPlan: null, _count: { clips: 0 } }],
       },
       aiVideoJob: { findMany: async () => [] },
       slideshowJob: { findMany: async () => [] },
@@ -160,6 +174,22 @@ describe("cancelRender", () => {
 
     expect(cancelled).toEqual([]);
     expect(state.project).toMatchObject({ status: "ready", renderStep: "Cancelled", renderId: null });
+  });
+
+  it("stops finding highlights, back to ready or to the clips of the last render", async () => {
+    const picking = { ...rendering, status: "picking", renderStep: "Analysing motion and sound" };
+    const { db, state } = fakeProjects(picking);
+    const { jobs, cancelled } = fakeClipJobs([{ id: "j1", state: "active", renderId: "r1" }]);
+
+    await cancelRender({ db, jobs, ownerId: "o1", projectId: "p1" });
+
+    expect(cancelled).toEqual(["j1"]);
+    expect(state.project).toMatchObject({ status: "ready", renderStep: "Cancelled", renderId: null });
+
+    const withClips = fakeProjects(picking);
+    withClips.state.clips = 2;
+    await cancelRender({ db: withClips.db, jobs, ownerId: "o1", projectId: "p1" });
+    expect(withClips.state.project).toMatchObject({ status: "done", renderId: null });
   });
 
   it("refuses another owner's project, a project not making clips, and a render that finished meanwhile", async () => {

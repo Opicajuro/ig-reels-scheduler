@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import type { PrismaClient } from "@/generated/prisma/client";
+import { Prisma, type PrismaClient } from "@/generated/prisma/client";
 import {
   assertHttpUrl,
   MAX_CLIPS,
@@ -20,6 +20,7 @@ import {
 } from "@/clip-engine/helpers.js";
 import type { ClipStore } from "./clip-store";
 import { validateCaption } from "./caption";
+import { parseHighlightsJson } from "./highlights";
 import type { ClipQueue, PublishQueue } from "./queues";
 import { checkRights, type AudioSourceValue } from "./rights";
 import { publishJobRunAt } from "./scheduling";
@@ -94,11 +95,16 @@ export async function createLinkProject({
   });
 }
 
+// "Make clips", in one of three ways: with review on, it only finds the highlights, for the person to adjust before
+// making clips ("picking", then "review"); given the reviewed highlights, it makes exactly those clips; with review
+// off, it picks the highlights and makes the clips in one go.
 export async function startRender({
   db,
   queue,
   ownerId,
   projectId,
+  review = false,
+  highlights,
   clipSeconds,
   clipCount,
   withCaptions,
@@ -117,6 +123,9 @@ export async function startRender({
   queue: ClipQueue;
   ownerId: string;
   projectId: string;
+  review?: boolean;
+  // The reviewed highlights' JSON, sent from the timeline while the project is in review.
+  highlights?: string;
   clipSeconds: unknown;
   clipCount: unknown;
   withCaptions: boolean;
@@ -134,6 +143,12 @@ export async function startRender({
   const project = await ownedProject(db, ownerId, projectId);
   if (project.status === "awaiting_source") throw new UserError("upload the video before making clips");
   if (project.status === "rendering") throw new UserError("clips are already rendering for this project");
+  if (project.status === "picking") throw new UserError("the highlights are still being found for this project");
+  if (highlights !== undefined && project.status !== "review") {
+    throw new UserError("these highlights are no longer being reviewed: find the highlights again");
+  }
+  const reviewed =
+    highlights === undefined ? null : parseHighlightsJson(highlights, requireDuration(project.id, project.durationSeconds));
 
   const seconds = parseClipSeconds(clipSeconds);
   // null means Auto: the worker picks the count once it knows the video's length.
@@ -154,7 +169,8 @@ export async function startRender({
   await db.clipProject.update({
     where: { id: projectId },
     data: {
-      status: "rendering",
+      status: reviewed || !review ? "rendering" : "picking",
+      highlights: reviewed ?? Prisma.DbNull,
       error: null,
       renderStep: null,
       renderStartedAt: new Date(),
@@ -181,6 +197,21 @@ export async function startRender({
     await db.clipProject.update({ where: { id: projectId }, data: { status: "failed", error: message } });
     throw err;
   }
+}
+
+function requireDuration(projectId: string, durationSeconds: number | null): number {
+  if (durationSeconds === null) throw new Error(`project ${projectId} has highlights to review but no video length`);
+  return durationSeconds;
+}
+
+// Drops the highlights being reviewed. The project goes back to its clips, or to ready without any.
+export async function discardHighlights({ db, ownerId, projectId }: { db: PrismaClient; ownerId: string; projectId: string }) {
+  const project = await ownedProject(db, ownerId, projectId);
+  if (project.status !== "review") throw new UserError("this project has no highlights to review");
+  await db.clipProject.update({
+    where: { id: projectId },
+    data: { status: project.clips.length > 0 ? "done" : "ready", highlights: Prisma.DbNull, renderStep: null },
+  });
 }
 
 export async function renameProject({
@@ -210,7 +241,7 @@ export async function deleteProject({
   projectId: string;
 }) {
   const project = await ownedProject(db, ownerId, projectId);
-  if (project.status === "rendering") throw new UserError("clips are rendering for this project");
+  if (project.status === "rendering" || project.status === "picking") throw new UserError("clips are rendering for this project");
 
   // Files go first, so a failed delete leaves the rows in place to retry from.
   const keys = [project.sourceKey, ...project.clips.map((clip) => clip.storageKey)];
@@ -232,7 +263,7 @@ export async function copyProject({
   projectId: string;
 }) {
   const original = await ownedProject(db, ownerId, projectId);
-  if (original.status === "rendering") throw new UserError("clips are rendering for this project");
+  if (original.status === "rendering" || original.status === "picking") throw new UserError("clips are rendering for this project");
   if (original.status === "awaiting_source") throw new UserError("upload the video before copying this project");
 
   const copy = await db.clipProject.create({
@@ -243,6 +274,8 @@ export async function copyProject({
       status: original.status,
       error: original.error,
       durationSeconds: original.durationSeconds,
+      highlights: original.highlights ?? Prisma.DbNull,
+      transcript: original.transcript ?? Prisma.DbNull,
       clipSeconds: original.clipSeconds,
       clipCount: original.clipCount,
       withCaptions: original.withCaptions,

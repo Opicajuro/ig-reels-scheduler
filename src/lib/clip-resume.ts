@@ -12,8 +12,8 @@ function isPlannedClip(value: unknown): value is PlannedClip {
   const clip = value as Record<string, unknown>;
   return (
     typeof clip.clipId === "string" &&
-    Number.isInteger(clip.start) &&
-    Number.isInteger(clip.length) &&
+    typeof clip.start === "number" &&
+    typeof clip.length === "number" &&
     (clip.title === undefined || typeof clip.title === "string")
   );
 }
@@ -55,19 +55,19 @@ export function resumeStep(clipNumber: number, total: number): string {
   return `Resuming… clip ${clipNumber} of ${total}`;
 }
 
-// Run once when the worker starts, before it takes clip jobs. A project still "rendering" then was cut off by closing
-// Localirs (a PC that only slept carries on with its job when it wakes). Its job is marked running by the worker that
-// was closed, and would only fail when it expires hours later, so it is cancelled and the render is queued again.
-// A job of this render that is still waiting is left to run.
+// Run once when the worker starts, before it takes clip jobs. A project still "rendering" or "picking" then was cut off
+// by closing Localirs (a PC that only slept carries on with its job when it wakes). Its job is marked running by the
+// worker that was closed, and would only fail when it expires hours later, so it is cancelled and the render is queued
+// again. A job of this render that is still waiting is left to run. Finding highlights starts again from its download.
 export async function requeueInterruptedRenders({ db, jobs }: { db: PrismaClient; jobs: ClipJobs }): Promise<string[]> {
   const projects = await db.clipProject.findMany({
-    where: { status: "rendering" },
-    select: { id: true, renderId: true, renderPlan: true, _count: { select: { clips: true } } },
+    where: { status: { in: ["picking", "rendering"] } },
+    select: { id: true, status: true, renderId: true, renderPlan: true, _count: { select: { clips: true } } },
   });
   const requeued: string[] = [];
   for (const project of projects) {
     const renderId = requireRenderId(project);
-    const plan = resumablePlan(renderId, project.renderPlan);
+    const plan = project.status === "rendering" ? resumablePlan(renderId, project.renderPlan) : null;
     const open = await jobs.open(project.id);
     if (open.some((job) => job.state !== "active" && job.renderId === renderId)) continue;
     if (open.length > 0) await jobs.cancel(open.map((job) => job.id));

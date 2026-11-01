@@ -6,6 +6,8 @@ export function describeClipProject(project: { status: string; error: string | n
   // The Queue page's cancel leaves "Cancelled" as the last step.
   const cancelled = project.renderStep === RENDER_CANCELLED;
   if (project.status === "ready") return cancelled ? "Making clips was cancelled. Choose the settings and make clips." : "Ready. Choose the settings and make clips.";
+  if (project.status === "picking") return "Finding highlights…";
+  if (project.status === "review") return "Highlights found. Adjust them on the timeline, then make clips.";
   if (project.status === "rendering") return "Making clips…";
   if (project.status === "failed") return `Failed: ${project.error ?? "unknown error"}`;
   if (cancelled) return "Making clips was cancelled. The clips made before that are kept.";

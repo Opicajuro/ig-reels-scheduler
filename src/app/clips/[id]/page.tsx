@@ -16,14 +16,17 @@ import { SourceLink } from "../source-link";
 import {
   copyProjectAction,
   deleteProjectAction,
+  discardHighlightsAction,
   startRenderAction,
 } from "../actions";
 import { RenderProgress } from "../render-progress";
 import styles from "../clips.module.css";
 import { ClipGrid } from "./clip-grid";
+import { HighlightReview } from "./highlight-review";
 import { ProjectTitle } from "./project-title";
 import { VIDEO_COLOR_NAMES, videoColor } from "@/clip-engine/remotion/caption-presets.js";
 import { END_CARD_TEXT_MAX, HOOK_TEXT_MAX } from "@/clip-engine/helpers.js";
+import { lengthLimits, parseTranscript, validateHighlights } from "@/lib/highlights";
 
 export const metadata: Metadata = { title: "Clip project" };
 
@@ -56,6 +59,25 @@ const HOOK_MODES = [
 // A colour burned into the video, shown as a dot of that colour.
 function ColorDot({ name }: { name: string }) {
   return <span className={styles.colorDot} style={{ "--dot": videoColor(name) } as CSSProperties} />;
+}
+
+const SETTINGS_FORM = "clip-settings";
+
+// The highlights waiting for review, with what the timeline needs. They were checked against the video when found.
+async function reviewState(project: {
+  durationSeconds: number | null;
+  highlights: unknown;
+  sourceKey: string | null;
+  transcript: unknown;
+}) {
+  if (project.durationSeconds === null || !project.sourceKey) throw new Error("highlights to review without a stored video");
+  return {
+    durationSeconds: project.durationSeconds,
+    highlights: validateHighlights(project.highlights, project.durationSeconds),
+    limits: lengthLimits(project.durationSeconds),
+    sourceUrl: await presignDownload(project.sourceKey, 3600),
+    words: project.transcript === null ? null : parseTranscript(project.transcript),
+  };
 }
 
 // Every project that is making clips has a start time: "Make clips" sets it, and the migration that added it set it
@@ -122,7 +144,8 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
 
   // The AI videos and Slideshows projects have no source video: their clips are made on the Clips page.
   const noSource = project.aiVideos || project.slideshows;
-  const busy = project.status === "rendering";
+  const busy = project.status === "rendering" || project.status === "picking";
+  const review = project.status === "review" ? await reviewState(project) : null;
   const waiting = project.status === "awaiting_source";
   const preset = project.captionPreset ?? "classic";
   const failed = project.status === "failed";
@@ -183,6 +206,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       {busy ? (
         <RenderProgress
           projectId={project.id}
+          status={project.status === "picking" ? "picking" : "rendering"}
           initialStep={project.renderStep}
           startedAt={renderStartedAt(project.renderStartedAt).toISOString()}
           initialClipsDone={project.clips.length}
@@ -192,6 +216,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       <div className={`${styles.project} ${noSource ? styles.single : ""}`}>
         {noSource ? null : (
           <ActionForm
+            id={SETTINGS_FORM}
             className={styles.settings}
             action={startRenderAction}
             confirm={
@@ -333,25 +358,64 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
               </Field>
             </div>
             <div className={styles.settingsFooter}>
-              <SubmitButton variant="primary" disabled={busy || waiting} pendingLabel="Starting…">
-                Make clips
-              </SubmitButton>
+              {review ? (
+                <>
+                  <SubmitButton variant="primary" name="intent" value="reviewed" disabled={busy} pendingLabel="Starting…">
+                    Make clips
+                  </SubmitButton>
+                  <SubmitButton name="intent" value="pick" disabled={busy} pendingLabel="Starting…">
+                    Find highlights again
+                  </SubmitButton>
+                </>
+              ) : (
+                <>
+                  <label className={styles.toggle}>
+                    <span>Review highlights before making clips</span>
+                    <input type="checkbox" name="review" defaultChecked />
+                  </label>
+                  <SubmitButton variant="primary" disabled={busy || waiting} pendingLabel="Starting…">
+                    <span className={styles.findLabel}>Find highlights</span>
+                    <span className={styles.makeLabel}>Make clips</span>
+                  </SubmitButton>
+                </>
+              )}
             </div>
           </ActionForm>
         )}
 
-        <section>
-          <h2>Clips</h2>
-          <ClipGrid
-            projectId={project.id}
-            busy={busy}
-            clips={clips}
-            accounts={accounts.map((account) => ({ id: account.id, username: account.username }))}
-            alreadyScheduledTo={alreadyScheduledTo}
-            projects={otherProjects}
-            bestTimeSamples={bestTimeSamples}
-          />
-        </section>
+        <div className={styles.column}>
+          {review ? (
+            <div className={styles.reviewPanel}>
+              <HighlightReview
+                formId={SETTINGS_FORM}
+                durationSeconds={review.durationSeconds}
+                initial={review.highlights}
+                limits={review.limits}
+                clipSeconds={project.clipSeconds}
+                sourceUrl={review.sourceUrl}
+                words={review.words}
+              />
+              <ActionForm action={discardHighlightsAction}>
+                <input type="hidden" name="projectId" value={project.id} />
+                <SubmitButton size="sm" pendingLabel="Discarding…">
+                  Discard highlights
+                </SubmitButton>
+              </ActionForm>
+            </div>
+          ) : null}
+          <section>
+            <h2>Clips</h2>
+            <ClipGrid
+              projectId={project.id}
+              busy={busy}
+              clips={clips}
+              accounts={accounts.map((account) => ({ id: account.id, username: account.username }))}
+              alreadyScheduledTo={alreadyScheduledTo}
+              projects={otherProjects}
+              bestTimeSamples={bestTimeSamples}
+            />
+          </section>
+        </div>
       </div>
     </main>
   );

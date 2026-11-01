@@ -48,13 +48,13 @@ describe("remainingClips", () => {
   });
 });
 
-type Project = { id: string; renderId: string | null; renderPlan: unknown; clips: number };
+type Project = { id: string; status?: string; renderId: string | null; renderPlan: unknown; clips: number };
 
 function fakeDb(projects: Project[]) {
   const updates: { id: string; renderStep: string }[] = [];
   const db = {
     clipProject: {
-      findMany: async () => projects.map(({ clips, ...project }) => ({ ...project, _count: { clips } })),
+      findMany: async () => projects.map(({ clips, ...project }) => ({ status: "rendering", ...project, _count: { clips } })),
       update: async ({ where, data }: { where: { id: string }; data: { renderStep: string } }) => {
         updates.push({ id: where.id, renderStep: data.renderStep });
       },
@@ -92,6 +92,17 @@ describe("requeueInterruptedRenders", () => {
 
     await requeueInterruptedRenders({ db, jobs: queue.jobs });
 
+    expect(queue.sent).toEqual(["p1:r1"]);
+    expect(updates).toEqual([{ id: "p1", renderStep: "Resuming…" }]);
+  });
+
+  it("queues finding highlights again, which starts over, whatever plan the last render stored", async () => {
+    const { db, updates } = fakeDb([{ id: "p1", status: "picking", renderId: "r1", renderPlan: plan, clips: 1 }]);
+    const queue = fakeJobs({ p1: [{ id: "j1", state: "active", renderId: "r1" }] });
+
+    expect(await requeueInterruptedRenders({ db, jobs: queue.jobs })).toEqual(["p1"]);
+
+    expect(queue.cancelled).toEqual(["j1"]);
     expect(queue.sent).toEqual(["p1:r1"]);
     expect(updates).toEqual([{ id: "p1", renderStep: "Resuming…" }]);
   });

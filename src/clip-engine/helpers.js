@@ -168,11 +168,11 @@ function clipFlexSeconds(clipSeconds) {
 }
 
 // Extends the clip to the quietest second within flex seconds, so the cut lands in a pause.
-// It never ends before the requested length, so the last words are kept.
+// It never ends before the requested length, so the last words are kept, nor runs past the longest clip.
 // Among equally quiet ends, the one closest to the requested length wins.
 function quietEnd(scores, start, length, regionEnd, flex) {
   const target = start + length;
-  const latest = Math.min(target + flex, regionEnd);
+  const latest = Math.min(target + flex, regionEnd, start + MAX_CLIP_SECONDS);
   const candidates = [];
   for (let end = target; end <= latest; end++) candidates.push(end);
   candidates.sort((a, b) => Math.abs(a - target) - Math.abs(b - target));

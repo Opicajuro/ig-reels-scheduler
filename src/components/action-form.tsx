@@ -26,12 +26,15 @@ export function ActionForm({
   action,
   confirm,
   onDone,
+  id,
   className,
   children,
 }: {
   action: (previous: ActionResult, formData: FormData) => Promise<ActionResult>;
   confirm?: Confirmation;
   onDone?: () => void;
+  // Lets fields outside the form, such as a timeline's, join it with their form attribute.
+  id?: string;
   className?: string;
   children: ReactNode;
 }) {
@@ -52,12 +55,14 @@ export function ActionForm({
 
   return (
     <form
+      id={id}
       className={className}
       onSubmit={(event) => {
         // Sent from here rather than through the action prop, because React clears a form after its action prop runs.
         event.preventDefault();
         if (pending) return;
-        const formData = new FormData(event.currentTarget);
+        // With the button pressed, so a form with several buttons can tell which one.
+        const formData = new FormData(event.currentTarget, (event.nativeEvent as SubmitEvent).submitter);
         if (confirm) {
           setAsking(formData);
         } else {

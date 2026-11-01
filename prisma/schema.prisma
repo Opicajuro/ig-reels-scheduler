@@ -164,6 +164,9 @@ model AuditLog {
 enum ClipProjectStatus {
   awaiting_source
   ready
+  // "Find highlights" is downloading and analysing the video, then the picked highlights wait in "review".
+  picking
+  review
   rendering
   done
   failed
@@ -186,6 +189,11 @@ model ClipProject {
   // The highlights a render picked, stored before its first clip is made: { renderId, clips: [{ clipId, start,
   // length }] }. A render whose plan is already stored was interrupted, and goes on from the clips it finished.
   renderPlan      Json?
+  // The highlights "Find highlights" picked and the person adjusted: [{ start, length }] in seconds. A render that
+  // starts with them makes exactly these clips instead of picking its own.
+  highlights      Json?
+  // The source video's whisper words, [{ text, startMs, endMs }], kept so captions never transcribe it twice.
+  transcript      Json?
   durationSeconds Int?
   clipSeconds     Int               @default(30)
   clipCount       Int?
@@ -219,8 +227,9 @@ model Clip {
   projectId   String
   project     ClipProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name        String
-  start       Int
-  length      Int
+  // Seconds into the source video. Reviewed highlights move by half seconds.
+  start       Float
+  length      Float
   storageKey  String
   title       String?
   description String?

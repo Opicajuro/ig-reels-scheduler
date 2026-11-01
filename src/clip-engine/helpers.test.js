@@ -148,3 +148,10 @@ test("parseUploadDescription enforces YouTube's 5000-byte limit and keeps the te
   assert.throws(() => parseUploadDescription("é".repeat(2501)), UserError);
   assert.throws(() => parseUploadDescription(undefined), UserError);
 });
+
+test("pickHighlights never runs a clip past the longest clip to reach a quiet second", () => {
+  const scores = new Array(300).fill(1);
+  scores[220] = 0;
+  const [highlight] = pickHighlights(scores, 180, 1);
+  assert.equal(highlight.length, 180);
+});
