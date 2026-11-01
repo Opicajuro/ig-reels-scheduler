@@ -17,6 +17,10 @@
   "dependencies": {
     "@aws-sdk/client-s3": "3.1148.0",
     "@aws-sdk/s3-request-presigner": "3.1148.0",
+    "@fontsource/anton": "5.3.0",
+    "@fontsource/bebas-neue": "5.3.0",
+    "@fontsource/montserrat": "5.3.0",
+    "@fontsource/noto-color-emoji": "5.3.2",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "@remotion/bundler": "^4.0.534",

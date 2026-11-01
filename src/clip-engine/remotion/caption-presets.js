@@ -48,3 +48,38 @@ export function captionPlacement(name) {
   if (!Object.hasOwn(PLACEMENTS, name)) throw new Error(`Unknown caption position "${name}"`);
   return PLACEMENTS[name];
 }
+
+// Fonts the captions, the hook title and the end card can use. The default is the one the captions have always used;
+// the others are shipped with the app (remotion/fonts.js) and load in the bundle.
+export const CAPTION_FONT_NAMES = ["default", "montserrat", "anton", "bebas"];
+
+const FONTS = {
+  default: { family: "sans-serif", weight: 800 },
+  montserrat: { family: "Montserrat", weight: 800 },
+  anton: { family: "Anton", weight: 400 },
+  bebas: { family: "Bebas Neue", weight: 400 },
+};
+
+export function captionFont(name) {
+  if (!Object.hasOwn(FONTS, name)) throw new Error(`Unknown caption font "${name}"`);
+  return FONTS[name];
+}
+
+// Colours burned into the video: the word-by-word highlight and the progress bar. They are the same whatever theme
+// the app shows, so they are plain values rather than tokens.
+export const VIDEO_COLOR_NAMES = ["yellow", "green", "cyan", "pink", "white"];
+
+const VIDEO_COLORS = {
+  yellow: "#ffd400",
+  green: "#3ee26b",
+  cyan: "#22d3ee",
+  pink: "#ff4fa3",
+  white: "#ffffff",
+};
+
+export function videoColor(name) {
+  if (!Object.hasOwn(VIDEO_COLORS, name)) throw new Error(`Unknown video colour "${name}"`);
+  return VIDEO_COLORS[name];
+}
+
+export const EMOJI_FONT_FAMILY = "Noto Color Emoji";

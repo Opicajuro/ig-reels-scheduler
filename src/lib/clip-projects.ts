@@ -4,8 +4,14 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import {
   assertHttpUrl,
   MAX_CLIPS,
+  parseCaptionFont,
+  parseCaptionHighlight,
   parseCaptionPosition,
   parseCaptionPreset,
+  parseEndCardText,
+  parseHookMode,
+  parseHookText,
+  parseProgressBar,
   parseClipName,
   parseClipSeconds,
   parseProjectName,
@@ -99,6 +105,13 @@ export async function startRender({
   captionPreset,
   captionPosition,
   captionUppercase,
+  captionFont = "default",
+  captionHighlight = "yellow",
+  captionEmoji = false,
+  hookMode = "off",
+  hookText = "",
+  progressBar = "off",
+  endCardText = "",
 }: {
   db: PrismaClient;
   queue: ClipQueue;
@@ -110,6 +123,13 @@ export async function startRender({
   captionPreset?: unknown;
   captionPosition?: unknown;
   captionUppercase?: boolean;
+  captionFont?: unknown;
+  captionHighlight?: unknown;
+  captionEmoji?: boolean;
+  hookMode?: unknown;
+  hookText?: unknown;
+  progressBar?: unknown;
+  endCardText?: unknown;
 }) {
   const project = await ownedProject(db, ownerId, projectId);
   if (project.status === "awaiting_source") throw new UserError("upload the video before making clips");
@@ -123,6 +143,11 @@ export async function startRender({
   const preset = withCaptions ? parseCaptionPreset(captionPreset) : null;
   const position = withCaptions ? parseCaptionPosition(captionPosition) : "bottom";
   const uppercase = withCaptions && captionUppercase === true;
+  const font = parseCaptionFont(captionFont);
+  const highlight = withCaptions ? parseCaptionHighlight(captionHighlight) : "yellow";
+  const emoji = withCaptions && captionEmoji === true;
+  const hook = parseHookMode(hookMode);
+  const hookTitle = parseHookText(hookText, hook);
 
   // A new render id: this render starts over, replacing the clips, even if an earlier one was interrupted.
   const renderId = randomUUID();
@@ -139,6 +164,13 @@ export async function startRender({
       captionPreset: preset,
       captionPosition: position,
       captionUppercase: uppercase,
+      captionFont: font,
+      captionHighlight: highlight,
+      captionEmoji: emoji,
+      hookMode: hook,
+      hookText: hookTitle,
+      progressBar: parseProgressBar(progressBar),
+      endCardText: parseEndCardText(endCardText),
     },
   });
   try {
@@ -214,6 +246,15 @@ export async function copyProject({
       clipCount: original.clipCount,
       withCaptions: original.withCaptions,
       captionPreset: original.captionPreset,
+      captionPosition: original.captionPosition,
+      captionUppercase: original.captionUppercase,
+      captionFont: original.captionFont,
+      captionHighlight: original.captionHighlight,
+      captionEmoji: original.captionEmoji,
+      hookMode: original.hookMode,
+      hookText: original.hookText,
+      progressBar: original.progressBar,
+      endCardText: original.endCardText,
     },
   });
   if (original.sourceKey) {
