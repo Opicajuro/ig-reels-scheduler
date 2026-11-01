@@ -33,15 +33,22 @@ afterAll(async () => {
 
 type Row = Record<string, unknown>;
 
-function fakeDb(project: Row) {
+function fakeDb(project: Row, onStep: (step: string, project: Row) => void = () => {}) {
   const state = { project: { ...project }, clips: [] as Row[], steps: [] as string[] };
   const db = {
     clipProject: {
       findUnique: async () => ({ ...state.project }),
-      update: async ({ data }: { data: Row }) => {
-        if (typeof data.renderStep === "string") state.steps.push(data.renderStep);
+      updateMany: async ({ where, data }: { where: Row; data: Row }) => {
+        const matches = Object.entries(where).every(([key, value]) =>
+          key === "clips" ? state.clips.length > 0 : key === "id" || state.project[key] === value,
+        );
+        if (!matches) return { count: 0 };
         Object.assign(state.project, data);
-        return state.project;
+        if (typeof data.renderStep === "string") {
+          state.steps.push(data.renderStep);
+          onStep(data.renderStep, state.project);
+        }
+        return { count: 1 };
       },
     },
     clip: {
@@ -219,6 +226,35 @@ describe("renderClipProject", () => {
     expect(deps.state.clips).toHaveLength(2);
     expect(deps.state.clips.some((clip) => clip.id === "c1")).toBe(false);
     expect(deps.state.project.renderPlan).toMatchObject({ renderId: "r2" });
+  });
+
+  it("stops before the next clip once the render is cancelled, keeping the clips made", async () => {
+    const work = await mkdtemp(path.join(workRoot, "run-"));
+    // The Queue page's cancel clears the render id while the first clip is made.
+    const deps = fakeDb(renderingProject(), (step, project) => {
+      if (step === "Making clip 1 of 2") Object.assign(project, { status: "ready", renderStep: "Cancelled", renderId: null });
+    });
+    const bucket = bucketStore(root);
+
+    await renderClipProject({ db: deps.db, store: bucket.store, projectId: "p1", renderId: "r1", workDir: work });
+
+    expect(deps.state.clips.map((clip) => clip.name)).toEqual(["clip-001"]);
+    expect(deps.state.steps.at(-1)).toBe("Making clip 1 of 2");
+    // Cancelled with no clip made yet, the project went back to ready; the clip finished since then makes it done.
+    expect(deps.state.project).toMatchObject({ status: "done", renderStep: "Cancelled", renderId: null });
+  });
+
+  it("stops at its next step when cancelled before the clips, without writing over the cancel", async () => {
+    const work = await mkdtemp(path.join(workRoot, "run-"));
+    const deps = fakeDb(renderingProject(), (step, project) => {
+      if (step === "Downloading the video") Object.assign(project, { status: "ready", renderStep: "Cancelled", renderId: null });
+    });
+
+    await renderClipProject({ db: deps.db, store: bucketStore(root).store, projectId: "p1", renderId: "r1", workDir: work });
+
+    expect(deps.state.clips).toEqual([]);
+    expect(deps.state.steps).toEqual(["Downloading the video"]);
+    expect(deps.state.project).toMatchObject({ status: "ready", renderStep: "Cancelled", renderId: null, renderPlan: null });
   });
 
   it("refuses a job queued for an earlier render", async () => {

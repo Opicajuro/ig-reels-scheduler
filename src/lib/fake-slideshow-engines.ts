@@ -3,8 +3,9 @@ import path from "node:path";
 
 // For tests: stand-ins for llama-server and sd-cli, written as Node scripts into dir. The fake llama-server answers
 // /health (503 while "loading", then 200) and /v1/chat/completions with the slides the request's schema asks for, or
-// FAKE_LLAMA_REPLY; it logs each request and its stop to FAKE_LLAMA_RECORD. The fake sd-cli logs its arguments to
-// FAKE_SD_RECORD and copies FAKE_SD_PICTURE to its -o path, or fails like a card out of memory when the prompt says so.
+// FAKE_LLAMA_REPLY, or never when that is "slow"; it logs each request and its stop to FAKE_LLAMA_RECORD. The fake
+// sd-cli logs its arguments to FAKE_SD_RECORD and copies FAKE_SD_PICTURE to its -o path, fails like a card out of
+// memory when the prompt says so, or draws for a minute when the prompt says "slow", logging when it is stopped.
 
 const LLAMA_SERVER = String.raw`#!/usr/bin/env node
 const http = require("node:http");
@@ -25,6 +26,7 @@ const server = http.createServer((request, response) => {
     request.on("end", () => {
       const sent = JSON.parse(body);
       record({ args, request: sent });
+      if (process.env.FAKE_LLAMA_REPLY === "slow") return;
       const count = sent.response_format.schema.properties.slides.minItems;
       const slides = Array.from({ length: count }, (_, index) => ({ text: " Line " + (index + 1) + ". ", picture: "Picture " + (index + 1) }));
       const content = process.env.FAKE_LLAMA_REPLY || JSON.stringify({ slides });
@@ -51,7 +53,15 @@ if (arg("-p").includes("out of memory")) {
   console.error("ggml_vulkan: Device memory allocation of size 1073741824 failed.");
   process.exit(1);
 }
-fs.copyFileSync(process.env.FAKE_SD_PICTURE, arg("-o"));
+if (arg("-p").includes("slow")) {
+  process.on("SIGTERM", () => {
+    fs.appendFileSync(process.env.FAKE_SD_RECORD, JSON.stringify("stopped") + "\n");
+    process.exit(1);
+  });
+  setTimeout(() => {}, 60_000);
+} else {
+  fs.copyFileSync(process.env.FAKE_SD_PICTURE, arg("-o"));
+}
 `;
 
 export async function writeFakeEngines(dir: string) {

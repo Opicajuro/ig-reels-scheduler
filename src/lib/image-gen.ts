@@ -10,7 +10,8 @@ export const PICTURE_HEIGHT = 1344;
 const STEPS = 8;
 
 export type PictureModels = { cli: string; diffusion: string; llm: string; vae: string };
-export type DrawPicture = (prompt: string, output: string) => Promise<void>;
+// Aborting the signal kills sd-cli.
+export type DrawPicture = (prompt: string, output: string, signal: AbortSignal) => Promise<void>;
 
 export function pictureArgs({ models, prompt, output, seed }: { models: PictureModels; prompt: string; output: string; seed: number }) {
   return [
@@ -29,10 +30,23 @@ export function pictureArgs({ models, prompt, output, seed }: { models: PictureM
   ];
 }
 
-// Draws one picture to output (a .png). Throws with the end of sd-cli's output when it fails or writes nothing.
-export function drawPicture({ models, prompt, output, seed }: { models: PictureModels; prompt: string; output: string; seed: number }) {
+// Draws one picture to output (a .png). Throws with the end of sd-cli's output when it fails or writes nothing, and
+// kills it when signal is aborted.
+export function drawPicture({
+  models,
+  prompt,
+  output,
+  seed,
+  signal,
+}: {
+  models: PictureModels;
+  prompt: string;
+  output: string;
+  seed: number;
+  signal: AbortSignal;
+}) {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(models.cli, pictureArgs({ models, prompt, output, seed }), { windowsHide: true });
+    const child = spawn(models.cli, pictureArgs({ models, prompt, output, seed }), { windowsHide: true, signal });
     let log = "";
     const keep = (chunk: Buffer) => {
       log = (log + chunk.toString()).slice(-4000);

@@ -69,7 +69,8 @@ describe("writeScript with a llama-server", () => {
     delete process.env.FAKE_LLAMA_REPLY;
   });
 
-  const start = () => startLlamaServer({ server, model: "/models/qwen.gguf", logPath: path.join(root, "llama-server.log") });
+  const start = (signal: AbortSignal) => startLlamaServer({ server, model: "/models/qwen.gguf", logPath: path.join(root, "llama-server.log"), signal });
+  const signal = new AbortController().signal;
   const entries = async () =>
     (await readFile(record, "utf8"))
       .trim()
@@ -77,7 +78,7 @@ describe("writeScript with a llama-server", () => {
       .map((line) => JSON.parse(line));
 
   it("starts it on 127.0.0.1, waits for the model, asks with the schema and stops it", async () => {
-    const slides = await writeScript({ start, topic: "Better sleep", count: 4 });
+    const slides = await writeScript({ start, topic: "Better sleep", count: 4, signal });
     expect(slides).toHaveLength(4);
     expect(slides[0]).toEqual({ text: "Line 1.", picture: "Picture 1" });
 
@@ -92,12 +93,23 @@ describe("writeScript with a llama-server", () => {
 
   it("stops it when the answer does not parse", async () => {
     process.env.FAKE_LLAMA_REPLY = JSON.stringify({ slides: [] });
-    await expect(writeScript({ start, topic: "Better sleep", count: 3 })).rejects.toThrow("0 slides instead of 3");
+    await expect(writeScript({ start, topic: "Better sleep", count: 3, signal })).rejects.toThrow("0 slides instead of 3");
+    expect((await entries()).at(-1)).toEqual({ stopped: true });
+  });
+
+  it("kills it when the signal is aborted while it answers", async () => {
+    process.env.FAKE_LLAMA_REPLY = "slow";
+    const controller = new AbortController();
+    const writing = writeScript({ start, topic: "Better sleep", count: 3, signal: controller.signal });
+    // Aborted once the request has reached the server.
+    while (!(await readFile(record, "utf8")).includes("request")) await new Promise((resolve) => setTimeout(resolve, 20));
+    controller.abort();
+    await expect(writing).rejects.toThrow();
     expect((await entries()).at(-1)).toEqual({ stopped: true });
   });
 
   it("says why when the server does not start", async () => {
-    await expect(startLlamaServer({ server: path.join(root, "missing"), model: "m", logPath: path.join(root, "missing.log") })).rejects.toThrow(
+    await expect(startLlamaServer({ server: path.join(root, "missing"), model: "m", logPath: path.join(root, "missing.log"), signal })).rejects.toThrow(
       "the script writer did not start",
     );
   });

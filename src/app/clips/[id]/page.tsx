@@ -106,7 +106,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
   const waiting = project.status === "awaiting_source";
   const preset = project.captionPreset ?? "classic";
   const failed = project.status === "failed";
-  const summary = describeClipProject({ status: project.status, error: project.error, clipCount: clips.length });
+  const summary = describeClipProject({ status: project.status, error: project.error, renderStep: project.renderStep, clipCount: clips.length });
   const sourceLength = project.durationSeconds
     ? `Source ${Math.floor(project.durationSeconds / 60)}:${String(project.durationSeconds % 60).padStart(2, "0")}`
     : null;

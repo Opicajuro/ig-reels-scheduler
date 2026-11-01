@@ -1,7 +1,7 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { PrismaClient } from "@/generated/prisma/client";
+import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { captionLines } from "@/clip-engine/captions-timing.js";
 import { buildVoiceTrack, preparePicture, renderSlideshow, slideTimings } from "@/clip-engine/slideshow.js";
 import { captionOverlays } from "./clip-render";
@@ -30,14 +30,20 @@ export type SlideshowTools = {
 
 const CAPTIONED = "slideshow";
 
+// How often a running slideshow checks whether it was cancelled, to kill the llama-server or sd-cli it is waiting on.
+const CANCEL_CHECK_MS = 2000;
+
+// Thrown by a slideshow's write once it is cancelled, to stop it.
+class SlideshowCancelled extends Error {}
+
 // The installed engines, Kokoro from the installer's tools, and the whisper and caption path the clips use.
 export function localSlideshowTools(db: PrismaClient): SlideshowTools {
   const root = slideshowDir();
   const script = scriptWriterPaths(root);
   const picture = pictureMakerPaths(root);
   return {
-    startLlm: () => startLlamaServer({ server: script.server, model: script.model, logPath: path.join(root, "llama-server.log") }),
-    drawPicture: (prompt, output) => drawPicture({ models: picture, prompt, output, seed: randomInt(2 ** 31) }),
+    startLlm: (signal) => startLlamaServer({ server: script.server, model: script.model, logPath: path.join(root, "llama-server.log"), signal }),
+    drawPicture: (prompt, output, signal) => drawPicture({ models: picture, prompt, output, seed: randomInt(2 ** 31), signal }),
     speak: (lines, voice, dir) => kokoroSpeaker(requireEnv("KOKORO_MODEL"))(lines, voice, dir),
     transcribe: (wav, workDir) => transcribeWithWhisper(db, wav, workDir),
     captions: async (words, total, dir, preset) => {
@@ -62,7 +68,8 @@ async function slideshowProject(db: PrismaClient, ownerId: string, captionPreset
 }
 
 // Runs one step of a slideshow: "script" writes its slides into a draft for the person to edit; "render" makes the
-// edited draft into a clip in the owner's "Slideshows" project.
+// edited draft into a clip in the owner's "Slideshows" project. Cancelling it marks it failed: its writes stop landing,
+// it stops at the next step, and the llama-server or sd-cli it is waiting on is killed within checkEveryMs.
 export async function runSlideshowJob({
   db,
   store,
@@ -70,6 +77,7 @@ export async function runSlideshowJob({
   kind,
   workDir,
   tools,
+  checkEveryMs = CANCEL_CHECK_MS,
 }: {
   db: PrismaClient;
   store: ClipStore;
@@ -77,25 +85,52 @@ export async function runSlideshowJob({
   kind: "script" | "render";
   workDir: string;
   tools: SlideshowTools;
+  checkEveryMs?: number;
 }) {
   const job = await db.slideshowJob.findUnique({ where: { id: jobId } });
   if (!job) throw new Error(`slideshow ${jobId} not found`);
-  const step = (text: string) => db.slideshowJob.update({ where: { id: jobId }, data: { step: text } });
+  // Cancelled before the worker took it.
+  if (job.status === "failed") return;
+  if (kind === "script" && job.status !== "writing") throw new Error(`slideshow ${jobId} is not waiting for its script`);
+  if (kind === "render" && job.status !== "queued") throw new Error(`slideshow ${jobId} is not waiting to be made`);
+
+  // The state it has while this step runs; anything else means it was cancelled.
+  const active = kind === "script" ? ("writing" as const) : ("running" as const);
+  const write = async (data: Prisma.SlideshowJobUncheckedUpdateManyInput) => {
+    const { count } = await db.slideshowJob.updateMany({ where: { id: jobId, status: active }, data });
+    if (count === 0) throw new SlideshowCancelled();
+  };
+  const step = (text: string) => write({ step: text });
+
+  const controller = new AbortController();
+  const { signal } = controller;
+  const check = setInterval(() => {
+    db.slideshowJob.findUnique({ where: { id: jobId }, select: { status: true } }).then(
+      (row) => {
+        if (row?.status !== active) controller.abort(new SlideshowCancelled());
+      },
+      (err: unknown) => controller.abort(err),
+    );
+  }, checkEveryMs);
 
   try {
+    if (kind === "render") {
+      const { count } = await db.slideshowJob.updateMany({
+        where: { id: jobId, status: "queued" },
+        data: { status: "running", step: "Getting the pictures", error: null },
+      });
+      if (count === 0) throw new SlideshowCancelled();
+    }
     if (kind === "script") {
-      if (job.status !== "writing") throw new Error(`slideshow ${jobId} is not waiting for its script`);
       await step("Writing script");
       if ((await getSlideshowEngine(db, "script")).status !== "installed") throw new Error("the script writer is not installed");
-      const script = await writeScript({ start: tools.startLlm, topic: job.topic, count: job.slideCount });
+      const script = await writeScript({ start: tools.startLlm, topic: job.topic, count: job.slideCount, signal });
       const slides: Slide[] = script.map((slide) => ({ ...slide, source: null }));
-      await db.slideshowJob.update({ where: { id: jobId }, data: { slides, status: "draft", step: null, error: null } });
+      await write({ slides, status: "draft", step: null, error: null });
       return;
     }
 
-    if (job.status !== "queued") throw new Error(`slideshow ${jobId} is not waiting to be made`);
     const slides = job.slides as ReadySlide[];
-    await db.slideshowJob.update({ where: { id: jobId }, data: { status: "running", step: "Getting the pictures", error: null } });
     const total = slides.length;
     const anyAi = slides.some((slide) => slide.source.kind === "ai");
     if (anyAi && (await getSlideshowEngine(db, "picture")).status !== "installed") throw new Error("the picture maker is not installed");
@@ -117,7 +152,7 @@ export async function runSlideshowJob({
       if (source.kind === "ai") {
         await step(`Drawing picture ${index + 1} of ${total}`);
         const drawn = path.join(workDir, `drawn-${index}.png`);
-        await tools.drawPicture(slide.picture, drawn);
+        await tools.drawPicture(slide.picture, drawn, signal);
         await preparePicture({ input: drawn, output: picture });
       } else {
         await step(`Getting picture ${index + 1} of ${total}`);
@@ -175,10 +210,17 @@ export async function runSlideshowJob({
         aiGenerated: anyAi,
       },
     });
-    await db.slideshowJob.update({ where: { id: jobId }, data: { status: "done", step: null, clipId } });
+    await write({ status: "done", step: null, clipId });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    await db.slideshowJob.update({ where: { id: jobId }, data: { status: "failed", step: null, error: message } });
-    throw err;
+    // A killed llama-server or sd-cli fails its step; the cancel is what stopped it.
+    if (err instanceof SlideshowCancelled || signal.reason instanceof SlideshowCancelled) return;
+    const failure = signal.aborted ? signal.reason : err;
+    const message = failure instanceof Error ? failure.message : String(failure);
+    const { count } = await db.slideshowJob.updateMany({ where: { id: jobId, status: active }, data: { status: "failed", step: null, error: message } });
+    // Cancelled while it failed: the cancel already recorded it.
+    if (count === 0) return;
+    throw failure;
+  } finally {
+    clearInterval(check);
   }
 }

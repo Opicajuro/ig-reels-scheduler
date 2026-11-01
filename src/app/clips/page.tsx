@@ -28,10 +28,13 @@ import { VideoProgress } from "./video-progress";
 export const metadata: Metadata = { title: "Clips" };
 
 const RECENT_VIDEOS = 10;
+const TAB_IDS = ["video", "ai", "slideshow"];
 
-export default async function ClipsPage() {
+// ?tab=ai or ?tab=slideshow opens that tab, as the Queue page links do.
+export default async function ClipsPage({ searchParams }: PageProps<"/clips">) {
   await connection();
   const ownerId = await getOwnerId();
+  const { tab } = await searchParams;
 
   const projects = await prisma.clipProject.findMany({
     where: { ownerId: ownerId },
@@ -50,6 +53,7 @@ export default async function ClipsPage() {
       <PageHeader title="Clips" description="Cut a long video into vertical clips, or make one from a description or a slideshow." />
       <Tabs
         label="New clips"
+        initial={typeof tab === "string" && TAB_IDS.includes(tab) ? tab : undefined}
         tabs={[
           {
             id: "video",
@@ -115,7 +119,7 @@ export default async function ClipsPage() {
               <Link href={`/clips/${project.id}`} className={styles.projectLink}>
                 <strong>{project.name}</strong>
                 <span className={styles.meta}>
-                  {describeClipProject({ status: project.status, error: project.error, clipCount: project._count.clips })}
+                  {describeClipProject({ status: project.status, error: project.error, renderStep: project.renderStep, clipCount: project._count.clips })}
                 </span>
               </Link>
               {project.aiVideos || project.slideshows ? null : (

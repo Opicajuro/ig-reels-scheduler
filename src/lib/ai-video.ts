@@ -5,7 +5,7 @@ import { convertAiVideo } from "@/clip-engine/ffmpeg.js";
 import { getAiEngine } from "./ai-engine";
 import { AI_VIDEO_SECONDS, fillWorkflow, OUTPUT_NODE, SAMPLER_NODE } from "./ai-workflow";
 import type { ClipStore } from "./clip-store";
-import { downloadOutput, runWorkflow, uploadImage, type StartComfy } from "./comfy";
+import { downloadOutput, interruptComfy, runWorkflow, uploadImage, type StartComfy } from "./comfy";
 import { buildAiInputKey, buildClipKey } from "./storage";
 import { UserError } from "./user-error";
 
@@ -20,6 +20,9 @@ export const START_IMAGE_TYPES: Record<string, string> = {
 };
 
 export type AiVideoQueue = { send(jobId: string): Promise<string> };
+
+// What a cancelled AI video says on the Clips page.
+export const AI_VIDEO_CANCELLED = "Cancelled";
 
 // Where the browser uploads a start picture before the video is asked for.
 export function startImageUpload(extension: string) {
@@ -91,10 +94,21 @@ export async function runAiVideoJob({
 }) {
   const job = await db.aiVideoJob.findUnique({ where: { id: jobId } });
   if (!job) throw new Error(`AI video job ${jobId} not found`);
-  const step = (text: string) => db.aiVideoJob.update({ where: { id: jobId }, data: { step: text } });
+  // Cancelling marks the job failed, so writes only land while it is still running, and it stops at the next check.
+  const running = { id: jobId, status: "running" as const };
+  // Whether the step was written, which it is not once the video is cancelled.
+  const step = async (text: string) => (await db.aiVideoJob.updateMany({ where: running, data: { step: text } })).count > 0;
+  const stillRunning = async () => {
+    if ((await db.aiVideoJob.findUnique({ where: { id: jobId } }))?.status !== "running") throw new Error(`AI video job ${jobId} was cancelled`);
+  };
 
   try {
-    await db.aiVideoJob.update({ where: { id: jobId }, data: { status: "running", step: "Starting the AI engine", error: null } });
+    const started = await db.aiVideoJob.updateMany({
+      where: { id: jobId, status: "queued" },
+      data: { status: "running", step: "Starting the AI engine", error: null },
+    });
+    // Cancelled between pg-boss handing it out and here.
+    if (started.count === 0) return;
     if ((await getAiEngine(db)).status !== "installed") throw new Error("the AI video engine is not installed");
 
     const generated = path.join(workDir, "generated.mp4");
@@ -102,6 +116,7 @@ export async function runAiVideoJob({
     // Progress is written one step at a time, and the last write lands before anything after it.
     let writing: Promise<unknown> = Promise.resolve();
     try {
+      await stillRunning();
       let startImage: string | null = null;
       if (job.startImageKey) {
         const picture = path.join(workDir, `start${path.extname(job.startImageKey)}`);
@@ -120,10 +135,14 @@ export async function runAiVideoJob({
           const percent = Math.floor(fraction * 100);
           if (percent <= shown) return;
           shown = percent;
-          writing = writing.then(() => step(`Generating video ${percent}%`));
+          // Cancelled after the check above, while ComfyUI was being handed the workflow: the worker stops it itself.
+          writing = writing.then(async () => {
+            if (!(await step(`Generating video ${percent}%`))) await interruptComfy(comfy.url);
+          });
         },
       });
       await writing;
+      await stillRunning();
       await step("Saving the video");
       await downloadOutput(comfy.url, outputs[0], generated);
     } finally {
@@ -135,6 +154,7 @@ export async function runAiVideoJob({
     const converted = path.join(workDir, "converted.mp4");
     await convertAiVideo({ input: generated, output: converted });
 
+    await stillRunning();
     await step("Adding the clip");
     const project = await aiProject(db, job.ownerId);
     const clipId = randomUUID();
@@ -152,10 +172,12 @@ export async function runAiVideoJob({
         aiGenerated: true,
       },
     });
-    await db.aiVideoJob.update({ where: { id: jobId }, data: { status: "done", step: null, clipId } });
+    await db.aiVideoJob.updateMany({ where: running, data: { status: "done", step: null, clipId } });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await db.aiVideoJob.update({ where: { id: jobId }, data: { status: "failed", step: null, error: message } });
+    const { count } = await db.aiVideoJob.updateMany({ where: running, data: { status: "failed", step: null, error: message } });
+    // A cancelled video stops here: the cancel already recorded it.
+    if (count === 0) return;
     throw err;
   }
 }

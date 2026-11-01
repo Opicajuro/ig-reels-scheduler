@@ -11,7 +11,8 @@ const START_TIMEOUT_MS = 5 * 60_000;
 
 export type ScriptSlide = { text: string; picture: string };
 export type RunningLlm = { url: string; stop(): Promise<void> };
-export type StartLlm = () => Promise<RunningLlm>;
+// Aborting the signal kills the server.
+export type StartLlm = (signal: AbortSignal) => Promise<RunningLlm>;
 
 export function scriptSchema(count: number) {
   return {
@@ -81,9 +82,20 @@ function promptFor(topic: string, count: number): string {
 }
 
 // Asks the running server for a script. Thinking is turned off: the answer is the JSON alone.
-export async function requestScript({ url, topic, count }: { url: string; topic: string; count: number }): Promise<ScriptSlide[]> {
+export async function requestScript({
+  url,
+  topic,
+  count,
+  signal,
+}: {
+  url: string;
+  topic: string;
+  count: number;
+  signal: AbortSignal;
+}): Promise<ScriptSlide[]> {
   const response = await fetch(`${url}/v1/chat/completions`, {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       messages: [
@@ -123,15 +135,26 @@ async function healthy(url: string): Promise<boolean> {
 }
 
 // Starts llama-server hidden on 127.0.0.1, with as many layers on the graphics card (Vulkan) as fit, and waits until
-// the model has loaded. Its output goes to logPath.
-export async function startLlamaServer({ server, model, logPath }: { server: string; model: string; logPath: string }): Promise<RunningLlm> {
+// the model has loaded. Its output goes to logPath. Aborting signal kills it.
+export async function startLlamaServer({
+  server,
+  model,
+  logPath,
+  signal,
+}: {
+  server: string;
+  model: string;
+  logPath: string;
+  signal: AbortSignal;
+}): Promise<RunningLlm> {
+  signal.throwIfAborted();
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
   const log = await open(logPath, "w");
   const child = spawn(
     server,
     ["-m", model, "--host", "127.0.0.1", "--port", String(port), "-c", "8192", "--reasoning", "off", "--no-webui"],
-    { windowsHide: true, stdio: ["ignore", log.fd, log.fd] },
+    { windowsHide: true, stdio: ["ignore", log.fd, log.fd], signal },
   );
   const exited = new Promise<number | null>((resolve) => {
     child.on("exit", (code) => resolve(code));
@@ -150,6 +173,10 @@ export async function startLlamaServer({ server, model, logPath }: { server: str
 
   const deadline = Date.now() + START_TIMEOUT_MS;
   while (!(await healthy(url))) {
+    if (signal.aborted) {
+      await stop();
+      signal.throwIfAborted();
+    }
     if (!running || Date.now() > deadline) {
       await stop();
       const tail = (await readFile(logPath, "utf8")).trim().split(/\r?\n/).slice(-5).join("\n");
@@ -160,10 +187,20 @@ export async function startLlamaServer({ server, model, logPath }: { server: str
   return { url, stop };
 }
 
-export async function writeScript({ start, topic, count }: { start: StartLlm; topic: string; count: number }): Promise<ScriptSlide[]> {
-  const llm = await start();
+export async function writeScript({
+  start,
+  topic,
+  count,
+  signal,
+}: {
+  start: StartLlm;
+  topic: string;
+  count: number;
+  signal: AbortSignal;
+}): Promise<ScriptSlide[]> {
+  const llm = await start(signal);
   try {
-    return await requestScript({ url: llm.url, topic, count });
+    return await requestScript({ url: llm.url, topic, count, signal });
   } finally {
     await llm.stop();
   }
