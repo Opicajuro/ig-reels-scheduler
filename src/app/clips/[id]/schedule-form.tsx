@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { scheduleClipAction } from "../actions";
 import { ActionForm, SubmitButton } from "@/components/action-form";
+import { UseBestTime, type BestTimeSample } from "@/components/best-time";
 import { Field } from "@/components/field";
 import styles from "../clips.module.css";
 
@@ -17,6 +18,7 @@ export function ScheduleForm({
   defaultCaption,
   clipAiGenerated,
   alreadyScheduledTo,
+  bestTimeSamples,
 }: {
   clipId: string;
   projectId: string;
@@ -26,7 +28,9 @@ export function ScheduleForm({
   clipAiGenerated: boolean;
   /** accounts that already have a live post from this project, such as ["@foo"] */
   alreadyScheduledTo: string[];
+  bestTimeSamples: BestTimeSample[];
 }) {
+  const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [when, setWhen] = useState("");
   const [audioSource, setAudioSource] = useState("unknown");
   const scheduledAt = when ? new Date(when).toISOString() : "";
@@ -39,7 +43,13 @@ export function ScheduleForm({
         <p className={styles.muted}>Connect an Instagram account to schedule this clip. You can confirm the rights below now.</p>
       ) : null}
       <Field label="Instagram account">
-        <select name="accountId" required disabled={accounts.length === 0}>
+        <select
+          name="accountId"
+          value={accountId}
+          onChange={(event) => setAccountId(event.target.value)}
+          required
+          disabled={accounts.length === 0}
+        >
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
               @{account.username}
@@ -50,6 +60,7 @@ export function ScheduleForm({
       <Field label="Publish at (your local time)">
         <input type="datetime-local" value={when} onChange={(event) => setWhen(event.target.value)} required />
       </Field>
+      {accounts.length > 0 ? <UseBestTime samples={bestTimeSamples} accountId={accountId} onPick={setWhen} /> : null}
       <input type="hidden" name="scheduledAt" value={scheduledAt} />
       <Field label="Caption">
         <textarea name="caption" rows={3} maxLength={2200} defaultValue={defaultCaption} required />

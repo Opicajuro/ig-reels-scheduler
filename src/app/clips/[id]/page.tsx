@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { getOwnerId } from "@/lib/owner";
 import { describeClipProject } from "@/lib/clip-status";
+import { loadPublishedStats } from "@/lib/published-stats";
 import { prisma } from "@/lib/prisma";
 import { presignDownload } from "@/lib/storage";
 import { Alert } from "@/components/alert";
@@ -78,6 +79,12 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
     },
     select: { account: { select: { username: true } } },
   });
+  // Published posts with views, for "Use best time".
+  const bestTimeSamples = (await loadPublishedStats(prisma, ownerId)).flatMap((post) =>
+    post.metrics.views === undefined
+      ? []
+      : [{ accountId: post.accountId, at: post.publishedAt.toISOString(), views: post.metrics.views }],
+  );
   const alreadyScheduledTo = [...new Set(livePosts.map((post) => `@${post.account.username}`))];
   const clips = await Promise.all(
     project.clips.map(async (clip) => ({
@@ -254,6 +261,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
             accounts={accounts.map((account) => ({ id: account.id, username: account.username }))}
             alreadyScheduledTo={alreadyScheduledTo}
             projects={otherProjects}
+            bestTimeSamples={bestTimeSamples}
           />
         </section>
       </div>

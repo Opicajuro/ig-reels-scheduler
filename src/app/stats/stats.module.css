@@ -1,0 +1,88 @@
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+
+.totals div {
+  padding: var(--space-3);
+  background: var(--surface);
+  border: var(--card-border);
+  border-radius: var(--radius-md);
+}
+
+.totals dt {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.totals dd {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.note {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.slots {
+  margin-bottom: var(--space-3);
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar,
+.hours {
+  display: block;
+  fill: var(--link);
+}
+
+.hours {
+  margin-bottom: var(--space-4);
+}
+
+.hours .slot {
+  fill: var(--surface-raised);
+}
+
+.hours text {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+/* A column header that sorts the table; it looks like the header text. */
+.sort {
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.sort:hover {
+  color: var(--text);
+}
+
+.number .sort {
+  text-align: right;
+}

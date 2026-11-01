@@ -84,6 +84,11 @@ export default async function HelpPage() {
             <Link href="/scheduled">Scheduled</Link>. Localirs must be running at the publish time.
           </li>
           <li>
+            Once posts are out, <Link href="/stats">Stats</Link> compares them by clip length, caption style and posting
+            time, and lists your best weekday and hour to post. <strong>Use best time</strong> next to the publish time
+            fills in the next of those slots.
+          </li>
+          <li>
             Posted a clip somewhere else too, such as YouTube Shorts or TikTok? Open it and add the link on its{" "}
             <strong>Links</strong> tab, so you can find it again from here.
           </li>

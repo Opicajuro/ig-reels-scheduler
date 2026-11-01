@@ -4,6 +4,7 @@ import { useRef, useState, type MouseEvent } from "react";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { AiBadge } from "@/components/ai-badge";
 import { Button } from "@/components/button";
+import type { BestTimeSample } from "@/components/best-time";
 import { Drawer } from "@/components/drawer";
 import { EmptyState } from "@/components/empty-state";
 import { Menu } from "@/components/menu";
@@ -148,6 +149,7 @@ export function ClipGrid({
   accounts,
   alreadyScheduledTo,
   projects,
+  bestTimeSamples,
 }: {
   projectId: string;
   busy: boolean;
@@ -155,6 +157,7 @@ export function ClipGrid({
   accounts: AccountView[];
   alreadyScheduledTo: string[];
   projects: ProjectChoice[];
+  bestTimeSamples: BestTimeSample[];
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [openId, setOpenId] = useState<string | null>(null);
@@ -270,6 +273,7 @@ export function ClipGrid({
                     defaultCaption={captionOf(openClip)}
                     clipAiGenerated={openClip.aiGenerated}
                     alreadyScheduledTo={alreadyScheduledTo}
+                    bestTimeSamples={bestTimeSamples}
                   />
                 ),
               },
@@ -318,6 +322,7 @@ export function ClipGrid({
           }))}
           accounts={accounts}
           alreadyScheduledTo={alreadyScheduledTo}
+          bestTimeSamples={bestTimeSamples}
         />
       </Drawer>
     </>
