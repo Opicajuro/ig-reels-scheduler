@@ -1,4 +1,4 @@
-// Localirs.exe: starts Localirs with no console window, sits in the tray, and opens the app in its own Edge window.
+// Localirs.exe: starts Localirs with no console window, sits in the tray, and opens the app in the default browser.
 // Built by installer\build-installer.ps1 with the C# compiler that ships with .NET Framework 4, so it is C# 5.
 using System;
 using System.ComponentModel;
@@ -7,6 +7,8 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
@@ -152,21 +154,40 @@ static class Launcher
         }
     }
 
-    // Opens Localirs as its own window, without tabs or an address bar, using Edge's app mode.
+    // Chromium browsers open Localirs as its own window, without tabs or an address bar (--app).
+    static readonly string[] AppModeBrowsers = { "brave.exe", "vivaldi.exe", "chrome.exe", "msedge.exe" };
+
+    // Opens Localirs in the default browser: as its own window in a Chromium browser, as a tab in any other.
     static void OpenWindow()
     {
-        ProcessStartInfo info = new ProcessStartInfo("msedge.exe", "--app=" + AppUrl);
+        string browser = DefaultBrowserPath();
+        if (browser == null)
+        {
+            MessageBox.Show("Windows has no default browser set. Open " + AppUrl + " in your browser.",
+                "Localirs", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        ProcessStartInfo info = AppModeBrowsers.Contains(Path.GetFileName(browser).ToLowerInvariant())
+            ? new ProcessStartInfo(browser, "--app=" + AppUrl)
+            : new ProcessStartInfo(AppUrl);
         info.UseShellExecute = true;
-        try
-        {
-            Process.Start(info);
-        }
-        catch (Win32Exception)
-        {
-            MessageBox.Show("Localirs opens in a Microsoft Edge window, and Edge was not found on this PC." +
-                Environment.NewLine + Environment.NewLine + "Install Microsoft Edge, or open " + AppUrl + " in any browser.",
-                "Localirs", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
+        Process.Start(info);
+    }
+
+    const int AssocfIsProtocol = 0x1000;
+    const int AssocstrExecutable = 2;
+
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
+    static extern int AssocQueryString(int flags, int str, string assoc, string extra, StringBuilder output, ref uint length);
+
+    // The program Windows opens http links with, asked from Windows itself: where the user's choice is stored in the
+    // registry differs between Windows versions.
+    static string DefaultBrowserPath()
+    {
+        uint length = 1024;
+        StringBuilder output = new StringBuilder((int)length);
+        if (AssocQueryString(AssocfIsProtocol, AssocstrExecutable, "http", null, output, ref length) != 0) return null;
+        return output.ToString();
     }
 
     static WebClient NewWebClient()

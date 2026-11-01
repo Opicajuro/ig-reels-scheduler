@@ -1,19 +1,20 @@
 import { afterEach, beforeEach, test, vi } from "vitest";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { detectVideoEncoder, listsNvenc, videoEncoderArgs } from "./encoder.js";
+import { detectVideoEncoder, listsAmf, listsNvenc, videoEncoderArgs } from "./encoder.js";
 
 const ENCODER_LIST = `Encoders:
  V..... = Video
  ------
  V....D libx264              libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10 (codec h264)
+ V....D h264_amf             AMD AMF H.264 Encoder (codec h264)
  V....D h264_nvenc           NVIDIA NVENC H.264 encoder (codec h264)
  A....D aac                  AAC (Advanced Audio Coding)
 `;
-const X264_ONLY_LIST = ENCODER_LIST.split("\n").filter((line) => !line.includes("h264_nvenc")).join("\n");
+const X264_ONLY_LIST = ENCODER_LIST.split("\n").filter((line) => !/h264_(nvenc|amf)/.test(line)).join("\n");
 
 let binDir;
 let originalPath;
@@ -28,14 +29,15 @@ afterEach(() => {
   rmSync(binDir, { recursive: true, force: true });
 });
 
-// Puts an ffmpeg first on PATH that prints `list` for -encoders, exits with `testExit` for the NVENC test encode, and
-// writes the arguments of any other run to args.txt.
-function fakeFfmpeg({ list, listExit = 0, testExit }) {
+// Puts an ffmpeg first on PATH that prints `list` for -encoders, exits with `nvencExit` or `amfExit` for the test
+// encodes and notes their order in tests.txt, and writes the arguments of any other run to args.txt.
+function fakeFfmpeg({ list, listExit = 0, nvencExit = 1, amfExit = 1 }) {
   writeFileSync(path.join(binDir, "list.txt"), list);
   const script = `#!/bin/sh
 case "$*" in
   *-encoders*) cat "${binDir}/list.txt"; exit ${listExit} ;;
-  *color=c=black*h264_nvenc*) exit ${testExit} ;;
+  *color=c=black*h264_nvenc*) echo nvenc >> "${binDir}/tests.txt"; exit ${nvencExit} ;;
+  *color=c=black*h264_amf*) echo amf >> "${binDir}/tests.txt"; exit ${amfExit} ;;
   *) printf '%s\\n' "$@" > "${binDir}/args.txt" ;;
 esac
 `;
@@ -45,29 +47,50 @@ esac
   process.env.PATH = `${binDir}${path.delimiter}${originalPath}`;
 }
 
+function testEncodes() {
+  return existsSync(path.join(binDir, "tests.txt"))
+    ? readFileSync(path.join(binDir, "tests.txt"), "utf8").trim().split("\n")
+    : [];
+}
+
 test("listsNvenc finds h264_nvenc in the encoder list", () => {
   assert.equal(listsNvenc(ENCODER_LIST), true);
   assert.equal(listsNvenc(X264_ONLY_LIST), false);
   assert.equal(listsNvenc(" V....D hevc_nvenc           NVIDIA NVENC hevc encoder (codec hevc)\n"), false);
 });
 
-test("detectVideoEncoder picks NVENC when ffmpeg lists it and the test encode works", async () => {
-  fakeFfmpeg({ list: ENCODER_LIST, testExit: 0 });
+test("listsAmf finds h264_amf in the encoder list", () => {
+  assert.equal(listsAmf(ENCODER_LIST), true);
+  assert.equal(listsAmf(X264_ONLY_LIST), false);
+  assert.equal(listsAmf(" V....D hevc_amf             AMD AMF HEVC encoder (codec hevc)\n"), false);
+});
+
+test("detectVideoEncoder picks NVENC first when ffmpeg lists it and the test encode works", async () => {
+  fakeFfmpeg({ list: ENCODER_LIST, nvencExit: 0, amfExit: 0 });
   assert.equal(await detectVideoEncoder(), "nvenc");
+  assert.deepEqual(testEncodes(), ["nvenc"]);
 });
 
-test("detectVideoEncoder picks x264 when the NVENC test encode fails, as without an NVIDIA driver", async () => {
-  fakeFfmpeg({ list: ENCODER_LIST, testExit: 1 });
-  assert.equal(await detectVideoEncoder(), "x264");
+test("detectVideoEncoder picks AMF when the NVENC test encode fails, as on a PC with AMD graphics", async () => {
+  fakeFfmpeg({ list: ENCODER_LIST, nvencExit: 1, amfExit: 0 });
+  assert.equal(await detectVideoEncoder(), "amf");
+  assert.deepEqual(testEncodes(), ["nvenc", "amf"]);
 });
 
-test("detectVideoEncoder picks x264 when ffmpeg has no NVENC", async () => {
-  fakeFfmpeg({ list: X264_ONLY_LIST, testExit: 0 });
+test("detectVideoEncoder picks x264 when both test encodes fail", async () => {
+  fakeFfmpeg({ list: ENCODER_LIST, nvencExit: 1, amfExit: 1 });
   assert.equal(await detectVideoEncoder(), "x264");
+  assert.deepEqual(testEncodes(), ["nvenc", "amf"]);
+});
+
+test("detectVideoEncoder picks x264 without a test encode when ffmpeg has neither NVENC nor AMF", async () => {
+  fakeFfmpeg({ list: X264_ONLY_LIST, nvencExit: 0, amfExit: 0 });
+  assert.equal(await detectVideoEncoder(), "x264");
+  assert.deepEqual(testEncodes(), []);
 });
 
 test("detectVideoEncoder fails when ffmpeg cannot list its encoders", async () => {
-  fakeFfmpeg({ list: "", listExit: 1, testExit: 0 });
+  fakeFfmpeg({ list: "", listExit: 1 });
   await assert.rejects(detectVideoEncoder(), /ffmpeg -encoders exited with 1/);
 });
 
@@ -85,8 +108,16 @@ test("videoEncoderArgs gives NVENC high profile yuv420p constant quality capped 
   ]);
 });
 
+test("videoEncoderArgs gives AMF high profile yuv420p constant quality (QVBR) capped at 20 Mbps", () => {
+  assert.deepEqual(videoEncoderArgs("amf", 20), [
+    "-c:v", "h264_amf", "-profile:v", "high", "-usage", "transcoding", "-quality", "quality",
+    "-rc", "qvbr", "-qvbr_quality_level", "20", "-preanalysis", "1",
+    "-maxrate", "20M", "-bufsize", "40M", "-pix_fmt", "yuv420p",
+  ]);
+});
+
 test("renderClip encodes with NVENC when the detection found it", async () => {
-  fakeFfmpeg({ list: ENCODER_LIST, testExit: 0 });
+  fakeFfmpeg({ list: ENCODER_LIST, nvencExit: 0 });
   vi.resetModules();
   const { renderClip } = await import("./ffmpeg.js");
   await renderClip({ input: "in.mp4", output: "out.mp4", start: 0, length: 15, overlay: null });

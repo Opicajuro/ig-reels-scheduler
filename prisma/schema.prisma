@@ -18,6 +18,7 @@ model User {
   auditLogs     AuditLog[]
   clipProjects  ClipProject[]
   aiVideoJobs   AiVideoJob[]
+  slideshowJobs SlideshowJob[]
   profileLinks  ProfileLink[]
   guideLinks    GuideLink[]
 }
@@ -207,6 +208,8 @@ model ClipProject {
   endCardText     String?
   // The owner's one "AI videos" project, which holds the AI videos made on the Clips page. It has no source video.
   aiVideos        Boolean           @default(false)
+  // The owner's one "Slideshows" project, which holds the slideshows made on the Clips page. It has no source video.
+  slideshows      Boolean           @default(false)
   createdAt       DateTime          @default(now())
   clips           Clip[]
 }
@@ -226,6 +229,7 @@ model Clip {
   aiGenerated Boolean     @default(false)
   createdAt   DateTime    @default(now())
   aiVideoJob  AiVideoJob?
+  slideshowJob SlideshowJob?
   links       ClipLink[]
 }
 
@@ -278,16 +282,26 @@ model Setting {
   hue               Int     @default(0)
 }
 
-// The H.264 encoder the worker found when it last started: the NVIDIA card's NVENC, or x264 on the processor.
+// The H.264 encoder the worker found when it last started: the NVIDIA card's NVENC, AMD graphics' AMF, or x264 on the
+// processor. Also the whisper.cpp build it transcribes with, found at its first transcription since that start: the
+// Vulkan build on a graphics device (named as Vulkan reports it), or the processor build. Null until then.
 model VideoEncoding {
-  id        Int          @id @default(1)
-  encoder   VideoEncoder
-  checkedAt DateTime     @updatedAt
+  id                Int          @id @default(1)
+  encoder           VideoEncoder
+  checkedAt         DateTime     @updatedAt
+  transcriber       Transcriber?
+  transcriberDevice String?
 }
 
 enum VideoEncoder {
   nvenc
+  amf
   x264
+}
+
+enum Transcriber {
+  vulkan
+  cpu
 }
 
 enum AiEngineStatus {
@@ -331,6 +345,47 @@ model AiVideoJob {
   clipId        String?       @unique
   clip          Clip?         @relation(fields: [clipId], references: [id], onDelete: SetNull)
   createdAt     DateTime      @default(now())
+}
+
+// The two offline engines of the slideshows, in <data>\slideshow: "script" (llama.cpp and the Qwen3.5 model) and
+// "picture" (stable-diffusion.cpp and the Z-Image Turbo files). No row means not installed. While installing, the
+// worker writes the step and the percentage every few seconds.
+model SlideshowEngine {
+  id             String         @id
+  status         AiEngineStatus @default(not_installed)
+  step           String?
+  percent        Int?
+  error          String?
+  installedBytes BigInt?
+  updatedAt      DateTime       @updatedAt
+}
+
+enum SlideshowStatus {
+  writing
+  draft
+  queued
+  running
+  done
+  failed
+}
+
+// One slideshow from the Clips page. The script writer fills slides ([{ text, picture, source }]); the person edits it
+// as a draft, then it is made into clipId in the owner's "Slideshows" project.
+model SlideshowJob {
+  id            String          @id @default(cuid())
+  ownerId       String
+  owner         User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  topic         String
+  slideCount    Int
+  slides        Json?
+  voice         String          @default("af_heart")
+  captionPreset String          @default("words")
+  status        SlideshowStatus @default(writing)
+  step          String?
+  error         String?
+  clipId        String?         @unique
+  clip          Clip?           @relation(fields: [clipId], references: [id], onDelete: SetNull)
+  createdAt     DateTime        @default(now())
 }
 
 // Where the daily backups go (null: the backups folder in the data folder) and whether they copy the clip files too.

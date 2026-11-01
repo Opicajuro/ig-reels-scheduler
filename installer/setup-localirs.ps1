@@ -88,8 +88,10 @@ try {
   $env:LOCALIRS_EMAIL_FROM = $secrets.emailFrom
   $env:LOCALIRS_ALERT_EMAIL = $secrets.alertEmail
   $env:LOCALIRS_CHROME_PATH = Join-Path $tools "chrome\chrome-headless-shell.exe"
-  $env:LOCALIRS_WHISPER_BIN = Join-Path $tools "whisper\Release\whisper-cli.exe"
+  $env:LOCALIRS_WHISPER_CPU = Join-Path $tools "whisper\Release\whisper-cli.exe"
+  $env:LOCALIRS_WHISPER_VULKAN = Join-Path $tools "whisper-vulkan\Release\whisper-cli.exe"
   $env:LOCALIRS_WHISPER_MODEL = Join-Path $tools "whisper\ggml-large-v3-turbo-q5_0.bin"
+  $env:LOCALIRS_KOKORO_MODEL = Join-Path $tools "kokoro\Kokoro-82M-v1.0-ONNX"
   $env:LOCALIRS_DATA_DIR = $data
   $env:LOCALIRS_PG_BIN = $pgBin
   $env:PATH = "$tools;$env:PATH"

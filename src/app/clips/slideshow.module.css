@@ -1,0 +1,69 @@
+/* Layout of the Slideshow tab on the Clips page. Colours, type and controls come from the tokens and components. */
+
+.tab {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.editor {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.editor > button {
+  justify-self: start;
+}
+
+.slides {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.slide {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.picture {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.picture > div:first-of-type {
+  flex-wrap: wrap;
+}
+
+.frame {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 360px;
+}
+
+.preview {
+  width: 160px;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.slider {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
