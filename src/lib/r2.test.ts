@@ -52,6 +52,7 @@ function fakeDb(r2: R2Config | null) {
         r2Bucket: r2.bucket,
         metaAppSecret: null,
         resendApiKey: null,
+        googleClientSecret: null,
       }
     : null;
   return { setting: { findUnique: async () => row } } as unknown as PrismaClient;

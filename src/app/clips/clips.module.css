@@ -664,3 +664,20 @@
 .panel:has(input[name="hookMode"][value="clipTitle"]:checked) .hookTitleHint {
   display: block;
 }
+
+/* The destination boxes and the YouTube choices of the schedule forms. */
+.destinations {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.destinations legend {
+  padding: 0 var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}

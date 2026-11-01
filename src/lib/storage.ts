@@ -6,6 +6,7 @@ import {
   CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -34,6 +35,11 @@ export function buildRawKey(id: string, extension: string): string {
 
 export function buildReelKey(id: string): string {
   return `reels/${id}.mp4`;
+}
+
+// A YouTube post's own copy of its clip.
+export function buildYouTubeKey(postId: string): string {
+  return `youtube/${postId}.mp4`;
 }
 
 export function buildClipSourceKey(projectId: string, extension: string): string {
@@ -103,4 +109,21 @@ export async function openObject(key: string): Promise<{ body: Readable; size: n
   const response = await client().send(new GetObjectCommand({ Bucket: requireEnv("S3_BUCKET"), Key: key }));
   if (!response.Body || response.ContentLength === undefined) throw new Error(`${key} has no content`);
   return { body: response.Body as Readable, size: response.ContentLength };
+}
+
+export async function objectSize(key: string): Promise<number> {
+  const response = await client().send(new HeadObjectCommand({ Bucket: requireEnv("S3_BUCKET"), Key: key }));
+  if (response.ContentLength === undefined) throw new Error(`${key} has no size`);
+  return response.ContentLength;
+}
+
+// Bytes start to end (inclusive) of an object, for sending a large file in chunks without holding all of it.
+export async function readObjectRange(key: string, start: number, end: number): Promise<Uint8Array> {
+  const response = await client().send(
+    new GetObjectCommand({ Bucket: requireEnv("S3_BUCKET"), Key: key, Range: `bytes=${start}-${end}` }),
+  );
+  if (!response.Body) throw new Error(`${key} has no content`);
+  const bytes = await response.Body.transformToByteArray();
+  if (bytes.byteLength !== end - start + 1) throw new Error(`${key}: read ${bytes.byteLength} bytes, expected ${end - start + 1}`);
+  return bytes;
 }

@@ -8,6 +8,7 @@ import {
   r2Settings,
   saveR2Settings,
   saveSettings,
+  saveYouTubeSettings,
   sealSecret,
   type R2SettingsInput,
   type SettingsInput,
@@ -24,7 +25,7 @@ function fakeDb(initial: Row | null = null) {
     setting: {
       findUnique: async () => row,
       upsert: async ({ create, update }: { create: Row; update: Row }) => {
-        row = row ? { ...row, ...update } : { metaAppSecret: null, resendApiKey: null, r2SecretAccessKey: null, ...create };
+        row = row ? { ...row, ...update } : { metaAppSecret: null, resendApiKey: null, r2SecretAccessKey: null, googleClientSecret: null, ...create };
         return row;
       },
     },
@@ -72,6 +73,8 @@ describe("getSettings", () => {
       r2AccessKeyId: null,
       r2SecretAccessKey: null,
       r2Bucket: null,
+      googleClientId: null,
+      googleClientSecret: null,
     });
   });
 });
@@ -221,5 +224,30 @@ describe("saveR2Settings", () => {
     await saveSettings(db, INPUT);
     await saveR2Settings(db, R2);
     expect(await getSettings(db)).toMatchObject(INPUT);
+  });
+});
+
+describe("saveYouTubeSettings", () => {
+  const CLIENT = { googleClientId: "123-abc.apps.googleusercontent.com", googleClientSecret: "GOCSPX-secret" };
+
+  it("stores the client secret sealed and keeps it when its field is left empty", async () => {
+    const { db, row } = fakeDb();
+    await saveYouTubeSettings(db, CLIENT);
+    expect(row()?.googleClientSecret).not.toContain("GOCSPX");
+    await saveYouTubeSettings(db, { ...CLIENT, googleClientSecret: "" });
+
+    expect(await getSettings(db)).toMatchObject(CLIENT);
+  });
+
+  it("refuses half a client and an ID that is not a Google OAuth client ID", async () => {
+    await expect(saveYouTubeSettings(fakeDb().db, { ...CLIENT, googleClientSecret: "" })).rejects.toThrow(/both/);
+    await expect(saveYouTubeSettings(fakeDb().db, { ...CLIENT, googleClientId: "123" })).rejects.toThrow(/googleusercontent/);
+  });
+
+  it("clears both when both are empty", async () => {
+    const { db } = fakeDb();
+    await saveYouTubeSettings(db, CLIENT);
+    await saveYouTubeSettings(db, { googleClientId: "", googleClientSecret: "" });
+    expect(await getSettings(db)).toMatchObject({ googleClientId: null, googleClientSecret: null });
   });
 });

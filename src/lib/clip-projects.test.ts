@@ -25,7 +25,15 @@ type Row = Record<string, unknown> & { id: string };
 
 // Enough of Prisma for these functions. Nested filters such as { project: { ownerId } } go through `relations`.
 function fakeDb(
-  seed: { projects?: Row[]; clips?: Row[]; accounts?: Row[]; media?: Row[]; posts?: Row[]; clipLinks?: Row[] } = {},
+  seed: {
+    projects?: Row[];
+    clips?: Row[];
+    accounts?: Row[];
+    media?: Row[];
+    posts?: Row[];
+    clipLinks?: Row[];
+    channels?: Row[];
+  } = {},
 ) {
   const tables: Record<string, Row[]> = {
     clipProject: seed.projects ?? [],
@@ -34,6 +42,8 @@ function fakeDb(
     media: seed.media ?? [],
     post: seed.posts ?? [],
     clipLink: seed.clipLinks ?? [],
+    ytAccount: seed.channels ?? [],
+    ytPost: [],
     auditLog: [],
   };
   const relations: Record<string, Record<string, (row: Row) => Row | undefined>> = {
@@ -96,6 +106,8 @@ function fakeDb(
     igAccount: model("igAccount"),
     media: { ...model("media") },
     post: model("post"),
+    ytAccount: model("ytAccount"),
+    ytPost: model("ytPost"),
     auditLog: model("auditLog"),
   };
   // An interactive transaction: a throw inside it puts every table back as it was.
@@ -605,7 +617,7 @@ describe("scheduleClips", () => {
       queue: { send: async () => "job-1", cancel: async () => {} },
       ...owned,
       clipIds: ["c1", "c2"],
-      accountId: "acc-1",
+      accountIds: ["acc-1"],
       firstScheduledAt: new Date(first).toISOString(),
       gapHours: 24,
       aiGenerated: false,
@@ -631,7 +643,7 @@ describe("scheduleClips", () => {
         queue: { send: async () => "job", cancel: async () => {} },
         ...owned,
         clipIds: ["c1", "c2"],
-        accountId: "acc-1",
+        accountIds: ["acc-1"],
         firstScheduledAt: new Date(Date.now() + 3 * HOUR).toISOString(),
         gapHours: 24,
         aiGenerated,
@@ -652,10 +664,10 @@ describe("scheduleClips", () => {
     const base = { db, store: fakeStore().store, queue: { send: async () => "x", cancel: async () => {} }, ...owned };
 
     await expect(
-      scheduleClips({ ...base, clipIds: ["c1"], accountId: "acc-1", firstScheduledAt, gapHours: 24, aiGenerated: false, rightsConfirmed: false, audioSource: "original", now: new Date() }),
+      scheduleClips({ ...base, clipIds: ["c1"], accountIds: ["acc-1"], firstScheduledAt, gapHours: 24, aiGenerated: false, rightsConfirmed: false, audioSource: "original", now: new Date() }),
     ).rejects.toThrow(/confirm/);
     await expect(
-      scheduleClips({ ...base, clipIds: ["c1", "missing"], accountId: "acc-1", firstScheduledAt, gapHours: 24, aiGenerated: false, rightsConfirmed: true, audioSource: "original", now: new Date() }),
+      scheduleClips({ ...base, clipIds: ["c1", "missing"], accountIds: ["acc-1"], firstScheduledAt, gapHours: 24, aiGenerated: false, rightsConfirmed: true, audioSource: "original", now: new Date() }),
     ).rejects.toThrow("clip not found");
 
     expect(tables.post).toEqual([]);
@@ -678,7 +690,7 @@ describe("scheduleClips", () => {
         queue: { send: async (postId) => (queued.push(postId), "job"), cancel: async () => {} },
         ...owned,
         clipIds: ["c1", "c2"],
-        accountId: "acc-1",
+        accountIds: ["acc-1"],
         firstScheduledAt: new Date(Date.now() + 3 * HOUR).toISOString(),
         gapHours: 24,
         aiGenerated: false,
@@ -716,7 +728,7 @@ describe("scheduleClips", () => {
         queue: { send: async () => `job-${++job}`, cancel: async (jobId) => void canceled.push(jobId) },
         ...owned,
         clipIds: ["c1", "c2"],
-        accountId: "acc-1",
+        accountIds: ["acc-1"],
         firstScheduledAt: new Date(Date.now() + 3 * HOUR).toISOString(),
         gapHours: 24,
         aiGenerated: false,
@@ -749,7 +761,7 @@ describe("scheduleClip", () => {
       queue: { send: async (postId) => (queued.push(postId), "job-1"), cancel: async () => {} },
       ...owned,
       clipId: "c1",
-      accountId: "acc-1",
+      accountIds: ["acc-1"],
       caption: "Wait for it",
       scheduledAt,
       aiGenerated: false,
@@ -774,7 +786,7 @@ describe("scheduleClip", () => {
         queue: { send: async () => "job-1", cancel: async () => {} },
         ...owned,
         clipId: "c1",
-        accountId: "acc-1",
+        accountIds: ["acc-1"],
         caption: "Wait for it",
         scheduledAt,
         aiGenerated,
@@ -782,7 +794,7 @@ describe("scheduleClip", () => {
         audioSource: "original",
         now: new Date(),
       });
-      return post.aiGenerated;
+      return post.posts[0].aiGenerated;
     };
 
     expect(await schedule(true, false)).toBe(true);
@@ -800,7 +812,7 @@ describe("scheduleClip", () => {
         queue: { send: async () => "x", cancel: async () => {} },
         ...owned,
         clipId: "c1",
-        accountId: "acc-1",
+        accountIds: ["acc-1"],
         caption: "x".repeat(2201),
         scheduledAt,
         aiGenerated: false,
@@ -824,7 +836,7 @@ describe("scheduleClip", () => {
         queue: { send: async () => "x", cancel: async () => {} },
         ...owned,
         clipId: "c1",
-        accountId: "acc-1",
+        accountIds: ["acc-1"],
         caption: "Wait for it",
         scheduledAt: now.toISOString(),
         aiGenerated: false,
@@ -846,7 +858,7 @@ describe("scheduleClip", () => {
         queue: { send: async () => "x", cancel: async () => {} },
         ...owned,
         clipId: "c1",
-        accountId: "acc-1",
+        accountIds: ["acc-1"],
         caption: "Wait for it",
         scheduledAt,
         aiGenerated: false,
@@ -875,7 +887,7 @@ describe("scheduleClip", () => {
       queue: { send: async () => "job-1", cancel: async () => {} },
       ...owned,
       clipId: "c1",
-      accountId: "acc-1",
+      accountIds: ["acc-1"],
       caption: "Wait for it",
       scheduledAt,
       aiGenerated: false,
@@ -886,7 +898,7 @@ describe("scheduleClip", () => {
 
     expect(tables.media.at(-1)).toMatchObject({ audioSource: "from_source", sourceProjectId: "p1", sourceClipId: "c1" });
     expect(tables.auditLog).toHaveLength(1);
-    expect(tables.auditLog[0]).toMatchObject({ action: "rights_confirmed", targetType: "Post", targetId: post.id });
+    expect(tables.auditLog[0]).toMatchObject({ action: "rights_confirmed", targetType: "Post", targetId: post.posts[0].id });
     const logged = tables.auditLog[0].data as { siblingAccountCount: number; warnings: string[] };
     expect(logged.siblingAccountCount).toBe(1);
     expect(logged.warnings).toHaveLength(2);
@@ -901,7 +913,7 @@ describe("scheduleClip", () => {
         queue: { send: async () => "x", cancel: async () => {} },
         ...owned,
         clipId: "c1",
-        accountId: "acc-1",
+        accountIds: ["acc-1"],
         caption: "x",
         scheduledAt,
         aiGenerated: false,
@@ -910,5 +922,151 @@ describe("scheduleClip", () => {
         now: new Date(),
       }),
     ).rejects.toThrow("account is not connected and active");
+  });
+});
+
+describe("scheduling to YouTube", () => {
+  const HOUR = 60 * 60 * 1000;
+  const account = { id: "acc-1", ownerId: "user-1", status: "active" };
+  const channel = { id: "yt-1", ownerId: "user-1", status: "active" };
+  const scheduledAt = new Date(Date.now() + 3 * HOUR).toISOString();
+
+  function queues() {
+    const sent: Array<[string, string]> = [];
+    const canceled: string[] = [];
+    const make = (name: string) => ({
+      send: async (postId: string) => (sent.push([name, postId]), `${name}-job-${sent.length}`),
+      cancel: async (jobId: string) => void canceled.push(jobId),
+    });
+    return { instagram: make("ig"), youtube: make("yt"), sent, canceled };
+  }
+
+  const target = (queue: ReturnType<typeof queues>["youtube"], overrides: Record<string, unknown> = {}) => ({
+    queue,
+    ytAccountIds: ["yt-1"],
+    privacy: "unlisted",
+    madeForKids: "no",
+    ...overrides,
+  });
+
+  function scheduleOne(db: PrismaClient, q: ReturnType<typeof queues>, store: ClipStore, overrides: Record<string, unknown> = {}) {
+    return scheduleClip({
+      db,
+      store,
+      queue: q.instagram,
+      ...owned,
+      clipId: "c1",
+      accountIds: [],
+      youtube: target(q.youtube, { title: "Wait for it" }),
+      caption: "Watch to the end",
+      scheduledAt,
+      aiGenerated: false,
+      rightsConfirmed: true,
+      audioSource: "original",
+      now: new Date(),
+      ...overrides,
+    });
+  }
+
+  it("posts one clip to Instagram and YouTube together, each with its own copy and job", async () => {
+    const { db, tables } = fakeDb({ projects: [project()], clips: [clip({ aiGenerated: true })], accounts: [account], channels: [channel] });
+    const files = fakeStore();
+    const q = queues();
+    const result = await scheduleOne(db, q, files.store, { accountIds: ["acc-1"] });
+
+    expect(result.posts).toHaveLength(1);
+    const yt = tables.ytPost[0];
+    expect(yt).toMatchObject({
+      ytAccountId: "yt-1",
+      title: "Wait for it",
+      description: "Watch to the end\n\n#Shorts",
+      privacy: "unlisted",
+      madeForKids: false,
+      aiGenerated: true,
+      sourceClipId: "c1",
+      videoKey: `youtube/${yt.id}.mp4`,
+      queueJobId: "yt-job-2",
+    });
+    expect(files.copies).toContainEqual(["clips/p1/c1.mp4", `youtube/${yt.id}.mp4`]);
+    expect(q.sent.map(([name]) => name)).toEqual(["ig", "yt"]);
+    expect(tables.auditLog.map((log) => log.targetType)).toEqual(["Post", "YtPost"]);
+  });
+
+  it("posts several clips to YouTube only, titled by each clip's title or name, spaced by the gap", async () => {
+    const { db, tables } = fakeDb({
+      projects: [project()],
+      clips: [clip(), clip({ id: "c2", title: null, name: "clip-002", storageKey: "clips/p1/c2.mp4" })],
+      channels: [channel],
+    });
+    const q = queues();
+    const first = Date.now() + 3 * HOUR;
+    await scheduleClips({
+      db,
+      store: fakeStore().store,
+      queue: q.instagram,
+      ...owned,
+      clipIds: ["c1", "c2"],
+      accountIds: [],
+      youtube: target(q.youtube, { privacy: "public", madeForKids: "yes" }),
+      firstScheduledAt: new Date(first).toISOString(),
+      gapHours: 2,
+      aiGenerated: false,
+      rightsConfirmed: true,
+      audioSource: "original",
+      now: new Date(),
+    });
+
+    expect(tables.post).toEqual([]);
+    expect(tables.ytPost.map((post) => [post.title, (post.scheduledAt as Date).getTime(), post.madeForKids])).toEqual([
+      ["Wait for it", first, true],
+      ["clip-002", first + 2 * HOUR, true],
+    ]);
+  });
+
+  it.each([
+    ["no destination", { accountIds: [], youtube: undefined }, /at least one/],
+    ["no made-for-kids answer", { youtube: "madeForKids" }, /made for kids/],
+    ["an unknown privacy", { youtube: "privacy" }, /public, unlisted or private/],
+    ["a title over 100 characters", { youtube: "title" }, /over 100 characters/],
+  ])("refuses %s and copies or creates nothing", async (_name, change, error) => {
+    const { db, tables } = fakeDb({ projects: [project()], clips: [clip()], accounts: [account], channels: [channel] });
+    const files = fakeStore();
+    const q = queues();
+    const broken: Record<string, Record<string, unknown>> = {
+      madeForKids: { madeForKids: "" },
+      privacy: { privacy: "friends" },
+      title: { title: "x".repeat(101) },
+    };
+    const overrides =
+      typeof change.youtube === "string" ? { youtube: target(q.youtube, { title: "Wait for it", ...broken[change.youtube] }) } : change;
+    await expect(scheduleOne(db, q, files.store, overrides)).rejects.toThrow(error);
+    expect(tables.ytPost).toEqual([]);
+    expect(files.copies).toEqual([]);
+    expect(q.sent).toEqual([]);
+  });
+
+  it("refuses a clip longer than a Short can be", async () => {
+    const { db, tables } = fakeDb({ projects: [project()], clips: [clip({ length: 181 })], channels: [channel] });
+    await expect(scheduleOne(db, queues(), fakeStore().store)).rejects.toThrow("clip-001: a YouTube Short is at most 3 minutes long");
+    expect(tables.ytPost).toEqual([]);
+  });
+
+  it("refuses a channel that is not connected or belongs to someone else", async () => {
+    for (const other of [{ ...channel, status: "reauth_required" }, { ...channel, ownerId: "user-2" }]) {
+      const { db } = fakeDb({ projects: [project()], clips: [clip()], channels: [other] });
+      await expect(scheduleOne(db, queues(), fakeStore().store)).rejects.toThrow("the YouTube channel is not connected and active");
+    }
+  });
+
+  it("cancels the jobs and removes the copies when the posts cannot be saved", async () => {
+    const { db } = fakeDb({ projects: [project()], clips: [clip()], accounts: [account], channels: [channel] });
+    (db as unknown as { ytPost: { create: () => Promise<never> } }).ytPost.create = async () => {
+      throw new Error("database down");
+    };
+    const files = fakeStore();
+    const q = queues();
+    await expect(scheduleOne(db, q, files.store, { accountIds: ["acc-1"] })).rejects.toThrow("database down");
+    expect(q.canceled).toEqual(["ig-job-1", "yt-job-2"]);
+    expect(files.removed).toHaveLength(2);
   });
 });

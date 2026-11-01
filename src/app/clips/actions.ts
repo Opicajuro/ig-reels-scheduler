@@ -9,10 +9,29 @@ import { s3ClipStore } from "@/lib/clip-store";
 import { addClipLink, removeClipLink } from "@/lib/links";
 import { parseAudioSource } from "@/lib/rights";
 import { prisma } from "@/lib/prisma";
-import { getClipQueue, getPublishQueue } from "@/lib/queues";
+import { getClipQueue, getPublishQueue, getYouTubePublishQueue } from "@/lib/queues";
 
 function text(formData: FormData, name: string): string {
   return String(formData.get(name) ?? "");
+}
+
+// The destination boxes: Instagram accounts as accountId, YouTube channels as ytAccountId, with the YouTube choices.
+function destinations(formData: FormData, withTitle: boolean) {
+  return {
+    accountIds: formData.getAll("accountId").map(String),
+    youtube: {
+      queue: getYouTubePublishQueue(),
+      ytAccountIds: formData.getAll("ytAccountId").map(String),
+      privacy: text(formData, "ytPrivacy"),
+      madeForKids: text(formData, "ytMadeForKids"),
+      ...(withTitle ? { title: text(formData, "ytTitle") } : {}),
+    },
+  };
+}
+
+function scheduledMessage(result: { posts: unknown[]; ytPosts: unknown[] }): string {
+  const count = result.posts.length + result.ytPosts.length;
+  return `Scheduled ${count} ${count === 1 ? "post" : "posts"}`;
 }
 
 export async function createLinkProjectAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
@@ -187,13 +206,13 @@ export async function saveClipDetailsAction(_previous: ActionResult, formData: F
 
 export async function scheduleClipAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
-    await clips.scheduleClip({
+    const result = await clips.scheduleClip({
       db: prisma,
       store: s3ClipStore,
       queue: getPublishQueue(),
       ownerId: await getOwnerId(),
       clipId: text(formData, "clipId"),
-      accountId: text(formData, "accountId"),
+      ...destinations(formData, true),
       caption: text(formData, "caption"),
       scheduledAt: text(formData, "scheduledAt"),
       aiGenerated: formData.get("aiGenerated") === "on",
@@ -203,19 +222,19 @@ export async function scheduleClipAction(_previous: ActionResult, formData: Form
     });
     revalidatePath(`/clips/${text(formData, "projectId")}`);
     revalidatePath("/scheduled");
-    return "Scheduled 1 clip";
+    return scheduledMessage(result);
   });
 }
 
 export async function bulkScheduleClipsAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
-    const posts = await clips.scheduleClips({
+    const result = await clips.scheduleClips({
       db: prisma,
       store: s3ClipStore,
       queue: getPublishQueue(),
       ownerId: await getOwnerId(),
       clipIds: formData.getAll("clipId").map(String),
-      accountId: text(formData, "accountId"),
+      ...destinations(formData, false),
       firstScheduledAt: text(formData, "scheduledAt"),
       gapHours: Number(text(formData, "gapHours")),
       aiGenerated: formData.get("aiGenerated") === "on",
@@ -225,7 +244,7 @@ export async function bulkScheduleClipsAction(_previous: ActionResult, formData:
     });
     revalidatePath(`/clips/${text(formData, "projectId")}`);
     revalidatePath("/scheduled");
-    return `Scheduled ${posts.length} ${posts.length === 1 ? "clip" : "clips"}`;
+    return scheduledMessage(result);
   });
 }
 

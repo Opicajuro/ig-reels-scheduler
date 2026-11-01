@@ -12,6 +12,8 @@ export type Settings = {
   r2AccessKeyId: string | null;
   r2SecretAccessKey: string | null;
   r2Bucket: string | null;
+  googleClientId: string | null;
+  googleClientSecret: string | null;
 };
 
 // What the settings form sends. An empty secret keeps the saved one, so the page never has to send a secret back.
@@ -59,6 +61,8 @@ export async function getSettings(db: PrismaClient): Promise<Settings> {
       r2AccessKeyId: null,
       r2SecretAccessKey: null,
       r2Bucket: null,
+      googleClientId: null,
+      googleClientSecret: null,
     };
   }
   return {
@@ -71,6 +75,8 @@ export async function getSettings(db: PrismaClient): Promise<Settings> {
     r2AccessKeyId: row.r2AccessKeyId,
     r2SecretAccessKey: row.r2SecretAccessKey === null ? null : openSecret(row.r2SecretAccessKey, loadTokenKey()),
     r2Bucket: row.r2Bucket,
+    googleClientId: row.googleClientId,
+    googleClientSecret: row.googleClientSecret === null ? null : openSecret(row.googleClientSecret, loadTokenKey()),
   };
 }
 
@@ -142,6 +148,34 @@ export async function saveR2Settings(db: PrismaClient, input: R2SettingsInput): 
     r2AccessKeyId,
     r2Bucket,
     ...(r2SecretAccessKey === null ? {} : { r2SecretAccessKey: sealSecret(r2SecretAccessKey, loadTokenKey()) }),
+  };
+  await db.setting.upsert({ where: { id: SETTINGS_ID }, create: { id: SETTINGS_ID, ...data }, update: data });
+}
+
+// What the YouTube form sends. An empty client secret keeps the saved one.
+export type YouTubeSettingsInput = { googleClientId: string; googleClientSecret: string };
+
+// Both values, or none to turn YouTube off.
+export async function saveYouTubeSettings(db: PrismaClient, input: YouTubeSettingsInput): Promise<void> {
+  const googleClientId = orNull(input.googleClientId);
+  const googleClientSecret = orNull(input.googleClientSecret);
+
+  if (googleClientId === null && googleClientSecret === null) {
+    const data = { googleClientId: null, googleClientSecret: null };
+    await db.setting.upsert({ where: { id: SETTINGS_ID }, create: { id: SETTINGS_ID, ...data }, update: data });
+    return;
+  }
+
+  const saved = await db.setting.findUnique({ where: { id: SETTINGS_ID } });
+  const hasSecret = googleClientSecret !== null || Boolean(saved?.googleClientSecret);
+  if (googleClientId === null || !hasSecret) throw new UserError("YouTube needs both the OAuth client ID and the client secret");
+  if (!/^[\w-]+\.apps\.googleusercontent\.com$/.test(googleClientId)) {
+    throw new UserError("a Google OAuth client ID ends in .apps.googleusercontent.com");
+  }
+
+  const data = {
+    googleClientId,
+    ...(googleClientSecret === null ? {} : { googleClientSecret: sealSecret(googleClientSecret, loadTokenKey()) }),
   };
   await db.setting.upsert({ where: { id: SETTINGS_ID }, create: { id: SETTINGS_ID, ...data }, update: data });
 }

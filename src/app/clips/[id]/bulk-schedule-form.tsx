@@ -8,29 +8,36 @@ import { AiBadge } from "@/components/ai-badge";
 import { Field } from "@/components/field";
 import { LocalTime } from "@/components/local-time";
 import styles from "../clips.module.css";
-import type { AccountChoice } from "./schedule-form";
+import { DestinationFields, YouTubeFields, type AccountChoice, type ChannelChoice, type Destinations } from "./destination-fields";
 
-export type SelectedClip = { id: string; name: string; caption: string; aiGenerated: boolean };
+export type SelectedClip = { id: string; name: string; caption: string; youTubeTitle: string; aiGenerated: boolean };
 
-// Schedules every selected clip to one account, spaced by a gap, under one rights confirmation. Before sending, it lists
-// each clip with the caption it is posted with and its publish time, worked out the same way as on the server.
-// Clips made with AI always carry Instagram's AI info label; the AI box adds it to the others.
+// Schedules every selected clip to the ticked accounts and channels, spaced by a gap, under one rights confirmation.
+// Before sending, it lists each clip with the caption (and YouTube title) it is posted with and its publish time, worked
+// out the same way as on the server. Clips made with AI always carry the AI label; the AI box adds it to the others.
 // A datetime-local value has no timezone, so the browser turns it into an absolute time before it is sent.
 export function BulkScheduleForm({
   projectId,
   clips,
   accounts,
+  channels,
   alreadyScheduledTo,
   bestTimeSamples,
 }: {
   projectId: string;
   clips: SelectedClip[];
   accounts: AccountChoice[];
+  channels: ChannelChoice[];
   /** accounts that already have a live post from this project, such as ["@foo"] */
   alreadyScheduledTo: string[];
   bestTimeSamples: BestTimeSample[];
 }) {
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  const [destinations, setDestinations] = useState<Destinations>({
+    accountIds: accounts.slice(0, 1).map((account) => account.id),
+    ytAccountIds: [],
+  });
+  const instagram = destinations.accountIds.length > 0;
+  const youtube = destinations.ytAccountIds.length > 0;
   const [when, setWhen] = useState("");
   const [gapHours, setGapHours] = useState("24");
   const [audioSource, setAudioSource] = useState("unknown");
@@ -47,28 +54,11 @@ export function BulkScheduleForm({
         <input key={clip.id} type="hidden" name="clipId" value={clip.id} />
       ))}
       <input type="hidden" name="scheduledAt" value={scheduledAt} />
-      <Field label="Instagram account">
-        <select
-          name="accountId"
-          value={accountId}
-          onChange={(event) => setAccountId(event.target.value)}
-          required
-          disabled={accounts.length === 0}
-        >
-          {accounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              @{account.username}
-            </option>
-          ))}
-        </select>
-      </Field>
-      {accounts.length === 0 ? (
-        <p className={styles.muted}>Connect an Instagram account to schedule these clips. You can confirm the rights below now.</p>
-      ) : null}
+      <DestinationFields accounts={accounts} channels={channels} value={destinations} onChange={setDestinations} />
       <Field label="First publish time (your local time)">
         <input type="datetime-local" value={when} onChange={(event) => setWhen(event.target.value)} required />
       </Field>
-      {accounts.length > 0 ? <UseBestTime samples={bestTimeSamples} accountId={accountId} onPick={setWhen} /> : null}
+      {instagram ? <UseBestTime samples={bestTimeSamples} accountId={destinations.accountIds[0]} onPick={setWhen} /> : null}
       <Field label="Hours between posts" hint="1 to 720">
         <input
           type="number"
@@ -102,13 +92,18 @@ export function BulkScheduleForm({
                 )}
               </span>
             </div>
+            {youtube ? <p className={styles.caption}>YouTube: {clip.youTubeTitle}</p> : null}
             <p className={styles.caption}>{clip.caption}</p>
-            {clip.caption.length > 2200 ? (
+            {youtube && [...clip.youTubeTitle].length > 100 ? (
+              <p className={styles.warning}>This title is over YouTube&apos;s 100 characters. Shorten the clip&apos;s title first.</p>
+            ) : null}
+            {instagram && clip.caption.length > 2200 ? (
               <p className={styles.warning}>This caption is over 2,200 characters. Shorten the description first.</p>
             ) : null}
           </li>
         ))}
       </ol>
+      {youtube ? <YouTubeFields /> : null}
       <Field label="Audio source">
         <select name="audioSource" value={audioSource} onChange={(event) => setAudioSource(event.target.value)}>
           <option value="unknown">Unknown</option>
@@ -118,9 +113,9 @@ export function BulkScheduleForm({
         </select>
       </Field>
       {audioSource === "from_source" ? (
-        <p className={styles.warning}>Audio from the source video can get the Reel claimed if you don&apos;t own that video.</p>
+        <p className={styles.warning}>Audio from the source video can get the post claimed if you don&apos;t own that video.</p>
       ) : null}
-      {alreadyScheduledTo.length > 0 ? (
+      {instagram && alreadyScheduledTo.length > 0 ? (
         <p className={styles.warning}>
           Media from this project is already scheduled or published to {alreadyScheduledTo.join(", ")}. Instagram
           down-ranks duplicate content.
@@ -133,14 +128,14 @@ export function BulkScheduleForm({
           checked={aiGenerated}
           onChange={(event) => setAiGenerated(event.target.checked)}
         />{" "}
-        These videos are AI-generated (Instagram shows an AI info label)
+        These videos are AI-generated (Instagram shows an AI info label; YouTube is told they have altered or synthetic content)
         {clips.some((clip) => clip.aiGenerated) ? ". Clips made with AI always carry it." : null}
       </label>
       <label className={styles.rights}>
         <input type="checkbox" name="rightsConfirmed" required /> I own or hold a license to these clips&apos; video and audio
       </label>
-      <SubmitButton variant="primary" disabled={!scheduledAt || accounts.length === 0} pendingLabel="Scheduling…">
-        Schedule {clips.length} {clips.length === 1 ? "clip" : "clips"} on Instagram
+      <SubmitButton variant="primary" disabled={!scheduledAt || (!instagram && !youtube)} pendingLabel="Scheduling…">
+        Schedule {clips.length} {clips.length === 1 ? "clip" : "clips"}
       </SubmitButton>
     </ActionForm>
   );

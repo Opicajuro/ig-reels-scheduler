@@ -6,7 +6,8 @@ import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
 import { cancelScheduledPost } from "@/lib/posts";
 import { retryFailedPost } from "@/lib/post-retry";
-import { getPublishQueue } from "@/lib/queues";
+import { getPublishQueue, getYouTubePublishQueue } from "@/lib/queues";
+import { cancelYouTubePost, retryYouTubePost } from "@/lib/youtube-posts";
 
 // The screens that show a post's status.
 function revalidateScreens(postId: string) {
@@ -39,6 +40,30 @@ export async function cancelPostAction(_previous: ActionResult, formData: FormDa
       ownerId: await getOwnerId(),
       postId,
     });
+    revalidateScreens(postId);
+    return "Post canceled";
+  });
+}
+
+export async function retryYouTubePostAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    const postId = String(formData.get("postId"));
+    await retryYouTubePost({
+      db: prisma,
+      queue: getYouTubePublishQueue(),
+      ownerId: await getOwnerId(),
+      postId,
+      now: new Date(),
+    });
+    revalidateScreens(postId);
+    return "Scheduled again";
+  });
+}
+
+export async function cancelYouTubePostAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    const postId = String(formData.get("postId"));
+    await cancelYouTubePost({ db: prisma, queue: getYouTubePublishQueue(), ownerId: await getOwnerId(), postId });
     revalidateScreens(postId);
     return "Post canceled";
   });
