@@ -53,8 +53,15 @@ export function drawPicture({
     };
     child.stdout.on("data", keep);
     child.stderr.on("data", keep);
-    child.on("error", reject);
+    // Aborting the signal also emits "error" while sd-cli is still running; the abort is reported once it has exited.
+    child.on("error", (error) => {
+      if (child.pid === undefined) reject(error);
+    });
     child.on("close", async (code) => {
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
       const tail = log.trim().split(/\r?\n/).slice(-5).join("\n");
       if (code !== 0) {
         reject(new Error(`the picture maker exited with ${code}:\n${tail}`));

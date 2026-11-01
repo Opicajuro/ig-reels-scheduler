@@ -149,6 +149,15 @@ const records = async (file: string) =>
     .filter(Boolean)
     .map((line) => JSON.parse(line));
 
+// Cancels the job once the fake engine has logged that it is running and can log its stop, however slowly it started.
+function cancelWhenRecorded(file: string, running: (entries: Awaited<ReturnType<typeof records>>) => boolean, job: Row) {
+  const poll = setInterval(async () => {
+    if (!running(await records(file))) return;
+    clearInterval(poll);
+    Object.assign(job, { status: "failed", step: null, error: "Cancelled" });
+  }, 50);
+}
+
 describe("runSlideshowJob: script", () => {
   it("writes the slides into a draft with llama-server, then stops it", async () => {
     const job = { id: "show-1", ownerId: "owner-1", topic: "Better sleep", slideCount: 3, status: "writing", slides: null };
@@ -174,7 +183,7 @@ describe("runSlideshowJob: script", () => {
     process.env.FAKE_LLAMA_REPLY = "slow";
     const job = { id: "show-7", ownerId: "owner-1", topic: "x", slideCount: 3, status: "writing", slides: null };
     const { db, state } = fakeDb(job, undefined, (step, row) => {
-      if (step === "Writing script") setTimeout(() => Object.assign(row, { status: "failed", step: null, error: "Cancelled" }), 600);
+      if (step === "Writing script") cancelWhenRecorded(llamaRecord, (entries) => entries.some((entry) => entry.request), row);
     });
     await run(job, "script", db);
 
@@ -274,7 +283,7 @@ describe("runSlideshowJob: render", () => {
     const drawing = [{ ...slides[0], picture: "slow sunrise" }, ...slides.slice(1, 3)];
     const job = { id: "show-9", ownerId: "owner-1", topic: "x", slideCount: 3, status: "queued", slides: drawing, voice: "af_heart", captionPreset: "words" };
     const { db, state } = fakeDb(job, undefined, (step, row) => {
-      if (step === "Drawing picture 1 of 3") setTimeout(() => Object.assign(row, { status: "failed", step: null, error: "Cancelled" }), 300);
+      if (step === "Drawing picture 1 of 3") cancelWhenRecorded(sdRecord, (entries) => entries.includes("drawing"), row);
     });
     await run(job, "render", db);
 

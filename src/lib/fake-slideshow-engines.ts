@@ -5,7 +5,8 @@ import path from "node:path";
 // /health (503 while "loading", then 200) and /v1/chat/completions with the slides the request's schema asks for, or
 // FAKE_LLAMA_REPLY, or never when that is "slow"; it logs each request and its stop to FAKE_LLAMA_RECORD. The fake
 // sd-cli logs its arguments to FAKE_SD_RECORD and copies FAKE_SD_PICTURE to its -o path, fails like a card out of
-// memory when the prompt says so, or draws for a minute when the prompt says "slow", logging when it is stopped.
+// memory when the prompt says so, or draws for a minute when the prompt says "slow", logging "drawing" once it can be
+// stopped and "stopped" when it is.
 
 const LLAMA_SERVER = String.raw`#!/usr/bin/env node
 const http = require("node:http");
@@ -58,6 +59,7 @@ if (arg("-p").includes("slow")) {
     fs.appendFileSync(process.env.FAKE_SD_RECORD, JSON.stringify("stopped") + "\n");
     process.exit(1);
   });
+  fs.appendFileSync(process.env.FAKE_SD_RECORD, JSON.stringify("drawing") + "\n");
   setTimeout(() => {}, 60_000);
 } else {
   fs.copyFileSync(process.env.FAKE_SD_PICTURE, arg("-o"));

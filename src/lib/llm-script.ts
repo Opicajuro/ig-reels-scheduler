@@ -156,9 +156,13 @@ export async function startLlamaServer({
     ["-m", model, "--host", "127.0.0.1", "--port", String(port), "-c", "8192", "--reasoning", "off", "--no-webui"],
     { windowsHide: true, stdio: ["ignore", log.fd, log.fd], signal },
   );
+  // Aborting the signal also emits "error" while the server is still running, so only a server that never started
+  // counts as exited on an error.
   const exited = new Promise<number | null>((resolve) => {
     child.on("exit", (code) => resolve(code));
-    child.on("error", () => resolve(null));
+    child.on("error", () => {
+      if (child.pid === undefined) resolve(null);
+    });
   });
   let running = true;
   void exited.then(() => {
