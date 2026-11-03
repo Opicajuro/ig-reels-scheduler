@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { captionLines } from "@/clip-engine/captions-timing.js";
-import { bundleCaptions } from "@/clip-engine/render-captions.js";
+import { withCaptionBundle } from "@/clip-engine/render-captions.js";
 import { mixBackgroundMusic } from "@/clip-engine/music.js";
 import { buildVoiceTrack, preparePicture, renderSlideshow, slideTimings } from "@/clip-engine/slideshow.js";
 import { captionOverlays } from "./clip-render";
@@ -60,7 +60,7 @@ export function localSlideshowTools(db: PrismaClient): SlideshowTools {
         captionEmoji: false,
       };
       const clips = [{ clipId: CAPTIONED, start: 0, length: total }];
-      const lists = await captionOverlays(captionLines(words), clips, dir, look, await bundleCaptions());
+      const lists = await withCaptionBundle((serveUrl: string) => captionOverlays(captionLines(words), clips, dir, look, serveUrl));
       return lists.get(CAPTIONED)!;
     },
   };

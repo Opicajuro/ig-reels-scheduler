@@ -131,10 +131,21 @@ export function combineScores(motion, audio) {
   return audioNormalized.map((loudness, second) => AUDIO_WEIGHT * loudness + MOTION_WEIGHT * motionNormalized[second]);
 }
 
-export function pickHighlights(scores, clipSeconds, clipCount) {
+// Picks clipCount windows, one per equal part of the video, by their summed score. With the transcript's words
+// (whisper's { text, startMs, endMs }), windows also score by how much is said in them, and each clip's start and end
+// move to the nearest sentence boundary within SNAP_SECONDS instead of ending on a quiet second.
+/**
+ * @param {number[]} scores
+ * @param {number} clipSeconds
+ * @param {number} clipCount
+ * @param {{ text: string; startMs: number; endMs: number }[] | null} [words]
+ */
+export function pickHighlights(scores, clipSeconds, clipCount, words = null) {
   const length = Math.min(clipSeconds, scores.length);
+  const weighted = words ? withSpeechDensity(scores, words) : scores;
+  const boundaries = words ? sentenceBoundaries(words) : null;
   const prefix = [0];
-  for (const score of scores) prefix.push(prefix[prefix.length - 1] + score);
+  for (const score of weighted) prefix.push(prefix[prefix.length - 1] + score);
 
   const highlights = [];
   for (let index = 0; index < clipCount; index++) {
@@ -151,6 +162,11 @@ export function pickHighlights(scores, clipSeconds, clipCount) {
         bestScore = score;
         bestStart = start;
       }
+    }
+    if (boundaries) {
+      const snapped = snapToSentences(boundaries, bestStart, bestStart + length, regionStart, regionEnd, scores.length);
+      highlights.push({ index, start: snapped.start, length: snapped.end - snapped.start });
+      continue;
     }
     // A video shorter than one clip is used whole, so there is no end to move.
     const end =
@@ -186,6 +202,69 @@ function quietEnd(scores, start, length, regionEnd, flex) {
     }
   }
   return bestEnd;
+}
+
+export const SPEECH_WEIGHT = 0.3;
+export const SNAP_SECONDS = 5;
+export const SENTENCE_PAUSE_MS = 600;
+const SENTENCE_END = /[.!?…]["'”’)\]]*$/;
+
+// The motion and loudness scores blended with speech density: the words starting in each second, as a share of the
+// busiest second's.
+export function withSpeechDensity(scores, words) {
+  const density = new Array(scores.length).fill(0);
+  for (const word of words) {
+    const second = Math.floor(word.startMs / 1000);
+    if (second >= 0 && second < density.length) density[second]++;
+  }
+  const max = Math.max(...density, 0);
+  return scores.map((score, second) => (1 - SPEECH_WEIGHT) * score + SPEECH_WEIGHT * (max > 0 ? density[second] / max : 0));
+}
+
+// Where sentences start and end, in ms: a word ending in sentence-final punctuation, or followed by a pause of
+// SENTENCE_PAUSE_MS or more, ends one, and the next word starts the next. The transcript's first word starts one and
+// its last word ends one.
+export function sentenceBoundaries(words) {
+  const starts = [];
+  const ends = [];
+  words.forEach((word, index) => {
+    if (index === 0) starts.push(word.startMs);
+    const next = words[index + 1];
+    if (!next || SENTENCE_END.test(word.text.trim()) || next.startMs - word.endMs >= SENTENCE_PAUSE_MS) {
+      ends.push(word.endMs);
+      if (next) starts.push(next.startMs);
+    }
+  });
+  return { starts, ends };
+}
+
+const halfDown = (ms) => Math.floor(ms / 500) / 2;
+const halfUp = (ms) => Math.ceil(ms / 500) / 2;
+
+// Moves the window [start, end) (seconds) to the sentence start and end nearest its edges within SNAP_SECONDS, on half
+// seconds as the review timeline needs them, inside [from, to] and the clip length limits. An edge with no boundary in
+// reach stays.
+export function snapToSentences({ starts, ends }, start, end, from, to, durationSeconds) {
+  const min = Math.min(MIN_CLIP_SECONDS, durationSeconds);
+  const near = (times, round, target) =>
+    times
+      .map(round)
+      .filter((time) => Math.abs(time - target) <= SNAP_SECONDS && time >= from && time <= to)
+      .map((time) => ({ time, cost: Math.abs(time - target) }));
+  // An edge left where it was costs more than any snapped one.
+  const startOptions = [...near(starts, halfDown, start), { time: start, cost: SNAP_SECONDS + 1 }];
+  const endOptions = [...near(ends, halfUp, end), { time: end, cost: SNAP_SECONDS + 1 }];
+  let best = null;
+  for (const s of startOptions) {
+    for (const e of endOptions) {
+      const length = e.time - s.time;
+      if (length < min || length > MAX_CLIP_SECONDS) continue;
+      const cost = s.cost + e.cost;
+      if (!best || cost < best.cost) best = { start: s.time, end: e.time, cost };
+    }
+  }
+  if (!best) throw new Error(`the ${end - start}s window at ${start}s is outside the clip length limits`);
+  return { start: best.start, end: best.end };
 }
 
 export function clipFileName(index) {

@@ -1,3 +1,4 @@
+import { rm } from "node:fs/promises";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { bundle } from "@remotion/bundler";
@@ -6,9 +7,15 @@ import { captionFont, captionPlacement, captionPreset, videoColor } from "./remo
 
 const ENTRY_POINT = fileURLToPath(new URL("./remotion/index.jsx", import.meta.url));
 
-// Builds the caption composition once for a project.
-export function bundleCaptions() {
-  return bundle({ entryPoint: ENTRY_POINT });
+// Builds the caption composition once for a render, hands its serve URL (a folder in the temp folder) to work, and
+// removes the folder when work is done or fails, so no bundle is left behind.
+export async function withCaptionBundle(work) {
+  const serveUrl = await bundle({ entryPoint: ENTRY_POINT });
+  try {
+    return await work(serveUrl);
+  } finally {
+    await rm(serveUrl, { recursive: true, force: true });
+  }
 }
 
 // Draws each still as a transparent 1080x1920 PNG, all in one browser. stills is a list of { id, inputProps, output }

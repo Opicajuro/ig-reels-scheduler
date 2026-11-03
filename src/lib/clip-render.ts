@@ -18,7 +18,7 @@ import {
 import { loudnessPerSecond, motionPerSecond } from "@/clip-engine/analysis.js";
 import { combineScores, MIN_SEGMENT_SECONDS, pickHighlights, resolveClipCount } from "@/clip-engine/helpers.js";
 import { lineEmoji } from "@/clip-engine/caption-emoji.js";
-import { bundleCaptions, renderCaptionStills, renderTitleStills } from "@/clip-engine/render-captions.js";
+import { renderCaptionStills, renderTitleStills, withCaptionBundle } from "@/clip-engine/render-captions.js";
 import { captionPreset, videoColor } from "@/clip-engine/remotion/caption-presets.js";
 import {
   remainingClips,
@@ -33,6 +33,7 @@ import { mixBackgroundMusic } from "@/clip-engine/music.js";
 import { musicFile } from "./music-files";
 import { parseTranscript, validateHighlights, type Highlight, type Word } from "./highlights";
 import { clipLines, clipWords, parseClipWords } from "./caption-words";
+import { tightenClip } from "@/clip-engine/pacing.js";
 
 // Thrown by a render's write once the render is cancelled, to stop it.
 class RenderCancelled extends Error {}
@@ -59,6 +60,7 @@ async function finishClip({
   overlay,
   hook,
   endCard,
+  tightened,
   options,
 }: {
   input: string;
@@ -68,9 +70,11 @@ async function finishClip({
   overlay: string | null;
   hook: string | null;
   endCard: string | null;
+  // A tightened clip's kept pieces (tightenClip); a clip's kept cut is already tightened.
+  tightened: ReturnType<typeof tightenClip> | null;
   options: ReturnType<typeof finishOptions>;
 }): Promise<string> {
-  await renderClip({ input, output, start, length, overlay, hook, endCard, progressColor: options.progressColor });
+  await renderClip({ input, output, start, length, overlay, hook, endCard, progressColor: options.progressColor, tightened });
   if (!options.music) return output;
   const finished = output.replace(/\.mp4$/, "-music.mp4");
   await mixBackgroundMusic({ input: output, music: options.music, volume: options.musicVolume, output: finished });
@@ -131,7 +135,10 @@ export async function renderClipProject({
     await write({ transcript: words });
     return words;
   };
-  // Measures the video and picks its highlights by motion and loudness, transcribing it at the same time for captions.
+  // Captions and tightening both work from the words; with them, highlights also start and end on full sentences.
+  const needsWords = project.withCaptions || project.tightenPacing;
+  // Measures the video and picks its highlights by motion and loudness, transcribing it at the same time when the
+  // words are needed.
   const pick = async () => {
     const durationSeconds = Math.floor(await probeDuration(sourcePath));
     if (durationSeconds < MIN_SEGMENT_SECONDS) {
@@ -139,15 +146,15 @@ export async function renderClipProject({
     }
     await write({ durationSeconds });
     const clipCount = resolveClipCount(project.clipCount, durationSeconds, project.clipSeconds);
-    const transcribing = project.withCaptions && project.transcript === null;
+    const transcribing = needsWords && project.transcript === null;
     await step(transcribing ? "Analysing motion and sound and transcribing" : "Analysing motion and sound");
     // Each of these reads the whole video in its own process, so they run at the same time.
     const [motion, audio, words] = await Promise.all([
       motionPerSecond(motionFrames(sourcePath), durationSeconds),
       loudnessPerSecond(audioSamples(sourcePath), durationSeconds),
-      project.withCaptions ? transcript() : null,
+      needsWords ? transcript() : null,
     ]);
-    const highlights: Highlight[] = pickHighlights(combineScores(motion, audio), project.clipSeconds, clipCount).map(
+    const highlights: Highlight[] = pickHighlights(combineScores(motion, audio), project.clipSeconds, clipCount, words).map(
       ({ start, length }: Highlight) => ({ start, length }),
     );
     return { highlights, words };
@@ -194,17 +201,17 @@ export async function renderClipProject({
     let plan: RenderPlan;
     let words: Word[] | null;
     if (resume) {
-      // The highlights are not picked again, but captions need the words.
+      // The highlights are not picked again, but captions and tightening need the words.
       plan = resume.plan;
-      words = project.withCaptions ? await transcript() : null;
+      words = needsWords ? await transcript() : null;
     } else {
       let highlights: Highlight[];
       if (project.highlights !== null) {
         // Reviewed on the timeline: the video is not analysed again.
         if (project.durationSeconds === null) throw new Error("reviewed highlights without the video's length");
         highlights = validateHighlights(project.highlights, project.durationSeconds);
-        if (project.withCaptions && project.transcript === null) await step("Transcribing");
-        words = project.withCaptions ? await transcript() : null;
+        if (needsWords && project.transcript === null) await step("Transcribing");
+        words = needsWords ? await transcript() : null;
       } else {
         ({ highlights, words } = await pick());
       }
@@ -222,20 +229,40 @@ export async function renderClipProject({
     // Each caption, hook title and end card is drawn once as a PNG, all from one Remotion bundle, then laid over its
     // clip by ffmpeg.
     const todoClips = todo.map(({ clip }) => clip);
+    // Tightened, a clip keeps only some pieces of its stretch of the source, and its captions are timed to match.
+    const tightened = new Map<string, ReturnType<typeof tightenClip>>();
+    if (project.tightenPacing) {
+      if (!words) throw new Error("tightening the pacing needs the transcript's words");
+      for (const clip of todoClips) tightened.set(clip.clipId, tightenClip(words, clip.start, clip.length));
+    }
+    const captionWords = project.withCaptions ? words : null;
     const titles = titleStills(project, todoClips, path.join(workDir, "titles"));
-    const drawing = Boolean(words) || titles.stills.length > 0;
-    if (drawing && !resumeLabel) await step(words ? "Drawing captions" : "Drawing the hook and end card");
-    const serveUrl = drawing ? await bundleCaptions() : null;
-    const overlays =
-      words && serveUrl
-        ? await captionOverlays(captionLines(words), todoClips, path.join(workDir, "captions"), project, serveUrl)
-        : null;
-    if (serveUrl) await drawTitleStills(titles.stills, path.join(workDir, "titles"), project, serveUrl);
+    const drawing = Boolean(captionWords) || titles.stills.length > 0;
+    if (drawing && !resumeLabel) await step(captionWords ? "Drawing captions" : "Drawing the hook and end card");
+    const overlays = !drawing
+      ? null
+      : await withCaptionBundle(async (serveUrl: string) => {
+          const lists = !captionWords
+            ? null
+            : await captionOverlays(
+                captionLines(captionWords),
+                todoClips.map((clip) => {
+                  const cut = tightened.get(clip.clipId);
+                  return cut ? { clipId: clip.clipId, start: 0, length: cut.length, lines: captionLines(cut.words) } : clip;
+                }),
+                path.join(workDir, "captions"),
+                project,
+                serveUrl,
+              );
+          await drawTitleStills(titles.stills, path.join(workDir, "titles"), project, serveUrl);
+          return lists;
+        });
     const options = finishOptions(project);
 
     for (const { index, clip } of todo) {
       await step(resume ? resumeStep(index + 1, total) : `Making clip ${index + 1} of ${total}`);
       const { clipId } = clip;
+      const cut = tightened.get(clipId) ?? null;
       const finished = await finishClip({
         input: sourcePath,
         output: path.join(workDir, `${clipId}.mp4`),
@@ -244,6 +271,7 @@ export async function renderClipProject({
         overlay: overlays?.get(clipId) ?? null,
         hook: titles.hooks.get(clipId) ?? null,
         endCard: titles.endCard,
+        tightened: cut,
         options,
       });
 
@@ -251,10 +279,11 @@ export async function renderClipProject({
       const storageKey = buildClipKey(projectId, clipId);
       await store.upload(storageKey, finished, "video/mp4");
       // A captioned clip keeps its words and its cut without captions, so its captions can be edited and drawn again.
+      // Tightened, both are the tightened clip's: the words in its time, without the cut fillers.
       let baseKey: string | null = null;
-      if (words) {
+      if (captionWords) {
         const base = path.join(workDir, `${clipId}-base.mp4`);
-        await renderClip({ input: sourcePath, output: base, start: clip.start, length: clip.length, overlay: null });
+        await renderClip({ input: sourcePath, output: base, start: clip.start, length: clip.length, overlay: null, tightened: cut });
         baseKey = buildClipBaseKey(projectId, clipId);
         await store.upload(baseKey, base, "video/mp4");
       }
@@ -264,11 +293,15 @@ export async function renderClipProject({
           projectId,
           name: clipName(index),
           start: clip.start,
-          length: clip.length,
+          length: cut ? cut.length : clip.length,
           storageKey,
           title: clip.title ?? null,
           musicTrack: project.musicTrack,
-          words: words ? clipWords(words, clip.start, clip.length) : Prisma.DbNull,
+          words: !captionWords
+            ? Prisma.DbNull
+            : cut
+              ? clipWords(cut.words, 0, cut.length)
+              : clipWords(captionWords, clip.start, clip.length),
           baseKey,
         },
       });
@@ -288,10 +321,10 @@ export async function renderClipProject({
 }
 
 // Draws every caption of the project and returns, per clip, the ffconcat list that times its captions. Slideshows use
-// it too.
+// it too. A clip with its own lines (a tightened clip, in its own time from 0) uses those instead of the project's.
 export async function captionOverlays(
   lines: ReturnType<typeof captionLines>,
-  highlights: { clipId: string; start: number; length: number }[],
+  highlights: { clipId: string; start: number; length: number; lines?: ReturnType<typeof captionLines> }[],
   dir: string,
   look: Pick<
     ClipProject,
@@ -302,7 +335,11 @@ export async function captionOverlays(
   await mkdir(dir, { recursive: true });
   const { wordByWord } = captionPreset(look.captionPreset);
   const clips = highlights.map((highlight) => {
-    const clipLines = captionsForClip(lines, highlight.start * 1000, (highlight.start + highlight.length) * 1000);
+    const clipLines = captionsForClip(
+      highlight.lines ?? lines,
+      highlight.start * 1000,
+      (highlight.start + highlight.length) * 1000,
+    );
     const stills: { words: string[]; highlight: number | null; startMs: number; endMs: number }[] = captionStills(
       clipLines,
       wordByWord,
@@ -394,9 +431,11 @@ export async function recaptionClip({
     await step("Drawing captions");
     const planned: PlannedClip = { clipId, start: 0, length: clip.length, ...(clip.title ? { title: clip.title } : {}) };
     const titles = titleStills(project, [planned], path.join(workDir, "titles"));
-    const serveUrl = await bundleCaptions();
-    const overlays = await captionOverlays(clipLines(words), [planned], path.join(workDir, "captions"), project, serveUrl);
-    await drawTitleStills(titles.stills, path.join(workDir, "titles"), project, serveUrl);
+    const overlays = await withCaptionBundle(async (serveUrl: string) => {
+      const lists = await captionOverlays(clipLines(words), [planned], path.join(workDir, "captions"), project, serveUrl);
+      await drawTitleStills(titles.stills, path.join(workDir, "titles"), project, serveUrl);
+      return lists;
+    });
 
     await step("Making the clip");
     const finished = await finishClip({
@@ -407,6 +446,7 @@ export async function recaptionClip({
       overlay: overlays.get(clipId) ?? null,
       hook: titles.hooks.get(clipId) ?? null,
       endCard: titles.endCard,
+      tightened: null,
       options,
     });
 

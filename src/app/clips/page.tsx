@@ -10,6 +10,7 @@ import { NoAiGpuNote } from "@/components/no-ai-gpu-note";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Tabs } from "@/components/tabs";
+import { AI_CLIP_LABELS } from "@/lib/ai-clip-options";
 import { getAiEngine } from "@/lib/ai-engine";
 import { checkGpu } from "@/lib/ai-gpu";
 import { MAX_PROMPT_LENGTH } from "@/lib/ai-video";
@@ -94,6 +95,7 @@ export default async function ClipsPage({ searchParams }: PageProps<"/clips">) {
                     <StatusBadge status={job.status} label={job.status === "done" ? "Done" : undefined} />
                   )}
                   <span className={aiStyles.meta}>
+                    {job.kind === "prompt" ? null : `${AI_CLIP_LABELS[job.kind]} · `}
                     {job.seconds} s{job.startImageKey ? " · from a picture" : ""} · <LocalTime date={job.createdAt} />
                   </span>
                   {job.clip ? (

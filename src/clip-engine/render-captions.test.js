@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { END_CARD_SECONDS, HOOK_SECONDS, overlayList, renderBlankOverlay, renderClip } from "./ffmpeg.js";
-import { bundleCaptions, renderCaptionStills, renderTitleStills } from "./render-captions.js";
+import { renderCaptionStills, renderTitleStills, withCaptionBundle } from "./render-captions.js";
 
 function grayFrame(file, seconds) {
   return execFileSync("ffmpeg", [
@@ -68,12 +68,14 @@ test("caption stills laid over a clip show only while each caption is spoken", a
     { words: ["hello", "world"], image: path.join(dir, "caption-0.png"), start: 0.5, end: 2 },
     { words: ["second", "line"], image: path.join(dir, "caption-1.png"), start: 3, end: 4.5 },
   ];
-  await renderCaptionStills({
-    serveUrl: await bundleCaptions(),
-    stills: overlays.map(({ words, image }) => ({ words, highlight: null, output: image })),
-    chromePath: process.env.CHROME_PATH,
-    preset: "classic",
-  });
+  await withCaptionBundle((serveUrl) =>
+    renderCaptionStills({
+      serveUrl,
+      stills: overlays.map(({ words, image }) => ({ words, highlight: null, output: image })),
+      chromePath: process.env.CHROME_PATH,
+      preset: "classic",
+    }),
+  );
   await renderBlankOverlay(blank);
   writeFileSync(list, overlayList({ overlays, blank, length: 6 }));
   await renderClip({ input: source, output, start: 1, length: 6, overlay: list });
@@ -114,12 +116,14 @@ test("word-by-word stills highlight the word being spoken", async () => {
     { highlight: 0, image: path.join(dir, "word-0.png"), start: 0.5, end: 1.5 },
     { highlight: 1, image: path.join(dir, "word-1.png"), start: 1.5, end: 2.5 },
   ];
-  await renderCaptionStills({
-    serveUrl: await bundleCaptions(),
-    stills: overlays.map(({ highlight, image }) => ({ words, highlight, output: image })),
-    chromePath: process.env.CHROME_PATH,
-    preset: "words",
-  });
+  await withCaptionBundle((serveUrl) =>
+    renderCaptionStills({
+      serveUrl,
+      stills: overlays.map(({ highlight, image }) => ({ words, highlight, output: image })),
+      chromePath: process.env.CHROME_PATH,
+      preset: "words",
+    }),
+  );
   await renderBlankOverlay(blank);
   writeFileSync(list, overlayList({ overlays, blank, length: 3 }));
   await renderClip({ input: source, output, start: 0, length: 3, overlay: list });
@@ -146,15 +150,17 @@ test("the hook title shows at the top for the first seconds, the end card for th
     "-c:v", "libx264", "-pix_fmt", "yuv420p",
     source,
   ]);
-  await renderTitleStills({
-    serveUrl: await bundleCaptions(),
-    stills: [
-      { kind: "hook", text: "Wait for the end", output: hook },
-      { kind: "endCard", text: "@myhandle", output: endCard },
-    ],
-    chromePath: process.env.CHROME_PATH,
-    font: "anton",
-  });
+  await withCaptionBundle((serveUrl) =>
+    renderTitleStills({
+      serveUrl,
+      stills: [
+        { kind: "hook", text: "Wait for the end", output: hook },
+        { kind: "endCard", text: "@myhandle", output: endCard },
+      ],
+      chromePath: process.env.CHROME_PATH,
+      font: "anton",
+    }),
+  );
   await renderClip({ input: source, output, start: 0, length, overlay: null, hook, endCard, progressColor: "#22d3ee" });
 
   // The hook sits in the top fifth; the middle of the clip is plain gray.
@@ -186,11 +192,11 @@ test("the hook title shows at the top for the first seconds, the end card for th
 
 test("caption stills draw in the chosen font, highlight colour and with the line's emoji", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "captions-look-test-"));
-  const serveUrl = await bundleCaptions();
   const chromePath = process.env.CHROME_PATH;
   const words = ["show", "me", "the", "money"];
   const fonts = ["default", "montserrat", "anton", "bebas"];
-  await Promise.all([
+  await withCaptionBundle((serveUrl) =>
+    Promise.all([
     renderCaptionStills({
       serveUrl,
       chromePath,
@@ -213,7 +219,8 @@ test("caption stills draw in the chosen font, highlight colour and with the line
       highlightColor: "green",
       stills: [{ words, highlight: 3, output: path.join(dir, "green.png") }],
     }),
-  ]);
+    ]),
+  );
 
   const drawn = Object.fromEntries(fonts.map((font) => [font, stillPixels(path.join(dir, `${font}.png`))]));
   for (const [index, font] of fonts.entries()) {

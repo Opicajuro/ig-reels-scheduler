@@ -60,7 +60,10 @@ describe("listQueue", () => {
       aiVideoJob: {
         findMany: async (args: { where: Row }) => {
           where.videos = args.where;
-          return [{ id: "v1", prompt: "A fox", status: "running", step: "Generating video 40%" }];
+          return [
+            { id: "v1", prompt: "A fox", kind: "prompt", status: "running", step: "Generating video 40%", sourceClip: null },
+            { id: "v2", prompt: "A sunrise", kind: "intro", status: "queued", step: null, sourceClip: { projectId: "p9" } },
+          ];
         },
       },
       slideshowJob: {
@@ -96,7 +99,10 @@ describe("listQueue", () => {
         { id: "p3", name: "Lecture", status: "picking", step: "Analysing motion and sound", startedAt: "2026-10-30T11:59:30.000Z", clipsDone: 2, clipsTotal: null },
       ],
       recaptions: [{ id: "c9", name: "clip-002", projectId: "p1", projectName: "Talk", step: "Drawing captions" }],
-      aiVideos: [{ id: "v1", prompt: "A fox", status: "running", step: "Generating video 40%" }],
+      aiVideos: [
+        { id: "v1", prompt: "A fox", kind: "prompt", projectId: null, status: "running", step: "Generating video 40%" },
+        { id: "v2", prompt: "A sunrise", kind: "intro", projectId: "p9", status: "queued", step: null },
+      ],
       slideshows: [{ id: "s1", topic: "Sleep", status: "writing", step: "Writing script" }],
       engines: [
         { id: "ai", name: "AI video engine", step: "Downloading ComfyUI", percent: 12 },

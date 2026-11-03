@@ -27,8 +27,12 @@ import { HighlightReview } from "./highlight-review";
 import { ProjectTitle } from "./project-title";
 import { VIDEO_COLOR_NAMES, videoColor } from "@/clip-engine/remotion/caption-presets.js";
 import { END_CARD_TEXT_MAX, HOOK_TEXT_MAX } from "@/clip-engine/helpers.js";
-import { lengthLimits, parseTranscript, validateHighlights } from "@/lib/highlights";
 import { parseClipWords } from "@/lib/caption-words";
+import { lengthLimits, parseTranscript, validateHighlights, wordsInRange } from "@/lib/highlights";
+import { NoAiGpuNote } from "@/components/no-ai-gpu-note";
+import { getAiEngine } from "@/lib/ai-engine";
+import { checkGpu } from "@/lib/ai-gpu";
+import { MAX_PROMPT_LENGTH } from "@/lib/ai-video";
 
 export const metadata: Metadata = { title: "Clip project" };
 
@@ -89,6 +93,35 @@ function renderStartedAt(startedAt: Date | null): Date {
   return startedAt;
 }
 
+// Why the clips' AI intro and B-roll cannot be made on this PC, said as on the Clips page, or null when they can.
+async function aiUnavailable() {
+  const gpu = await checkGpu();
+  if (!gpu.found || !gpu.ready) {
+    return (
+      <>
+        <NoAiGpuNote check={gpu} />
+        <p className={styles.muted}>
+          <Link href="/settings#ai-video">See AI video in Settings</Link>
+        </p>
+      </>
+    );
+  }
+  const engine = await getAiEngine(prisma);
+  if (engine.status === "installed") return null;
+  const state = {
+    not_installed: "The AI video engine is not installed yet.",
+    installing: "The AI video engine is being installed.",
+    failed: "The AI video engine install stopped.",
+  }[engine.status];
+  return (
+    <p className={styles.muted}>
+      {state} <Link href="/settings#ai-video">Set it up in Settings</Link>
+    </p>
+  );
+}
+
+const FIRST_WORDS = 12;
+
 export default async function ClipProjectPage({ params }: { params: Promise<{ id: string }> }) {
   await connection();
   const ownerId = await getOwnerId();
@@ -134,6 +167,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       : [{ accountId: post.accountId, at: post.publishedAt.toISOString(), views: post.metrics.views }],
   );
   const alreadyScheduledTo = [...new Set(livePosts.map((post) => `@${post.account.username}`))];
+  const transcript = project.transcript === null ? [] : parseTranscript(project.transcript);
   const clips = await Promise.all(
     project.clips.map(async (clip) => ({
       id: clip.id,
@@ -150,6 +184,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       words: clip.recaptionWords !== null ? parseClipWords(clip.recaptionWords) : clip.words === null ? null : parseClipWords(clip.words),
       recaption: clip.recaptionId ? { step: clip.recaptionStep } : null,
       recaptionError: clip.recaptionError,
+      firstWords: wordsInRange(transcript, clip).split(" ").slice(0, FIRST_WORDS).join(" "),
     })),
   );
 
@@ -253,7 +288,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
               </div>
               <Field
                 label="Number of clips"
-                hint="Auto makes as many as the video allows. Clips end on a quiet moment, so they can run a little long."
+                hint="Auto makes as many as the video allows. Clips end on a quiet moment or, once transcribed, a full sentence, so they can run a little long."
               >
                 <select name="clipCount" defaultValue={project.clipCount ?? "auto"}>
                   <option value="auto">Auto</option>
@@ -264,6 +299,10 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
                   ))}
                 </select>
               </Field>
+              <label className={styles.toggle} title="Pauses over 0.7 s shrink to 0.25 s and lone um, uh and erm are cut. The video is transcribed for this.">
+                <span>Tighten pacing</span>
+                <input type="checkbox" name="tightenPacing" defaultChecked={project.tightenPacing} />
+              </label>
               <span className={styles.label}>Font</span>
               <div className={styles.choice}>
                 {CAPTION_FONTS.map((font) => (
@@ -406,6 +445,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
                 clipSeconds={project.clipSeconds}
                 sourceUrl={review.sourceUrl}
                 words={review.words}
+                tightenPacing={project.tightenPacing}
               />
               <ActionForm action={discardHighlightsAction}>
                 <input type="hidden" name="projectId" value={project.id} />
@@ -427,6 +467,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
               projects={otherProjects}
               bestTimeSamples={bestTimeSamples}
               captionsTab={!noSource}
+              ai={{ unavailable: await aiUnavailable(), maxPromptLength: MAX_PROMPT_LENGTH }}
             />
           </section>
         </div>

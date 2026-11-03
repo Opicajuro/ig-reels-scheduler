@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Prisma, type PrismaClient } from "@/generated/prisma/client";
 import { END_CARD_SECONDS, HOOK_SECONDS, probeDuration } from "@/clip-engine/ffmpeg.js";
+import { tightenClip } from "@/clip-engine/pacing.js";
 import { recaptionClip, renderClipProject } from "./clip-render";
 import type { ClipStore } from "./clip-store";
 import { validateHighlights } from "./highlights";
@@ -588,6 +589,92 @@ describe("recaptionClip", () => {
     // A job that starts after its re-render was cancelled does nothing.
     await recaptionClip({ db: deps.db, store: bucket.store, clipId: String(clip.id), recaptionId: "x1", workDir: workRoot });
     expect(deps.state.steps).toEqual(["Downloading the clip", "Drawing captions"]);
+  });
+
+  it("keeps a tightened clip's words in its tightened time and redraws them there, at the same length", async () => {
+    // "um" is cut, and the long pause before "world" shrinks.
+    const spoken = [
+      { text: "hello", startMs: 3000, endMs: 3600 },
+      { text: "um", startMs: 3600, endMs: 4000 },
+      { text: "world", startMs: 6000, endMs: 6600 },
+    ];
+    const deps = fakeDb(
+      renderingProject({
+        withCaptions: true,
+        tightenPacing: true,
+        captionPreset: "box",
+        durationSeconds: 40,
+        transcript: spoken,
+        highlights: [{ start: 2, length: 15 }],
+      }),
+    );
+    const bucket = bucketStore(root);
+    await renderClipProject({
+      db: deps.db,
+      store: bucket.store,
+      projectId: "p1",
+      renderId: "r1",
+      workDir: await mkdtemp(path.join(workRoot, "run-")),
+    });
+    const [clip] = deps.state.clips;
+    const cut = tightenClip(spoken, 2, 15);
+    expect(clip.length).toBe(cut.length);
+    expect(cut.length).toBeLessThan(2);
+    expect((clip.words as { text: string }[]).map((word) => word.text)).toEqual(["hello", "world"]);
+    const world = cut.words.find((word: { text: string }) => word.text === "world")!;
+    expect((clip.words as { startMs: number; endMs: number }[])[1]).toMatchObject({ startMs: world.startMs, endMs: world.endMs });
+    // The kept cut is the tightened clip without captions.
+    expect(Math.abs((await probeDuration(path.join(root, String(clip.baseKey)))) - cut.length)).toBeLessThan(0.1);
+
+    const before = path.join(workRoot, `${clip.id}-tight-before.mp4`);
+    await copyFile(path.join(root, String(clip.storageKey)), before);
+    // Once the pause is shortened, "world" joins "hello" on one line, as the render drew it.
+    expect(clip.words).toEqual([
+      { text: "hello", startMs: cut.words[0].startMs, endMs: cut.words[0].endMs, lineStart: true },
+      { text: "world", startMs: world.startMs, endMs: world.endMs },
+    ]);
+    const edited = [(clip.words as object[])[0], { text: "WWWWWWWWWW", startMs: world.startMs, endMs: world.endMs }];
+    Object.assign(clip, { version: 1, recaptionId: "x1", recaptionWords: edited, recaptionStep: null, recaptionError: null });
+
+    await recaptionClip({ db: deps.db, store: bucket.store, clipId: String(clip.id), recaptionId: "x1", workDir: await mkdtemp(path.join(workRoot, "run-")) });
+
+    expect(clip).toMatchObject({ version: 2, words: edited, length: cut.length });
+    const after = path.join(root, String(clip.storageKey));
+    expect(Math.abs((await probeDuration(after)) - cut.length)).toBeLessThan(0.1);
+    // The edited word shows where "world" landed once tightened; before the first word, the picture is the same.
+    const worldAt = (world.startMs + world.endMs) / 2000;
+    expect(changedShare(grayRows(before, worldAt, 960, 960), grayRows(after, worldAt, 960, 960))).toBeGreaterThan(0.01);
+    const earlyAt = cut.words[0].startMs / 2000;
+    expect(earlyAt).toBeGreaterThan(0.05);
+    expect(changedShare(grayRows(before, earlyAt, 0, 1900), grayRows(after, earlyAt, 0, 1900))).toBeLessThan(0.005);
+  });
+
+  it("leaves no caption bundle behind after a render, a re-render or a failed re-render", async () => {
+    const previous = process.env.TMPDIR;
+    // A temp folder of its own, so other renders running at the same time do not count.
+    process.env.TMPDIR = await mkdtemp(path.join(workRoot, "tmpdir-"));
+    const bundles = async () => (await readdir(os.tmpdir())).filter((name) => name.startsWith("remotion-webpack-bundle-"));
+    try {
+      const before = await bundles();
+      const { deps, bucket, clip } = await captionedClip();
+      expect(await bundles()).toEqual(before);
+
+      Object.assign(clip, { version: 1, recaptionId: "x1", recaptionWords: clip.words, recaptionStep: null });
+      await recaptionClip({ db: deps.db, store: bucket.store, clipId: String(clip.id), recaptionId: "x1", workDir: await mkdtemp(path.join(workRoot, "run-")) });
+      expect(clip.version).toBe(2);
+      expect(await bundles()).toEqual(before);
+
+      // Fails while drawing, with the bundle built.
+      deps.state.project.captionPreset = "nope";
+      Object.assign(clip, { recaptionId: "x2", recaptionWords: clip.words });
+      await expect(
+        recaptionClip({ db: deps.db, store: bucket.store, clipId: String(clip.id), recaptionId: "x2", workDir: await mkdtemp(path.join(workRoot, "run-")) }),
+      ).rejects.toThrow();
+      expect(await bundles()).toEqual(before);
+    } finally {
+      if (previous === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = previous;
+    }
   });
 
   it("records why a re-render failed and clears it", async () => {
