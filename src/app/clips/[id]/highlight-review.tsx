@@ -16,6 +16,7 @@ import {
   type LengthLimits,
   type Word,
 } from "@/lib/highlights";
+import { tightenClip } from "@/clip-engine/pacing.js";
 import styles from "../clips.module.css";
 
 // A pointer that went down on a highlight, or on one of its edges. Until it moves a few pixels it is a click, which
@@ -36,6 +37,7 @@ export function HighlightReview({
   clipSeconds,
   sourceUrl,
   words,
+  tightenPacing,
 }: {
   formId: string;
   durationSeconds: number;
@@ -44,6 +46,8 @@ export function HighlightReview({
   clipSeconds: number;
   sourceUrl: string;
   words: Word[] | null;
+  // The project tightens its clips' pacing, which the words show the effect of.
+  tightenPacing: boolean;
 }) {
   const [highlights, setHighlights] = useState(initial);
   const [selected, setSelected] = useState<number | null>(null);
@@ -54,6 +58,14 @@ export function HighlightReview({
   const drag = useRef<Drag | null>(null);
   // Where the preview of a highlight pauses.
   const stopAt = useRef<number | null>(null);
+
+  // "≈ N s after tightening" for a highlight, or null when the project does not tighten or has no words yet.
+  const tightenedNote = (highlight: Highlight) =>
+    words && tightenPacing
+      ? `≈ ${Math.round(tightenClip(words, highlight.start, highlight.length).length)} s after tightening`
+      : null;
+
+  const notes = highlights.map(tightenedNote);
 
   const percent = (seconds: number) => `${secondsToPx(seconds, durationSeconds, 100)}%`;
 
@@ -202,7 +214,8 @@ export function HighlightReview({
             role="button"
             tabIndex={0}
             aria-describedby="highlights-help"
-            aria-label={`Highlight ${index + 1}, ${formatTime(highlight.start)} to ${formatTime(highlight.start + highlight.length)}`}
+            aria-label={`Highlight ${index + 1}, ${formatTime(highlight.start)} to ${formatTime(highlight.start + highlight.length)}${notes[index] ? `, ${notes[index]}` : ""}`}
+            title={notes[index] ?? undefined}
             aria-pressed={selected === index}
             className={`${styles.block} ${selected === index ? styles.blockSelected : ""}`}
             style={{ left: percent(highlight.start), width: percent(highlight.length) }}
@@ -232,12 +245,14 @@ export function HighlightReview({
       <ol className={styles.highlightList}>
         {highlights.map((highlight, index) => {
           const said = words ? wordsInRange(words, highlight) : null;
+          const tightened = notes[index];
           return (
             <li key={index} className={selected === index ? styles.highlightSelected : undefined}>
               <div className={styles.highlightRow}>
                 <strong>Clip {index + 1}</strong>
                 <span>
                   {formatTime(highlight.start)} – {formatTime(highlight.start + highlight.length)} · {highlight.length} s
+                  {tightened === null ? null : ` · ${tightened}`}
                 </span>
                 <span className={styles.highlightButtons}>
                   <Button type="button" size="sm" onClick={() => preview(index)}>

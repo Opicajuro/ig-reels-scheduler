@@ -81,6 +81,7 @@ export async function startRenderAction(_previous: ActionResult, formData: FormD
       endCardText: text(formData, "endCardText"),
       musicTrack: text(formData, "musicTrack"),
       musicVolume: text(formData, "musicVolume"),
+      tightenPacing: formData.get("tightenPacing") === "on",
     });
     revalidatePath(`/clips/${projectId}`);
     return review ? "Finding highlights" : "Making clips";

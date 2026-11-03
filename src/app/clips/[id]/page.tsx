@@ -248,7 +248,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
               </div>
               <Field
                 label="Number of clips"
-                hint="Auto makes as many as the video allows. Clips end on a quiet moment, so they can run a little long."
+                hint="Auto makes as many as the video allows. Clips end on a quiet moment or, once transcribed, a full sentence, so they can run a little long."
               >
                 <select name="clipCount" defaultValue={project.clipCount ?? "auto"}>
                   <option value="auto">Auto</option>
@@ -259,6 +259,10 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
                   ))}
                 </select>
               </Field>
+              <label className={styles.toggle} title="Pauses over 0.7 s shrink to 0.25 s and lone um, uh and erm are cut. The video is transcribed for this.">
+                <span>Tighten pacing</span>
+                <input type="checkbox" name="tightenPacing" defaultChecked={project.tightenPacing} />
+              </label>
               <span className={styles.label}>Font</span>
               <div className={styles.choice}>
                 {CAPTION_FONTS.map((font) => (
@@ -401,6 +405,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
                 clipSeconds={project.clipSeconds}
                 sourceUrl={review.sourceUrl}
                 words={review.words}
+                tightenPacing={project.tightenPacing}
               />
               <ActionForm action={discardHighlightsAction}>
                 <input type="hidden" name="projectId" value={project.id} />

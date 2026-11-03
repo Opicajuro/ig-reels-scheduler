@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { videoEncoder, videoEncoderArgs } from "./encoder.js";
+import { FPS } from "./pacing.js";
 import {
   AUDIO_SAMPLE_RATE,
   MOTION_HEIGHT,
@@ -111,10 +112,11 @@ const PROGRESS_BAR_HEIGHT = 12;
 // list from overlayList), the hook title PNG for the first HOOK_SECONDS, the end card PNG for the last
 // END_CARD_SECONDS, then a progress bar along the bottom, a strip of progressColor ("#rrggbb") that slides in as the
 // clip plays. Every part is optional (null). The source is input 0.
-export function clipVideoArgs({ length, overlay, hook, endCard, progressColor }) {
+// With keep (tightenFilters), the source's picture is cut down to those pieces first and length is the tightened one.
+export function clipVideoArgs({ length, overlay, hook, endCard, progressColor, keep = null }) {
   if (endCard && length <= END_CARD_SECONDS) throw new Error(`a ${length}s clip is too short for an end card`);
   const inputs = [];
-  const filters = [`[0:v]${VERTICAL_FILTER}[base]`];
+  const filters = [`[0:v]${keep ? `${tightenFilters(keep).video},` : ""}${VERTICAL_FILTER}[base]`];
   let last = "base";
   const layer = (filter) => {
     const label = `v${filters.length}`;
@@ -144,24 +146,82 @@ export function clipVideoArgs({ length, overlay, hook, endCard, progressColor })
   return { inputs, filter: filters.join(";") };
 }
 
+export const CROSSFADE_SECONDS = 0.02;
+
+// The filters that keep only the pieces in keep ([{ start, end }] seconds from the clip's start, on the FPS frame grid,
+// from tightenClip). The picture is made constant FPS and select keeps whole frames by number, so no frame is torn and
+// each piece is exactly its length. select keeps one stream, so nothing is buffered. Each piece of sound is cut
+// sample-exactly with atrim and joined with a CROSSFADE_SECONDS crossfade against clicks: every piece but the last
+// takes CROSSFADE_SECONDS more of the source, which the crossfade overlaps again, so the sound is exactly as long as
+// the picture and stays in sync after every cut. (aselect would cut on whole audio frames, which drift from the video
+// frames, and cannot crossfade.) video goes on [0:v]; audio reads [0:a] and ends in [aout].
+export function tightenFilters(keep) {
+  if (keep.length === 0) throw new Error("tightening keeps nothing");
+  const frame = (seconds) => {
+    const index = Math.round(seconds * FPS);
+    if (Math.abs(index - seconds * FPS) > 1e-6) throw new Error(`${seconds}s is not on the ${FPS} fps frame grid`);
+    return index;
+  };
+  const pieces = keep.map((piece, index) => {
+    if (piece.end <= piece.start || (index > 0 && piece.start <= keep[index - 1].end)) {
+      throw new Error("the kept pieces must be in order, apart and not empty");
+    }
+    return { from: frame(piece.start), to: frame(piece.end) };
+  });
+  const select = pieces.map(({ from, to }) => `between(n,${from},${to - 1})`).join("+");
+  const video = `fps=${FPS},select='${select}',setpts=N/${FPS}/TB`;
+  const trim = ({ from, to }, index) => {
+    const extra = index < pieces.length - 1 ? CROSSFADE_SECONDS : 0;
+    return `atrim=start=${(from / FPS).toFixed(6)}:end=${(to / FPS + extra).toFixed(6)},asetpts=PTS-STARTPTS`;
+  };
+  if (pieces.length === 1) return { video, audio: `[0:a]${trim(pieces[0], 0)}[aout]` };
+  const audio = [`[0:a]asplit=${pieces.length}${pieces.map((_, index) => `[as${index}]`).join("")}`];
+  pieces.forEach((piece, index) => audio.push(`[as${index}]${trim(piece, index)}[at${index}]`));
+  let last = "at0";
+  for (let index = 1; index < pieces.length; index++) {
+    const label = index === pieces.length - 1 ? "aout" : `ax${index}`;
+    audio.push(`[${last}][at${index}]acrossfade=d=${CROSSFADE_SECONDS}:c1=tri:c2=tri[${label}]`);
+    last = label;
+  }
+  return { video, audio: audio.join(";") };
+}
+
 // A finished clip, as it is uploaded. overlay is an ffconcat list from overlayList, or null for no overlay; hook,
 // endCard and progressColor are as clipVideoArgs takes them.
+// With tightened ({ keep, length } from tightenClip, for this clip's start and length), only the kept pieces are
+// used and the clip is tightened.length long; overlay, hook and end card are then timed in tightened time.
 /**
  * @param {{ input: string; output: string; start: number; length: number; overlay: string | null; hook?: string | null;
- *   endCard?: string | null; progressColor?: string | null }} options
+ *   endCard?: string | null; progressColor?: string | null; tightened?: { keep: { start: number; end: number }[];
+ *   length: number } | null }} options
  */
-export async function renderClip({ input, output, start, length, overlay, hook = null, endCard = null, progressColor = null }) {
-  const video = clipVideoArgs({ length, overlay, hook, endCard, progressColor });
+export async function renderClip({
+  input,
+  output,
+  start,
+  length,
+  overlay,
+  hook = null,
+  endCard = null,
+  progressColor = null,
+  tightened = null,
+}) {
+  const outputLength = tightened ? tightened.length : length;
+  const keep = tightened ? tightened.keep : null;
+  const video = clipVideoArgs({ length: outputLength, overlay, hook, endCard, progressColor, keep });
+  const filter = keep ? `${video.filter};${tightenFilters(keep).audio}` : video.filter;
   await run("ffmpeg", [
     "-y",
     "-v", "error",
     "-ss", String(start),
+    // Tightened, the source is read no further than the clip.
+    ...(keep ? ["-t", String(length)] : []),
     "-i", input,
     ...video.inputs,
-    "-filter_complex", video.filter,
-    "-t", String(length),
+    "-filter_complex", filter,
+    "-t", String(outputLength),
     "-map", "[out]",
-    "-map", "0:a?",
+    ...(keep ? ["-map", "[aout]"] : ["-map", "0:a?"]),
     ...videoEncoderArgs(await videoEncoder(), 21),
     "-c:a", "aac",
     "-b:a", "128k",
