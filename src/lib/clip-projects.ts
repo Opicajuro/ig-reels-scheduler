@@ -123,6 +123,7 @@ export async function startRender({
   endCardText = "",
   musicTrack = "",
   musicVolume = String(DEFAULT_MUSIC_VOLUME),
+  tightenPacing = false,
 }: {
   db: PrismaClient;
   queue: ClipQueue;
@@ -147,6 +148,7 @@ export async function startRender({
   // A music track id from the library or "" for none, and its volume, 0-100.
   musicTrack?: string;
   musicVolume?: string;
+  tightenPacing?: boolean;
 }) {
   const project = await ownedProject(db, ownerId, projectId);
   if (project.status === "awaiting_source") throw new UserError("upload the video before making clips");
@@ -198,6 +200,7 @@ export async function startRender({
       progressBar: parseProgressBar(progressBar),
       endCardText: parseEndCardText(endCardText),
       ...music,
+      tightenPacing,
     },
   });
   try {
@@ -301,6 +304,7 @@ export async function copyProject({
       endCardText: original.endCardText,
       musicTrack: original.musicTrack,
       musicVolume: original.musicVolume,
+      tightenPacing: original.tightenPacing,
     },
   });
   if (original.sourceKey) {
