@@ -25,6 +25,9 @@ export type LocalInstall = {
   whisperModel: string;
   /** the Kokoro voice model folder, for the slideshow voice */
   kokoroModel: string;
+  /** the YuNet face and YOLOX-nano object models, for crops that follow the action */
+  yunetModel: string;
+  yoloxModel: string;
   /** the folder holding the built-in music and sound effects (src/clip-engine/music-library.json) */
   musicDir: string;
   /** the install's data folder; the AI video engine goes in its ai folder, backups in its backups folder */
@@ -48,6 +51,8 @@ export function buildLocalValues(install: LocalInstall, generate: () => string):
       WHISPER_VULKAN: install.whisperVulkan,
       WHISPER_MODEL: install.whisperModel,
       KOKORO_MODEL: install.kokoroModel,
+      YUNET_MODEL: install.yunetModel,
+      YOLOX_MODEL: install.yoloxModel,
       MUSIC_DIR: install.musicDir,
       LOCALIRS_DATA_DIR: install.dataDir,
       PG_BIN: install.pgBin,
@@ -117,6 +122,8 @@ async function main() {
     whisperVulkan: requireInstallValue("LOCALIRS_WHISPER_VULKAN"),
     whisperModel: requireInstallValue("LOCALIRS_WHISPER_MODEL"),
     kokoroModel: requireInstallValue("LOCALIRS_KOKORO_MODEL"),
+    yunetModel: requireInstallValue("LOCALIRS_YUNET_MODEL"),
+    yoloxModel: requireInstallValue("LOCALIRS_YOLOX_MODEL"),
     musicDir: requireInstallValue("LOCALIRS_MUSIC_DIR"),
     dataDir: requireInstallValue("LOCALIRS_DATA_DIR"),
     pgBin: requireInstallValue("LOCALIRS_PG_BIN"),

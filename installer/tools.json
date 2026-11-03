@@ -55,6 +55,16 @@
     "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/1939ad2a8e416c0acfeecc08a694d14ef25f2231/tokenizer_config.json",
     "sha256": "be1cb066d6ef6b074b3f15e6a6dd21ac88ff3cdaedf325f0aaed686c70f75d20"
   },
+  "yunetModel": {
+    "version": "face_detection_yunet_2023mar (OpenCV Zoo 48b10fa, MIT)",
+    "url": "https://media.githubusercontent.com/media/opencv/opencv_zoo/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+    "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+  },
+  "yoloxModel": {
+    "version": "yolox_nano 0.1.1rc0 (Megvii YOLOX, Apache-2.0)",
+    "url": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx",
+    "sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d"
+  },
   "sevenZip": {
     "version": "26.05",
     "url": "https://github.com/ip7z/7zip/releases/download/26.05/7zr.exe",

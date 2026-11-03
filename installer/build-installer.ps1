@@ -63,6 +63,8 @@ $kokoroModel = Get-Tool "Kokoro voice model" $manifest.kokoroModel "kokoro-model
 $kokoroConfig = Get-Tool "Kokoro config" $manifest.kokoroConfig "kokoro-config.json"
 $kokoroTokenizer = Get-Tool "Kokoro tokenizer" $manifest.kokoroTokenizer "kokoro-tokenizer.json"
 $kokoroTokenizerConfig = Get-Tool "Kokoro tokenizer config" $manifest.kokoroTokenizerConfig "kokoro-tokenizer_config.json"
+$yunetModel = Get-Tool "YuNet face model" $manifest.yunetModel "face_detection_yunet_2023mar.onnx"
+$yoloxModel = Get-Tool "YOLOX-nano object model" $manifest.yoloxModel "yolox_nano.onnx"
 $sevenZip = Get-Tool "7-Zip (7zr)" $manifest.sevenZip "7zr.exe"
 $chromeZip = Get-Tool "Chrome headless shell" $manifest.chromeHeadlessShell "chrome-headless-shell.zip"
 $pgZip = Get-Tool "PostgreSQL" $manifest.postgres "postgres.zip"
@@ -121,6 +123,12 @@ Copy-Item -Force $kokoroModel (Join-Path $kokoro "onnx\model_quantized.onnx")
 Copy-Item -Force $kokoroConfig (Join-Path $kokoro "config.json")
 Copy-Item -Force $kokoroTokenizer (Join-Path $kokoro "tokenizer.json")
 Copy-Item -Force $kokoroTokenizerConfig (Join-Path $kokoro "tokenizer_config.json")
+
+# "Follow the action" crop: YuNet faces (OpenCV Zoo, MIT) and YOLOX-nano people and objects (Megvii, Apache-2.0).
+$cropModels = Join-Path $tools "crop"
+New-Item -ItemType Directory -Force -Path $cropModels | Out-Null
+Copy-Item -Force $yunetModel (Join-Path $cropModels "face_detection_yunet_2023mar.onnx")
+Copy-Item -Force $yoloxModel (Join-Path $cropModels "yolox_nano.onnx")
 
 # The built-in music and sound effects, each pinned by URL and SHA-256 in the app's music library manifest, which also
 # records its source page, licence and the date the licence was checked.

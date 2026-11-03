@@ -138,6 +138,7 @@ function renderingProject(overrides: Row = {}): Row {
     captionUppercase: false,
     captionHighlight: "yellow",
     captionEmoji: false,
+    crop: "centre",
     error: null,
     ...overrides,
   };
@@ -505,9 +506,10 @@ describe("recaptionClip", () => {
   ];
 
   // A captioned project with one clip made from 2 s to 17 s.
-  async function captionedClip(onStep?: (step: string, row: Row) => void) {
+  async function captionedClip(onStep?: (step: string, row: Row) => void, overrides: Row = {}) {
     const deps = fakeDb(
       renderingProject({
+        ...overrides,
         withCaptions: true,
         captionPreset: "box",
         durationSeconds: 40,
@@ -569,6 +571,24 @@ describe("recaptionClip", () => {
     expect(Math.abs((await probeDuration(after)) - (await probeDuration(before)))).toBeLessThan(0.1);
     // The caption shown at 1.3 s changed; after the captions, the picture is the same.
     expect(changedShare(grayRows(before, 1.3, 960, 960), grayRows(after, 1.3, 960, 960))).toBeGreaterThan(0.01);
+    expect(changedShare(grayRows(before, 8, 0, 1900), grayRows(after, 8, 0, 1900))).toBeLessThan(0.005);
+  });
+
+  it("keeps the clip's crop in its kept cut, so captions drawn again show the same picture", async () => {
+    const { deps, bucket, clip } = await captionedClip(undefined, { crop: "fit" });
+    const base = path.join(root, String(clip.baseKey));
+    // Fitted, the 16:9 source is a band across the middle with its blurred fill above it.
+    const fill = grayRows(base, 8, 0, 300);
+    const band = grayRows(base, 8, 860, 200);
+    expect(changedShare(grayRows(path.join(root, String(clip.storageKey)), 8, 0, 300), fill)).toBeLessThan(0.005);
+    expect(changedShare(fill, band)).toBeGreaterThan(0.05);
+    const before = path.join(workRoot, `${clip.id}-fit-before.mp4`);
+    await copyFile(path.join(root, String(clip.storageKey)), before);
+    Object.assign(clip, { version: 1, recaptionId: "x1", recaptionWords: clip.words, recaptionStep: null, recaptionError: null });
+
+    await recaptionClip({ db: deps.db, store: bucket.store, clipId: String(clip.id), recaptionId: "x1", workDir: await mkdtemp(path.join(workRoot, "run-")) });
+
+    const after = path.join(root, String(clip.storageKey));
     expect(changedShare(grayRows(before, 8, 0, 1900), grayRows(after, 8, 0, 1900))).toBeLessThan(0.005);
   });
 

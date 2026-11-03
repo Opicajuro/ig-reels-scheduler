@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+import { cropCommands, framingFilter } from "./crop.js";
 import { videoEncoder, videoEncoderArgs } from "./encoder.js";
 import { FPS } from "./pacing.js";
 import {
@@ -10,9 +13,9 @@ import {
   VERTICAL_FILTER,
 } from "./helpers.js";
 
-function run(command, args) {
+function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args);
+    const child = spawn(command, args, options);
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => (stdout += chunk));
@@ -29,8 +32,8 @@ function run(command, args) {
   });
 }
 
-async function* rawOutput(input, outputArgs) {
-  const child = spawn("ffmpeg", ["-v", "error", "-i", input, ...outputArgs, "pipe:1"]);
+async function* rawOutput(input, outputArgs, inputArgs = []) {
+  const child = spawn("ffmpeg", ["-v", "error", ...inputArgs, "-i", input, ...outputArgs, "pipe:1"]);
   let stderr = "";
   child.stderr.on("data", (chunk) => (stderr += chunk));
   const finished = new Promise((resolve) => {
@@ -61,6 +64,47 @@ export function audioSamples(input) {
     "-ar", String(AUDIO_SAMPLE_RATE),
     "-f", "s16le",
   ]);
+}
+
+// A clip's stretch of the source as BGR frames (bgr24) of width×height, fps of them per second.
+export async function* sampledFrames({ input, start, length, width, height, fps }) {
+  const size = width * height * 3;
+  let pending = Buffer.alloc(0);
+  const stream = rawOutput(
+    input,
+    ["-map", "0:v:0", "-vf", `fps=${fps},scale=${width}:${height}`, "-pix_fmt", "bgr24", "-f", "rawvideo"],
+    ["-ss", String(start), "-t", String(length)],
+  );
+  for await (const chunk of stream) {
+    pending = pending.length === 0 ? chunk : Buffer.concat([pending, chunk]);
+    while (pending.length >= size) {
+      yield { data: pending.subarray(0, size), width, height };
+      pending = pending.subarray(size);
+    }
+  }
+}
+
+// The hard cuts in a clip's stretch of the source, in seconds from its start, by ffmpeg's scene change score.
+export async function sceneCuts({ input, start, length, threshold = 0.4 }) {
+  const stdout = await run("ffmpeg", [
+    "-v", "error",
+    "-ss", String(start),
+    "-t", String(length),
+    "-i", input,
+    "-map", "0:v:0",
+    "-vf", `scale=320:-2,select='gt(scene,${threshold})',metadata=print:file=-`,
+    "-f", "null", "-",
+  ]);
+  return [...stdout.matchAll(/pts_time:([\d.]+)/g)].map((match) => Number(match[1])).filter((time) => time > 0);
+}
+
+// The width and height the source's picture shows at, after its rotation.
+export async function probeVideoSize(file) {
+  const stdout = await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-print_format", "json", "-show_streams", file]);
+  const stream = JSON.parse(stdout).streams?.[0];
+  if (!stream || !(stream.width > 0) || !(stream.height > 0)) throw new Error(`${file} has no video stream with a size`);
+  const rotation = Number(stream.side_data_list?.find((data) => data.rotation !== undefined)?.rotation ?? stream.tags?.rotate ?? 0);
+  return Math.abs(rotation) % 180 === 90 ? { width: stream.height, height: stream.width } : { width: stream.width, height: stream.height };
 }
 
 export async function probeDuration(file) {
@@ -112,11 +156,15 @@ const PROGRESS_BAR_HEIGHT = 12;
 // list from overlayList), the hook title PNG for the first HOOK_SECONDS, the end card PNG for the last
 // END_CARD_SECONDS, then a progress bar along the bottom, a strip of progressColor ("#rrggbb") that slides in as the
 // clip plays. Every part is optional (null). The source is input 0.
-// With keep (tightenFilters), the source's picture is cut down to those pieces first and length is the tightened one.
-export function clipVideoArgs({ length, overlay, hook, endCard, progressColor, keep = null }) {
+// The picture is framed by crop (crop.js) on the source's own time, with its sendcmd file named commands for a
+// followed crop. With keep (tightenFilters), the framed picture is then cut down to those pieces and length is the
+// tightened one, so a followed crop moves with the source and not with the cuts.
+export function clipVideoArgs({ length, overlay, hook, endCard, progressColor, keep = null, crop = CENTRE, commands = null }) {
   if (endCard && length <= END_CARD_SECONDS) throw new Error(`a ${length}s clip is too short for an end card`);
   const inputs = [];
-  const filters = [`[0:v]${keep ? `${tightenFilters(keep).video},` : ""}${VERTICAL_FILTER}[base]`];
+  const filters = keep
+    ? [framingFilter(crop, "framed", commands), `[framed]${tightenFilters(keep).video}[base]`]
+    : [framingFilter(crop, "base", commands)];
   let last = "base";
   const layer = (filter) => {
     const label = `v${filters.length}`;
@@ -145,6 +193,8 @@ export function clipVideoArgs({ length, overlay, hook, endCard, progressColor, k
   filters[filters.length - 1] = filters.at(-1).replace(/\[[^\]]+\]$/, "[out]");
   return { inputs, filter: filters.join(";") };
 }
+
+const CENTRE = { mode: "centre" };
 
 export const CROSSFADE_SECONDS = 0.02;
 
@@ -190,10 +240,11 @@ export function tightenFilters(keep) {
 // endCard and progressColor are as clipVideoArgs takes them.
 // With tightened ({ keep, length } from tightenClip, for this clip's start and length), only the kept pieces are
 // used and the clip is tightened.length long; overlay, hook and end card are then timed in tightened time.
+// crop (crop.js) frames the picture, the centre by default; a followed crop's commands are written next to output.
 /**
  * @param {{ input: string; output: string; start: number; length: number; overlay: string | null; hook?: string | null;
  *   endCard?: string | null; progressColor?: string | null; tightened?: { keep: { start: number; end: number }[];
- *   length: number } | null }} options
+ *   length: number } | null; crop?: import("./crop.js").Crop }} options
  */
 export async function renderClip({
   input,
@@ -205,10 +256,18 @@ export async function renderClip({
   endCard = null,
   progressColor = null,
   tightened = null,
+  crop = CENTRE,
 }) {
   const outputLength = tightened ? tightened.length : length;
   const keep = tightened ? tightened.keep : null;
-  const video = clipVideoArgs({ length: outputLength, overlay, hook, endCard, progressColor, keep });
+  // ffmpeg then runs in the output's folder and reads the commands by their plain name, so no path is quoted in the
+  // filter. Every other path it is given is absolute.
+  for (const file of [input, output, overlay, hook, endCard]) {
+    if (crop.mode === "follow" && file && !path.isAbsolute(file)) throw new Error(`a followed crop needs absolute paths, not ${file}`);
+  }
+  const commands = crop.mode === "follow" ? `${path.basename(output, ".mp4")}.crop.cmd` : null;
+  if (commands) await writeFile(path.join(path.dirname(output), commands), cropCommands(crop.keyframes));
+  const video = clipVideoArgs({ length: outputLength, overlay, hook, endCard, progressColor, keep, crop, commands });
   const filter = keep ? `${video.filter};${tightenFilters(keep).audio}` : video.filter;
   await run("ffmpeg", [
     "-y",
@@ -227,7 +286,7 @@ export async function renderClip({
     "-b:a", "128k",
     "-movflags", "+faststart",
     output,
-  ]);
+  ], commands ? { cwd: path.dirname(path.resolve(output)) } : {});
 }
 
 // An AI video, as it is uploaded: 1080×1920 at 30 fps in H.264, with a silent AAC track, because Instagram wants an

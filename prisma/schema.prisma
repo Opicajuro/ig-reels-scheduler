@@ -281,6 +281,10 @@ model ClipProject {
   musicVolume     Int               @default(15)
   // "Tighten pacing": inside each clip, long pauses shrink and lone filler words are cut, by the transcript's words.
   tightenPacing   Boolean           @default(false)
+  // "Crop": how the 9:16 picture is taken from the source. "centre", "follow" (follows faces, people and motion, and
+  // fits stretches too wide to crop) or "fit" (the whole frame over a blurred fill). Projects made before it keep
+  // "centre".
+  crop            String            @default("follow")
   // The owner's one "AI videos" project, which holds the AI videos made on the Clips page. It has no source video.
   aiVideos        Boolean           @default(false)
   // The owner's one "Slideshows" project, which holds the slideshows made on the Clips page. It has no source video.

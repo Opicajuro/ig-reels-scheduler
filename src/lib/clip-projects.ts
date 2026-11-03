@@ -28,6 +28,7 @@ import { buildClipBaseKey, buildClipKey, buildClipSourceKey, buildReelKey, build
 import { checkEditedWords, parseClipWords } from "./caption-words";
 import { DEFAULT_MUSIC_VOLUME, parseMusicChoice, withCredit } from "./music-library";
 import { UserError } from "./user-error";
+import { parseCropMode } from "@/clip-engine/crop.js";
 import { checkYouTubePost, shortsDescription } from "./youtube";
 import { youTubeJobRunAt } from "./youtube-posts";
 
@@ -140,6 +141,7 @@ export async function startRender({
   musicTrack = "",
   musicVolume = String(DEFAULT_MUSIC_VOLUME),
   tightenPacing = false,
+  crop,
 }: {
   db: PrismaClient;
   queue: ClipQueue;
@@ -165,6 +167,8 @@ export async function startRender({
   musicTrack?: string;
   musicVolume?: string;
   tightenPacing?: boolean;
+  // "centre", "follow" or "fit"; left out, the project keeps its crop.
+  crop?: unknown;
 }) {
   const project = await ownedProject(db, ownerId, projectId);
   if (project.status === "awaiting_source") throw new UserError("upload the video before making clips");
@@ -190,6 +194,7 @@ export async function startRender({
   const hook = parseHookMode(hookMode);
   const hookTitle = parseHookText(hookText, hook);
   const music = parseMusicChoice(musicTrack, musicVolume);
+  const cropMode = parseCropMode(crop === undefined ? project.crop : crop);
 
   // A new render id: this render starts over, replacing the clips, even if an earlier one was interrupted.
   const renderId = randomUUID();
@@ -217,6 +222,7 @@ export async function startRender({
       endCardText: parseEndCardText(endCardText),
       ...music,
       tightenPacing,
+      crop: cropMode,
     },
   });
   try {
@@ -321,6 +327,7 @@ export async function copyProject({
       musicTrack: original.musicTrack,
       musicVolume: original.musicVolume,
       tightenPacing: original.tightenPacing,
+      crop: original.crop,
     },
   });
   if (original.sourceKey) {

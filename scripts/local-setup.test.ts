@@ -13,6 +13,8 @@ const install: LocalInstall = {
   whisperVulkan: "C:\\Localirs\\tools\\whisper-vulkan\\Release\\whisper-cli.exe",
   whisperModel: "C:\\Localirs\\tools\\whisper\\ggml-large-v3-turbo-q5_0.bin",
   kokoroModel: "C:\\Localirs\\tools\\kokoro\\Kokoro-82M-v1.0-ONNX",
+  yunetModel: "C:\\Localirs\\tools\\crop\\face_detection_yunet_2023mar.onnx",
+  yoloxModel: "C:\\Localirs\\tools\\crop\\yolox_nano.onnx",
   musicDir: "C:\\Localirs\\tools\\music",
   dataDir: "C:\\Localirs\\data",
   pgBin: "C:\\Localirs\\tools\\postgres\\bin",
@@ -34,6 +36,8 @@ describe("buildLocalValues", () => {
     expect(values.WHISPER_VULKAN).toBe(install.whisperVulkan);
     expect(values.WHISPER_MODEL).toBe(install.whisperModel);
     expect(values.KOKORO_MODEL).toBe(install.kokoroModel);
+    expect(values.YUNET_MODEL).toBe(install.yunetModel);
+    expect(values.YOLOX_MODEL).toBe(install.yoloxModel);
     expect(values.MUSIC_DIR).toBe(install.musicDir);
     expect(values.LOCALIRS_DATA_DIR).toBe(install.dataDir);
     expect(values.PG_BIN).toBe(install.pgBin);

@@ -38,6 +38,15 @@ export const metadata: Metadata = { title: "Clip project" };
 
 const CLIP_LENGTHS = [15, 30, 60, 90, 120];
 const CLIP_COUNTS = Array.from({ length: 10 }, (_, index) => index + 1);
+const CROPS = [
+  { value: "centre", label: "Centre", hint: "The middle of the video." },
+  {
+    value: "follow",
+    label: "Follow the action",
+    hint: "Follows faces, then people and objects, then movement, panning smoothly. Stretches too wide for the frame show whole.",
+  },
+  { value: "fit", label: "Fit whole frame", hint: "The whole video over a blurred fill of itself." },
+];
 const CAPTION_STYLES = [
   { value: "classic", label: "Classic", hint: "White text, soft shadow" },
   { value: "yellow", label: "Yellow", hint: "Bold, black outline" },
@@ -299,6 +308,15 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
                   ))}
                 </select>
               </Field>
+              <span className={styles.label}>Crop</span>
+              <div className={styles.choice}>
+                {CROPS.map((crop) => (
+                  <label key={crop.value} className={styles.pill} title={crop.hint}>
+                    <input type="radio" name="crop" value={crop.value} defaultChecked={crop.value === project.crop} />
+                    <span>{crop.label}</span>
+                  </label>
+                ))}
+              </div>
               <label className={styles.toggle} title="Pauses over 0.7 s shrink to 0.25 s and lone um, uh and erm are cut. The video is transcribed for this.">
                 <span>Tighten pacing</span>
                 <input type="checkbox" name="tightenPacing" defaultChecked={project.tightenPacing} />

@@ -47,6 +47,8 @@ Set these on both the web and the worker service, unless noted.
 | `WHISPER_VULKAN` | whisper.cpp `whisper-cli` binary built with Vulkan (`-DGGML_VULKAN=ON`). The worker transcribes with it when it runs on a Vulkan graphics device, otherwise with `WHISPER_CPU`. Needed only for clips with captions. |
 | `WHISPER_MODEL` | Path to a whisper.cpp model file, for example `ggml-large-v3-turbo-q5_0.bin`. Needed only for captions. |
 | `KOKORO_MODEL` | Folder of the Kokoro-82M ONNX model (`config.json`, `tokenizer.json`, `tokenizer_config.json`, `onnx/model_quantized.onnx`). Needed only for slideshows. |
+| `YUNET_MODEL` | YuNet face model, `face_detection_yunet_2023mar.onnx` from OpenCV Zoo (MIT). Needed only for the "Follow the action" crop. |
+| `YOLOX_MODEL` | YOLOX-nano model, `yolox_nano.onnx` from Megvii's YOLOX 0.1.1rc0 release (Apache-2.0). Needed only for the "Follow the action" crop. |
 
 The Meta app ID and secret and the failure-email settings (address, Resend API key, sender) are not environment
 variables: set them on the app's Settings page after the first deploy.

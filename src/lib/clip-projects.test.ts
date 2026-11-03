@@ -162,6 +162,7 @@ function project(overrides: Partial<Row> = {}): Row {
     clipCount: 2,
     withCaptions: false,
     captionPreset: null,
+    crop: "follow",
     ...overrides,
   };
 }
@@ -229,6 +230,19 @@ describe("discardHighlights", () => {
 });
 
 describe("startRender", () => {
+  it("stores the crop, keeps the project's own when none is sent, and refuses an unknown one", async () => {
+    const { db, tables } = fakeDb({ projects: [project({ crop: "centre" })] });
+    const queue = { send: async () => "job-1" };
+    const options = { db, queue, ...owned, projectId: "p1", clipSeconds: 30, clipCount: null, withCaptions: false };
+    await startRender(options);
+    expect(tables.clipProject[0].crop).toBe("centre");
+    tables.clipProject[0].status = "done";
+    await startRender({ ...options, crop: "fit" });
+    expect(tables.clipProject[0].crop).toBe("fit");
+    tables.clipProject[0].status = "done";
+    await expect(startRender({ ...options, crop: "left" })).rejects.toThrow("crop must be one of centre, follow, fit");
+  });
+
   it("stores the options, marks the project rendering, and queues it", async () => {
     const { db, tables } = fakeDb({ projects: [project()] });
     const queued: string[] = [];

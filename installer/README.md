@@ -1,7 +1,7 @@
 # Localirs Windows installer
 
 One `Localirs-Setup.exe` that installs the app with everything it needs on the same PC: Node, ffmpeg,
-yt-dlp, whisper.cpp (a processor build and a Vulkan build for graphics) with its speech model, a headless Chrome for captions, the Kokoro voice model for slideshows, PostgreSQL 16, SeaweedFS for file storage, and 7zr.exe (7-Zip)
+yt-dlp, whisper.cpp (a processor build and a Vulkan build for graphics) with its speech model, a headless Chrome for captions, the Kokoro voice model for slideshows, the YuNet face and YOLOX-nano object models for crops that follow the action, PostgreSQL 16, SeaweedFS for file storage, and 7zr.exe (7-Zip)
 to unpack the AI video engine, which Settings downloads into `data\ai` when asked (the slideshow engines go into
 `data\slideshow` the same way). Nothing else
 needs installing by hand. The only things you type are a Resend API key and a sender address for sign-in email.

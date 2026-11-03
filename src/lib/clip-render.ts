@@ -34,6 +34,9 @@ import { musicFile } from "./music-files";
 import { parseTranscript, validateHighlights, type Highlight, type Word } from "./highlights";
 import { clipLines, clipWords, parseClipWords } from "./caption-words";
 import { tightenClip } from "@/clip-engine/pacing.js";
+import { parseCropMode, type Crop } from "@/clip-engine/crop.js";
+import { followCrop } from "@/clip-engine/follow.js";
+import { loadDetectors } from "@/clip-engine/subject.js";
 
 // Thrown by a render's write once the render is cancelled, to stop it.
 class RenderCancelled extends Error {}
@@ -61,6 +64,7 @@ async function finishClip({
   hook,
   endCard,
   tightened,
+  crop,
   options,
 }: {
   input: string;
@@ -72,9 +76,11 @@ async function finishClip({
   endCard: string | null;
   // A tightened clip's kept pieces (tightenClip); a clip's kept cut is already tightened.
   tightened: ReturnType<typeof tightenClip> | null;
+  // How the picture is cropped from the source; a kept cut is already cropped, and keeps the centre.
+  crop: Crop;
   options: ReturnType<typeof finishOptions>;
 }): Promise<string> {
-  await renderClip({ input, output, start, length, overlay, hook, endCard, progressColor: options.progressColor, tightened });
+  await renderClip({ input, output, start, length, overlay, hook, endCard, progressColor: options.progressColor, tightened, crop });
   if (!options.music) return output;
   const finished = output.replace(/\.mp4$/, "-music.mp4");
   await mixBackgroundMusic({ input: output, music: options.music, volume: options.musicVolume, output: finished });
@@ -258,11 +264,19 @@ export async function renderClipProject({
           return lists;
         });
     const options = finishOptions(project);
+    const cropMode = parseCropMode(project.crop);
+    // Following the action finds each clip's subjects with the face and object models, loaded once for the render.
+    const detectors =
+      cropMode === "follow" ? await loadDetectors({ faceModel: requireEnv("YUNET_MODEL"), objectModel: requireEnv("YOLOX_MODEL") }) : null;
 
     for (const { index, clip } of todo) {
       await step(resume ? resumeStep(index + 1, total) : `Making clip ${index + 1} of ${total}`);
       const { clipId } = clip;
       const cut = tightened.get(clipId) ?? null;
+      // On the source's time, before tightening, so a tightened clip's picture follows what it keeps.
+      const crop: Crop = detectors
+        ? await followCrop({ input: sourcePath, start: clip.start, length: clip.length, detectors })
+        : { mode: cropMode as "centre" | "fit" };
       const finished = await finishClip({
         input: sourcePath,
         output: path.join(workDir, `${clipId}.mp4`),
@@ -272,6 +286,7 @@ export async function renderClipProject({
         hook: titles.hooks.get(clipId) ?? null,
         endCard: titles.endCard,
         tightened: cut,
+        crop,
         options,
       });
 
@@ -279,11 +294,12 @@ export async function renderClipProject({
       const storageKey = buildClipKey(projectId, clipId);
       await store.upload(storageKey, finished, "video/mp4");
       // A captioned clip keeps its words and its cut without captions, so its captions can be edited and drawn again.
-      // Tightened, both are the tightened clip's: the words in its time, without the cut fillers.
+      // Tightened, both are the tightened clip's: the words in its time, without the cut fillers. The cut has the clip's
+      // crop, so captions drawn again over it show the same picture.
       let baseKey: string | null = null;
       if (captionWords) {
         const base = path.join(workDir, `${clipId}-base.mp4`);
-        await renderClip({ input: sourcePath, output: base, start: clip.start, length: clip.length, overlay: null, tightened: cut });
+        await renderClip({ input: sourcePath, output: base, start: clip.start, length: clip.length, overlay: null, tightened: cut, crop });
         baseKey = buildClipBaseKey(projectId, clipId);
         await store.upload(baseKey, base, "video/mp4");
       }
@@ -447,6 +463,7 @@ export async function recaptionClip({
       hook: titles.hooks.get(clipId) ?? null,
       endCard: titles.endCard,
       tightened: null,
+      crop: { mode: "centre" },
       options,
     });
 
