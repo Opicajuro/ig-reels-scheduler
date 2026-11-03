@@ -79,6 +79,8 @@ export async function startRenderAction(_previous: ActionResult, formData: FormD
       hookText: text(formData, "hookText"),
       progressBar: text(formData, "progressBar"),
       endCardText: text(formData, "endCardText"),
+      musicTrack: text(formData, "musicTrack"),
+      musicVolume: text(formData, "musicVolume"),
     });
     revalidatePath(`/clips/${projectId}`);
     return review ? "Finding highlights" : "Making clips";

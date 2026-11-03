@@ -1,0 +1,30 @@
+.picker {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.player {
+  width: 100%;
+}
+
+.volume {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.volume input {
+  flex: 1;
+  min-width: 0;
+}
+
+.about {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.about a {
+  color: inherit;
+}

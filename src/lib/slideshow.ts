@@ -5,6 +5,7 @@ import { checkSlideCount } from "./llm-script";
 import { isVoicePreset, MAX_LINE_LENGTH, MAX_PICTURE_LENGTH, MAX_TOPIC_LENGTH, type ReadySlide } from "./slideshow-options";
 import { getSlideshowEngine } from "./slideshow-engines";
 import { buildSlideshowInputKey } from "./storage";
+import { parseMusicChoice } from "./music-library";
 import { UserError } from "./user-error";
 
 // Slideshows asked for on the Clips page: the script request and, once the person has edited it, the render request.
@@ -124,6 +125,8 @@ export async function startSlideshowRender({
   slides: input,
   voice,
   captionPreset,
+  musicTrack,
+  musicVolume,
 }: {
   db: PrismaClient;
   queue: SlideshowQueue;
@@ -132,6 +135,9 @@ export async function startSlideshowRender({
   slides: unknown;
   voice: string;
   captionPreset: string;
+  // A music track id from the library or "" for none, and its volume, 0-100.
+  musicTrack: string;
+  musicVolume: string;
 }) {
   const job = await db.slideshowJob.findFirst({ where: { id: jobId, ownerId } });
   if (!job) throw new UserError("this slideshow no longer exists");
@@ -141,10 +147,11 @@ export async function startSlideshowRender({
   if (!isVoicePreset(voice)) throw new UserError("choose one of the voices");
   if (!(CAPTION_PRESET_NAMES as string[]).includes(captionPreset)) throw new UserError("choose one of the caption styles");
   const slides = await checkSlides(db, ownerId, input, job.slideCount);
+  const music = parseMusicChoice(musicTrack, musicVolume);
 
   await db.slideshowJob.update({
     where: { id: jobId },
-    data: { slides, voice, captionPreset, status: "queued", step: null, error: null },
+    data: { slides, voice, captionPreset, ...music, status: "queued", step: null, error: null },
   });
   await queueOrFail(db, jobId, () => queue.send(jobId, "render"));
 }

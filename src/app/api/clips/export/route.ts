@@ -4,6 +4,7 @@ import path from "node:path";
 import { getOwnerId } from "@/lib/owner";
 import { writePostingZip } from "@/lib/clip-export";
 import { s3ClipStore } from "@/lib/clip-store";
+import { withCredit } from "@/lib/music-library";
 import { prisma } from "@/lib/prisma";
 
 const MAX_CLIPS = 20;
@@ -48,7 +49,8 @@ export async function POST(request: Request) {
       name: row.name,
       storageKey: row.storageKey,
       title: row.title,
-      description: row.description,
+      // A clip with CC BY music carries the track's credit line in the description to paste.
+      description: row.musicTrack ? withCredit(row.description ?? "", row.musicTrack) : row.description,
       postAt: times[index],
     };
   });

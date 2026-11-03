@@ -62,6 +62,8 @@ describe("startSlideshowRender", () => {
     slides,
     voice: "af_heart",
     captionPreset: "words",
+    musicTrack: "km-vibe-ace",
+    musicVolume: "20",
   });
 
   it("saves the checked slides and queues the render", async () => {
@@ -77,6 +79,8 @@ describe("startSlideshowRender", () => {
         ],
         voice: "af_heart",
         captionPreset: "words",
+        musicTrack: "km-vibe-ace",
+        musicVolume: 20,
         status: "queued",
         step: null,
         error: null,
@@ -101,6 +105,8 @@ describe("startSlideshowRender", () => {
     await expect(startSlideshowRender({ ...base(db), slides: slides.slice(0, 2) })).rejects.toThrow("needs its 3 slides");
     await expect(startSlideshowRender({ ...base(db), voice: "robot" })).rejects.toThrow("one of the voices");
     await expect(startSlideshowRender({ ...base(db), captionPreset: "comic" })).rejects.toThrow("one of the caption styles");
+    await expect(startSlideshowRender({ ...base(db), musicTrack: "kenney-coin" })).rejects.toThrow('unknown music track "kenney-coin"');
+    await expect(startSlideshowRender({ ...base(db), musicVolume: "101" })).rejects.toThrow("from 0 to 100");
     const { db: noPictures } = fakeDb({ job: draft, engines: { script: "installed", picture: "not_installed" } });
     await expect(startSlideshowRender(base(noPictures))).rejects.toThrow("install the picture maker first");
   });

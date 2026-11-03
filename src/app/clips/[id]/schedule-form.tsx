@@ -18,6 +18,7 @@ export function ScheduleForm({
   accounts,
   channels,
   defaultCaption,
+  credit,
   defaultTitle,
   clipAiGenerated,
   alreadyScheduledTo,
@@ -28,6 +29,8 @@ export function ScheduleForm({
   accounts: AccountChoice[];
   channels: ChannelChoice[];
   defaultCaption: string;
+  /** the credit line the clip's CC BY music needs in the caption, or null */
+  credit: string | null;
   /** the YouTube title to start from: the clip's title, or its name */
   defaultTitle: string;
   /** a clip made with AI always carries Instagram's AI info label and YouTube's disclosure, so its box is ticked and locked */
@@ -42,6 +45,7 @@ export function ScheduleForm({
   });
   const [when, setWhen] = useState("");
   const [audioSource, setAudioSource] = useState("unknown");
+  const [caption, setCaption] = useState(defaultCaption);
   const scheduledAt = when ? new Date(when).toISOString() : "";
   const instagram = destinations.accountIds.length > 0;
   const youtube = destinations.ytAccountIds.length > 0;
@@ -57,8 +61,20 @@ export function ScheduleForm({
       {instagram ? <UseBestTime samples={bestTimeSamples} accountId={destinations.accountIds[0]} onPick={setWhen} /> : null}
       <input type="hidden" name="scheduledAt" value={scheduledAt} />
       <Field label="Caption" hint={youtube ? "Also the YouTube description, with #Shorts added." : undefined}>
-        <textarea name="caption" rows={3} maxLength={2200} defaultValue={defaultCaption} required />
+        <textarea
+          name="caption"
+          rows={credit ? 5 : 3}
+          maxLength={2200}
+          value={caption}
+          onChange={(event) => setCaption(event.target.value)}
+          required
+        />
       </Field>
+      {credit && !caption.includes(credit) ? (
+        <p className={styles.warning}>
+          The clip&apos;s music needs this credit line in the caption, word for word: {credit}
+        </p>
+      ) : null}
       {youtube ? <YouTubeFields defaultTitle={defaultTitle} /> : null}
       <Field label="Audio source">
         <select name="audioSource" value={audioSource} onChange={(event) => setAudioSource(event.target.value)}>

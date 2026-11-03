@@ -29,6 +29,8 @@ import {
   type RenderPlan,
 } from "./clip-resume";
 import { transcribeWithWhisper } from "./whisper";
+import { mixBackgroundMusic } from "@/clip-engine/music.js";
+import { musicFile } from "./music-files";
 import { parseTranscript, validateHighlights, type Highlight, type Word } from "./highlights";
 
 // Thrown by a render's write once the render is cancelled, to stop it.
@@ -194,6 +196,7 @@ export async function renderClipProject({
       });
     }
     const progressColor = project.progressBar ? videoColor(project.progressBar) : null;
+    const music = project.musicTrack ? musicFile(project.musicTrack) : null;
 
     for (const { index, clip } of todo) {
       await step(resume ? resumeStep(index + 1, total) : `Making clip ${index + 1} of ${total}`);
@@ -209,10 +212,12 @@ export async function renderClipProject({
         endCard: titles.endCard,
         progressColor,
       });
+      const finished = music ? path.join(workDir, `${clipId}-music.mp4`) : output;
+      if (music) await mixBackgroundMusic({ input: output, music, volume: project.musicVolume, output: finished });
 
       // The key comes from the planned clip id, so a clip uploaded just before an interruption is overwritten.
       const storageKey = buildClipKey(projectId, clipId);
-      await store.upload(storageKey, output, "video/mp4");
+      await store.upload(storageKey, finished, "video/mp4");
       await db.clip.create({
         data: {
           id: clipId,
@@ -222,6 +227,7 @@ export async function renderClipProject({
           length: clip.length,
           storageKey,
           title: clip.title ?? null,
+          musicTrack: project.musicTrack,
         },
       });
     }

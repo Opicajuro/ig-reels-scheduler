@@ -31,6 +31,7 @@ import { EngineProgress } from "./engine-progress";
 import { R2Section } from "./r2-section";
 import { YouTubeSection } from "./youtube-section";
 import { SlideshowSection } from "./slideshow-section";
+import { MusicSection } from "./music-section";
 import { BackupsSection } from "./backups-section";
 import { ReportProblemButton } from "../help/report-problem";
 import styles from "./settings.module.css";
@@ -187,6 +188,8 @@ export default async function SettingsPage() {
       <AiVideoSection />
 
       <SlideshowSection />
+
+      <MusicSection />
 
       <BackupsSection />
 

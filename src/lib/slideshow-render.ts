@@ -4,11 +4,13 @@ import path from "node:path";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { captionLines } from "@/clip-engine/captions-timing.js";
 import { bundleCaptions } from "@/clip-engine/render-captions.js";
+import { mixBackgroundMusic } from "@/clip-engine/music.js";
 import { buildVoiceTrack, preparePicture, renderSlideshow, slideTimings } from "@/clip-engine/slideshow.js";
 import { captionOverlays } from "./clip-render";
 import type { ClipStore } from "./clip-store";
 import { requireEnv } from "./env";
 import { drawPicture, type DrawPicture } from "./image-gen";
+import { musicFile } from "./music-files";
 import { startLlamaServer, writeScript, type StartLlm } from "./llm-script";
 import { SLIDESHOW_PROJECT_NAME } from "./slideshow";
 import type { ReadySlide, Slide } from "./slideshow-options";
@@ -199,12 +201,17 @@ export async function runSlideshowJob({
     await step("Putting it together");
     const output = path.join(workDir, "slideshow.mp4");
     await renderSlideshow({ pictures, voice, timings, overlay, output });
+    const finished = job.musicTrack ? path.join(workDir, "slideshow-music.mp4") : output;
+    if (job.musicTrack) {
+      await step("Adding the music");
+      await mixBackgroundMusic({ input: output, music: musicFile(job.musicTrack), volume: job.musicVolume, output: finished });
+    }
 
     await step("Adding the clip");
     const project = await slideshowProject(db, job.ownerId, job.captionPreset);
     const clipId = randomUUID();
     const storageKey = buildClipKey(project.id, clipId);
-    await store.upload(storageKey, output, "video/mp4");
+    await store.upload(storageKey, finished, "video/mp4");
     const count = await db.clip.count({ where: { projectId: project.id } });
     await db.clip.create({
       data: {
@@ -215,6 +222,7 @@ export async function runSlideshowJob({
         length: Math.max(1, Math.round(timings.total)),
         storageKey,
         aiGenerated: anyAi,
+        musicTrack: job.musicTrack,
       },
     });
     await write({ status: "done", step: null, clipId });

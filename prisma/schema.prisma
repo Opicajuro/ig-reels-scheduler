@@ -275,6 +275,10 @@ model ClipProject {
   progressBar     String?
   // The end card's text, such as "@myhandle", or null for no end card.
   endCardText     String?
+  // A track id from the built-in music library (src/clip-engine/music-library.json) mixed under every clip, ducked
+  // under speech, or null for none. The volume is a percentage of the track's own level.
+  musicTrack      String?
+  musicVolume     Int               @default(15)
   // The owner's one "AI videos" project, which holds the AI videos made on the Clips page. It has no source video.
   aiVideos        Boolean           @default(false)
   // The owner's one "Slideshows" project, which holds the slideshows made on the Clips page. It has no source video.
@@ -297,6 +301,8 @@ model Clip {
   // Made by the AI video engine from a description on the Clips page. Its posts always carry Instagram's AI info
   // label (Post.aiGenerated).
   aiGenerated Boolean     @default(false)
+  // The library track mixed into the clip when it was made, so scheduling it can add the track's credit line.
+  musicTrack  String?
   createdAt   DateTime    @default(now())
   aiVideoJob  AiVideoJob?
   slideshowJob SlideshowJob?
@@ -453,6 +459,9 @@ model SlideshowJob {
   slides        Json?
   voice         String          @default("af_heart")
   captionPreset String          @default("words")
+  // Background music from the built-in library, as on a clip project.
+  musicTrack    String?
+  musicVolume   Int             @default(15)
   status        SlideshowStatus @default(writing)
   step          String?
   error         String?

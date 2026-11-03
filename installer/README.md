@@ -20,6 +20,8 @@ needs installing by hand. The only things you type are a Resend API key and a se
    installed app offers every published build as an update.
    The first run downloads the tools and prints their SHA-256 hashes. Copy those hashes into
    `installer\tools.json` (the `sha256` fields), so later builds check every download.
+   The built-in music and sound effects are pinned in `src\clip-engine\music-library.json` (URL, SHA-256, source
+   page, licence and the date it was checked) and go to `tools\music`.
 4. The installer is written to `installer\Output\Localirs-Setup.exe`.
 
 ## Use it

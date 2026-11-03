@@ -19,6 +19,7 @@ import { BulkScheduleForm } from "./bulk-schedule-form";
 import { MoveForm, type ProjectChoice } from "./move-form";
 import styles from "../clips.module.css";
 import { formatTime } from "@/lib/highlights";
+import { creditLine, withCredit } from "@/lib/music-library";
 
 export type ClipView = {
   id: string;
@@ -28,6 +29,8 @@ export type ClipView = {
   title: string | null;
   description: string | null;
   aiGenerated: boolean;
+  // The library track mixed into the clip, whose credit line (for a CC BY track) goes in the caption.
+  musicTrack: string | null;
   // Where the clip was posted outside Localirs.
   links: Array<{ id: string; url: string }>;
   downloadUrl: string;
@@ -36,9 +39,9 @@ export type ClipView = {
 export type AccountView = { id: string; username: string };
 export type ChannelView = { id: string; title: string };
 
-// What a clip is posted with on Instagram, the same fallback the server uses.
+// What a clip is posted with on Instagram, the same fallback the server uses, with its music's credit line.
 function captionOf(clip: ClipView): string {
-  return clip.description || clip.title || clip.name;
+  return withCredit(clip.description || clip.title || clip.name, clip.musicTrack);
 }
 
 type DrawerTab = "details" | "move";
@@ -271,6 +274,7 @@ export function ClipGrid({
                     accounts={accounts}
                     channels={channels}
                     defaultCaption={captionOf(openClip)}
+                    credit={creditLine(openClip.musicTrack)}
                     defaultTitle={(openClip.title || openClip.name).slice(0, 100)}
                     clipAiGenerated={openClip.aiGenerated}
                     alreadyScheduledTo={alreadyScheduledTo}

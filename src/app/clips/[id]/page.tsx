@@ -11,6 +11,7 @@ import { presignDownload } from "@/lib/storage";
 import { Alert } from "@/components/alert";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Field } from "@/components/field";
+import { MusicPicker } from "@/components/music-picker";
 import { PageHeader } from "@/components/page-header";
 import { SourceLink } from "../source-link";
 import {
@@ -141,6 +142,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       title: clip.title,
       description: clip.description,
       aiGenerated: clip.aiGenerated,
+      musicTrack: clip.musicTrack,
       links: clip.links,
       downloadUrl: await presignDownload(clip.storageKey, 3600),
     })),
@@ -360,6 +362,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
               <Field label="End card text" hint="Shown for the last 1.5 seconds, such as @myhandle. Leave empty for none.">
                 <input type="text" name="endCardText" maxLength={END_CARD_TEXT_MAX} defaultValue={project.endCardText ?? ""} />
               </Field>
+              <MusicPicker track={project.musicTrack} volume={project.musicVolume} />
             </div>
             <div className={styles.settingsFooter}>
               {review ? (

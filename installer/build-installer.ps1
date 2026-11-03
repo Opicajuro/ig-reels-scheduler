@@ -122,6 +122,17 @@ Copy-Item -Force $kokoroConfig (Join-Path $kokoro "config.json")
 Copy-Item -Force $kokoroTokenizer (Join-Path $kokoro "tokenizer.json")
 Copy-Item -Force $kokoroTokenizerConfig (Join-Path $kokoro "tokenizer_config.json")
 
+# The built-in music and sound effects, each pinned by URL and SHA-256 in the app's music library manifest, which also
+# records its source page, licence and the date the licence was checked.
+$musicLibrary = Get-Content (Join-Path $root "src\clip-engine\music-library.json") -Raw | ConvertFrom-Json
+$music = Join-Path $tools "music"
+New-Item -ItemType Directory -Force -Path $music, (Join-Path $downloads "music") | Out-Null
+foreach ($track in $musicLibrary.tracks) {
+  if (-not $track.sha256) { throw "music library track $($track.id) has no sha256" }
+  $file = Get-Tool "Music $($track.id)" ([pscustomobject]@{ version = $track.checked; url = $track.url; sha256 = $track.sha256 }) "music\$($track.file)"
+  Copy-Item -Force $file (Join-Path $music $track.file)
+}
+
 Expand-Archive -Force $chromeZip (Join-Path $tools "chrome-unzip")
 Move-Item -Force (Join-Path $tools "chrome-unzip\chrome-headless-shell-win64") (Join-Path $tools "chrome")
 Remove-Item -Recurse -Force (Join-Path $tools "chrome-unzip")

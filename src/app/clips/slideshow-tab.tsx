@@ -91,6 +91,8 @@ export async function SlideshowTab({ ownerId }: { ownerId: string }) {
                   initialSlides={job.slides as Slide[]}
                   initialVoice={job.voice}
                   initialCaptionPreset={job.captionPreset}
+                  initialMusicTrack={job.musicTrack}
+                  initialMusicVolume={job.musicVolume}
                   media={media}
                   canDraw={picture.status === "installed"}
                 />

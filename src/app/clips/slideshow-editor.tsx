@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { ActionForm, SubmitButton } from "@/components/action-form";
+import { MusicPicker } from "@/components/music-picker";
 import { Field } from "@/components/field";
 import { MAX_LINE_LENGTH, MAX_PICTURE_LENGTH, VOICE_PRESETS, type Slide, type SlideSource } from "@/lib/slideshow-options";
 import aiStyles from "./ai.module.css";
@@ -34,6 +35,8 @@ export function SlideshowEditor({
   initialSlides,
   initialVoice,
   initialCaptionPreset,
+  initialMusicTrack,
+  initialMusicVolume,
   media,
   canDraw,
 }: {
@@ -41,6 +44,8 @@ export function SlideshowEditor({
   initialSlides: Slide[];
   initialVoice: string;
   initialCaptionPreset: string;
+  initialMusicTrack: string | null;
+  initialMusicVolume: number;
   media: FrameMedia[];
   canDraw: boolean;
 }) {
@@ -106,6 +111,7 @@ export function SlideshowEditor({
           </div>
         </div>
       </div>
+      <MusicPicker track={initialMusicTrack} volume={initialMusicVolume} />
       {anyAi ? (
         <p className={aiStyles.madeWithAi}>
           Made with AI: a slideshow with a drawn picture is marked as AI-made in Localirs, and Instagram should be told

@@ -25,6 +25,7 @@ import type { ClipQueue, PublishQueue } from "./queues";
 import { checkRights, type AudioSourceValue } from "./rights";
 import { publishJobRunAt } from "./scheduling";
 import { buildClipKey, buildClipSourceKey, buildReelKey, buildYouTubeKey } from "./storage";
+import { DEFAULT_MUSIC_VOLUME, parseMusicChoice, withCredit } from "./music-library";
 import { UserError } from "./user-error";
 import { checkYouTubePost, shortsDescription } from "./youtube";
 import { youTubeJobRunAt } from "./youtube-posts";
@@ -120,6 +121,8 @@ export async function startRender({
   hookText = "",
   progressBar = "off",
   endCardText = "",
+  musicTrack = "",
+  musicVolume = String(DEFAULT_MUSIC_VOLUME),
 }: {
   db: PrismaClient;
   queue: ClipQueue;
@@ -141,6 +144,9 @@ export async function startRender({
   hookText?: unknown;
   progressBar?: unknown;
   endCardText?: unknown;
+  // A music track id from the library or "" for none, and its volume, 0-100.
+  musicTrack?: string;
+  musicVolume?: string;
 }) {
   const project = await ownedProject(db, ownerId, projectId);
   if (project.status === "awaiting_source") throw new UserError("upload the video before making clips");
@@ -165,6 +171,7 @@ export async function startRender({
   const emoji = withCaptions && captionEmoji === true;
   const hook = parseHookMode(hookMode);
   const hookTitle = parseHookText(hookText, hook);
+  const music = parseMusicChoice(musicTrack, musicVolume);
 
   // A new render id: this render starts over, replacing the clips, even if an earlier one was interrupted.
   const renderId = randomUUID();
@@ -190,6 +197,7 @@ export async function startRender({
       hookText: hookTitle,
       progressBar: parseProgressBar(progressBar),
       endCardText: parseEndCardText(endCardText),
+      ...music,
     },
   });
   try {
@@ -291,6 +299,8 @@ export async function copyProject({
       hookText: original.hookText,
       progressBar: original.progressBar,
       endCardText: original.endCardText,
+      musicTrack: original.musicTrack,
+      musicVolume: original.musicVolume,
     },
   });
   if (original.sourceKey) {
@@ -313,6 +323,7 @@ export async function copyProject({
         title: clip.title,
         description: clip.description,
         aiGenerated: clip.aiGenerated,
+        musicTrack: clip.musicTrack,
       },
     });
   }
@@ -362,6 +373,7 @@ export async function copyClip({ db, store, ownerId, clipId }: { db: PrismaClien
       title: clip.title,
       description: clip.description,
       aiGenerated: clip.aiGenerated,
+      musicTrack: clip.musicTrack,
     },
   });
 }
@@ -473,6 +485,7 @@ export async function copyClipsToProject({
         title: clip.title,
         description: clip.description,
         aiGenerated: clip.aiGenerated,
+        musicTrack: clip.musicTrack,
       },
     });
   }
@@ -817,7 +830,8 @@ export async function scheduleClips({
   for (const [index, clipId] of ids.entries()) {
     const clip = byId.get(clipId);
     if (!clip) throw new UserError("clip not found");
-    const caption = clip.description || clip.title || clip.name;
+    // A clip made with a CC BY track carries its credit line, which the bulk form shows.
+    const caption = withCredit(clip.description || clip.title || clip.name, clip.musicTrack);
     const scheduledAt = new Date(first.getTime() + index * gapHours * 60 * 60 * 1000);
     const ai = clip.aiGenerated || aiGenerated;
     if (igIds.length > 0) checkInstagramCaption(caption, clip.name);

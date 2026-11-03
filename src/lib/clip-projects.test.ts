@@ -282,6 +282,19 @@ describe("startRender", () => {
     expect(tables.clipProject[0]).toMatchObject({ captionPreset: "box", captionPosition: "top", captionUppercase: true });
   });
 
+  it("stores the background music and its volume, none by default", async () => {
+    const { db, tables } = fakeDb({ projects: [project()] });
+    const start = (music: { musicTrack?: string; musicVolume?: string }) =>
+      startRender({ db, queue: { send: async () => "job-1" }, ...owned, projectId: "p1", clipSeconds: 30, clipCount: 2, withCaptions: false, ...music });
+    await start({});
+    expect(tables.clipProject[0]).toMatchObject({ musicTrack: null, musicVolume: 15 });
+    tables.clipProject[0].status = "done";
+    await start({ musicTrack: "oga-cathedral-forest", musicVolume: "30" });
+    expect(tables.clipProject[0]).toMatchObject({ musicTrack: "oga-cathedral-forest", musicVolume: 30 });
+    tables.clipProject[0].status = "done";
+    await expect(start({ musicTrack: "kenney-coin", musicVolume: "30" })).rejects.toThrow("unknown music track");
+  });
+
   it("keeps the look clips have always had unless the new options are chosen", async () => {
     const { db, tables } = fakeDb({ projects: [project()] });
     await startRender({
@@ -744,6 +757,32 @@ describe("scheduleClips", () => {
 
     expect(await schedule(false)).toEqual([true, false]);
     expect(await schedule(true)).toEqual([true, true]);
+  });
+
+  it("adds the credit line of a clip's CC BY music to its caption", async () => {
+    const { db, tables } = fakeDb({
+      projects: [project()],
+      clips: [clip({ id: "c1", musicTrack: "km-vibe-ace" }), clip({ id: "c2", storageKey: "clips/p1/c2.mp4", musicTrack: "oga-dark-shrine" })],
+      accounts: [account],
+    });
+    await scheduleClips({
+      db,
+      store: fakeStore().store,
+      queue: { send: async () => "job", cancel: async () => {} },
+      ...owned,
+      clipIds: ["c1", "c2"],
+      accountIds: ["acc-1"],
+      firstScheduledAt: new Date(Date.now() + 3 * HOUR).toISOString(),
+      gapHours: 24,
+      aiGenerated: false,
+      rightsConfirmed: true,
+      audioSource: "licensed",
+      now: new Date(),
+    });
+    expect(tables.post.map((post) => post.caption)).toEqual([
+      'Watch to the end\n\n"Vibe Ace" Kevin MacLeod (incompetech.com) Licensed under Creative Commons: By Attribution 4.0 License http://creativecommons.org/licenses/by/4.0/',
+      "Watch to the end",
+    ]);
   });
 
   it("creates nothing when the rights are not confirmed or a clip is not in the owner's projects", async () => {

@@ -92,6 +92,7 @@ try {
   $env:LOCALIRS_WHISPER_VULKAN = Join-Path $tools "whisper-vulkan\Release\whisper-cli.exe"
   $env:LOCALIRS_WHISPER_MODEL = Join-Path $tools "whisper\ggml-large-v3-turbo-q5_0.bin"
   $env:LOCALIRS_KOKORO_MODEL = Join-Path $tools "kokoro\Kokoro-82M-v1.0-ONNX"
+  $env:LOCALIRS_MUSIC_DIR = Join-Path $tools "music"
   $env:LOCALIRS_DATA_DIR = $data
   $env:LOCALIRS_PG_BIN = $pgBin
   $env:PATH = "$tools;$env:PATH"

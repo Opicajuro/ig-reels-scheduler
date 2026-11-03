@@ -39,6 +39,8 @@ export async function makeSlideshowAction(_previous: ActionResult, formData: For
       slides,
       voice: String(formData.get("voice") ?? ""),
       captionPreset: String(formData.get("captionPreset") ?? ""),
+      musicTrack: String(formData.get("musicTrack") ?? ""),
+      musicVolume: String(formData.get("musicVolume") ?? ""),
     });
     revalidatePath("/clips");
     return "Making the slideshow";
