@@ -304,7 +304,9 @@ model Clip {
   // The library track mixed into the clip when it was made, so scheduling it can add the track's credit line.
   musicTrack  String?
   createdAt   DateTime    @default(now())
-  aiVideoJob  AiVideoJob?
+  aiVideoJob  AiVideoJob? @relation("AiVideoClip")
+  // AI intros and B-roll asked for from this clip.
+  aiVideoSources AiVideoJob[] @relation("AiVideoSource")
   slideshowJob SlideshowJob?
   links       ClipLink[]
 }
@@ -422,8 +424,19 @@ model AiVideoJob {
   step          String?
   error         String?
   clipId        String?       @unique
-  clip          Clip?         @relation(fields: [clipId], references: [id], onDelete: SetNull)
+  clip          Clip?         @relation("AiVideoClip", fields: [clipId], references: [id], onDelete: SetNull)
+  // An intro or B-roll is made from a frame of an existing clip (at seconds into it, for B-roll) and joined to it.
+  kind          AiVideoKind   @default(prompt)
+  sourceClipId  String?
+  sourceClip    Clip?         @relation("AiVideoSource", fields: [sourceClipId], references: [id], onDelete: SetNull)
+  at            Float?
   createdAt     DateTime      @default(now())
+}
+
+enum AiVideoKind {
+  prompt
+  intro
+  broll
 }
 
 // The two offline engines of the slideshows, in <data>\slideshow: "script" (llama.cpp and the Qwen3.5 model) and

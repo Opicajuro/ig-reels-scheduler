@@ -23,7 +23,15 @@ export type QueueRender = {
   // Known once the render has picked its clips.
   clipsTotal: number | null;
 };
-export type QueueAiVideo = { id: string; prompt: string; status: "queued" | "running"; step: string | null };
+// An intro or B-roll names the project of the clip it is made from.
+export type QueueAiVideo = {
+  id: string;
+  prompt: string;
+  kind: "prompt" | "intro" | "broll";
+  projectId: string | null;
+  status: "queued" | "running";
+  step: string | null;
+};
 export type QueueSlideshow = { id: string; topic: string; status: "writing" | "queued" | "running"; step: string | null };
 // The AI video engine ("ai") or a slideshow engine being installed. They are not owned: one install serves the PC.
 export type QueueEngine = { id: string; name: string; step: string | null; percent: number | null };
@@ -61,7 +69,7 @@ export async function listQueue({ db, ownerId, now }: { db: PrismaClient; ownerI
     db.aiVideoJob.findMany({
       where: { ownerId, status: { in: ["queued", "running"] } },
       orderBy: { createdAt: "asc" },
-      select: { id: true, prompt: true, status: true, step: true },
+      select: { id: true, prompt: true, kind: true, status: true, step: true, sourceClip: { select: { projectId: true } } },
     }),
     db.slideshowJob.findMany({
       where: { ownerId, status: { in: ["writing", "queued", "running"] } },
@@ -100,7 +108,14 @@ export async function listQueue({ db, ownerId, now }: { db: PrismaClient; ownerI
     }),
     aiVideos: videos.map((video) => {
       if (video.status !== "queued" && video.status !== "running") throw new Error(`AI video ${video.id} is ${video.status}`);
-      return { id: video.id, prompt: video.prompt, status: video.status, step: video.step };
+      return {
+        id: video.id,
+        prompt: video.prompt,
+        kind: video.kind,
+        projectId: video.sourceClip?.projectId ?? null,
+        status: video.status,
+        step: video.step,
+      };
     }),
     slideshows: slideshows.map((show) => {
       if (show.status !== "writing" && show.status !== "queued" && show.status !== "running") throw new Error(`slideshow ${show.id} is ${show.status}`);

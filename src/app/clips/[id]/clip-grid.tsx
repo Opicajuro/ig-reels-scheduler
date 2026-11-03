@@ -11,6 +11,7 @@ import { Menu } from "@/components/menu";
 import { PlatformChips } from "@/components/platform-links";
 import { Tabs } from "@/components/tabs";
 import { deleteClipAction, deleteClipsAction } from "../actions";
+import { AiClipForm, type AiClipSetup } from "./ai-clip-form";
 import { ClipDetails } from "./clip-details";
 import { ClipLinks } from "./clip-links";
 import { ExportForm } from "./export-form";
@@ -20,6 +21,7 @@ import { MoveForm, type ProjectChoice } from "./move-form";
 import styles from "../clips.module.css";
 import { formatTime } from "@/lib/highlights";
 import { creditLine, withCredit } from "@/lib/music-library";
+import { AI_CLIP_LABELS, type AiClipKind } from "@/lib/ai-clip-options";
 
 export type ClipView = {
   id: string;
@@ -34,6 +36,8 @@ export type ClipView = {
   // Where the clip was posted outside Localirs.
   links: Array<{ id: string; url: string }>;
   downloadUrl: string;
+  // The start of what is said in the clip, for the AI panels' suggested prompt.
+  firstWords: string;
 };
 
 export type AccountView = { id: string; username: string };
@@ -61,6 +65,7 @@ function ClipCard({
   picked,
   onPick,
   onOpen,
+  onAi,
 }: {
   clip: ClipView;
   projectId: string;
@@ -68,6 +73,7 @@ function ClipCard({
   picked: boolean;
   onPick: (on: boolean) => void;
   onOpen: (tab: DrawerTab) => void;
+  onAi: (kind: AiClipKind) => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const deleteButton = useRef<HTMLButtonElement>(null);
@@ -113,6 +119,8 @@ function ClipCard({
               { label: "Open", onSelect: () => onOpen("details") },
               { label: "Download", href: clip.downloadUrl, download: true },
               { label: "Move or copy…", onSelect: () => onOpen("move"), disabled: busy },
+              { label: `${AI_CLIP_LABELS.intro}…`, onSelect: () => onAi("intro"), disabled: busy },
+              { label: `${AI_CLIP_LABELS.broll}…`, onSelect: () => onAi("broll"), disabled: busy },
               { label: "Delete…", onSelect: () => deleteButton.current!.form!.requestSubmit(), disabled: busy, danger: true },
             ]}
           />
@@ -151,6 +159,7 @@ export function ClipGrid({
   alreadyScheduledTo,
   projects,
   bestTimeSamples,
+  ai,
 }: {
   projectId: string;
   busy: boolean;
@@ -160,11 +169,14 @@ export function ClipGrid({
   alreadyScheduledTo: string[];
   projects: ProjectChoice[];
   bestTimeSamples: BestTimeSample[];
+  ai: AiClipSetup;
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [openId, setOpenId] = useState<string | null>(null);
   const [openTab, setOpenTab] = useState<DrawerTab>("details");
   const [panel, setPanel] = useState<"export" | "schedule" | "move" | "copy" | null>(null);
+  const [aiPanel, setAiPanel] = useState<{ clipId: string; kind: AiClipKind } | null>(null);
+  const aiClip = clips.find((clip) => clip.id === aiPanel?.clipId) ?? null;
   // Read through the current clips, so a clip deleted or replaced since it was picked or opened drops out.
   const selected = clips.filter((clip) => picked.has(clip.id));
   const openClip = clips.find((clip) => clip.id === openId) ?? null;
@@ -201,6 +213,7 @@ export function ClipGrid({
                 setOpenId(clip.id);
                 setOpenTab(tab);
               }}
+              onAi={(kind) => setAiPanel({ clipId: clip.id, kind })}
             />
           ))}
         </div>
@@ -302,6 +315,14 @@ export function ClipGrid({
             ]}
           />
         ) : null}
+      </Drawer>
+
+      <Drawer
+        open={aiClip !== null}
+        title={aiPanel && aiClip ? `${AI_CLIP_LABELS[aiPanel.kind]} for ${aiClip.name}` : null}
+        onClose={() => setAiPanel(null)}
+      >
+        {aiPanel && aiClip ? <AiClipForm key={`${aiClip.id}-${aiPanel.kind}`} clip={aiClip} kind={aiPanel.kind} setup={ai} /> : null}
       </Drawer>
 
       <Drawer open={panel === "export"} title="Download for posting" onClose={() => setPanel(null)}>

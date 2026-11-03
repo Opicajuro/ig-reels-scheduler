@@ -27,7 +27,11 @@ import { HighlightReview } from "./highlight-review";
 import { ProjectTitle } from "./project-title";
 import { VIDEO_COLOR_NAMES, videoColor } from "@/clip-engine/remotion/caption-presets.js";
 import { END_CARD_TEXT_MAX, HOOK_TEXT_MAX } from "@/clip-engine/helpers.js";
-import { lengthLimits, parseTranscript, validateHighlights } from "@/lib/highlights";
+import { lengthLimits, parseTranscript, validateHighlights, wordsInRange } from "@/lib/highlights";
+import { NoAiGpuNote } from "@/components/no-ai-gpu-note";
+import { getAiEngine } from "@/lib/ai-engine";
+import { checkGpu } from "@/lib/ai-gpu";
+import { MAX_PROMPT_LENGTH } from "@/lib/ai-video";
 
 export const metadata: Metadata = { title: "Clip project" };
 
@@ -88,6 +92,35 @@ function renderStartedAt(startedAt: Date | null): Date {
   return startedAt;
 }
 
+// Why the clips' AI intro and B-roll cannot be made on this PC, said as on the Clips page, or null when they can.
+async function aiUnavailable() {
+  const gpu = await checkGpu();
+  if (!gpu.found || !gpu.ready) {
+    return (
+      <>
+        <NoAiGpuNote check={gpu} />
+        <p className={styles.muted}>
+          <Link href="/settings#ai-video">See AI video in Settings</Link>
+        </p>
+      </>
+    );
+  }
+  const engine = await getAiEngine(prisma);
+  if (engine.status === "installed") return null;
+  const state = {
+    not_installed: "The AI video engine is not installed yet.",
+    installing: "The AI video engine is being installed.",
+    failed: "The AI video engine install stopped.",
+  }[engine.status];
+  return (
+    <p className={styles.muted}>
+      {state} <Link href="/settings#ai-video">Set it up in Settings</Link>
+    </p>
+  );
+}
+
+const FIRST_WORDS = 12;
+
 export default async function ClipProjectPage({ params }: { params: Promise<{ id: string }> }) {
   await connection();
   const ownerId = await getOwnerId();
@@ -133,6 +166,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       : [{ accountId: post.accountId, at: post.publishedAt.toISOString(), views: post.metrics.views }],
   );
   const alreadyScheduledTo = [...new Set(livePosts.map((post) => `@${post.account.username}`))];
+  const transcript = project.transcript === null ? [] : parseTranscript(project.transcript);
   const clips = await Promise.all(
     project.clips.map(async (clip) => ({
       id: clip.id,
@@ -145,6 +179,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       musicTrack: clip.musicTrack,
       links: clip.links,
       downloadUrl: await presignDownload(clip.storageKey, 3600),
+      firstWords: wordsInRange(transcript, clip).split(" ").slice(0, FIRST_WORDS).join(" "),
     })),
   );
 
@@ -421,6 +456,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
               alreadyScheduledTo={alreadyScheduledTo}
               projects={otherProjects}
               bestTimeSamples={bestTimeSamples}
+              ai={{ unavailable: await aiUnavailable(), maxPromptLength: MAX_PROMPT_LENGTH }}
             />
           </section>
         </div>

@@ -7,6 +7,7 @@ import { ActionForm, SubmitButton } from "@/components/action-form";
 import { EmptyState } from "@/components/empty-state";
 import { LocalTime } from "@/components/local-time";
 import { StatusBadge } from "@/components/status-badge";
+import { AI_CLIP_LABELS } from "@/lib/ai-clip-options";
 import type { QueueListing } from "@/lib/work-queue";
 import { formatElapsed } from "../clips/render-progress";
 import { CancelPostForm } from "../scheduled/post-actions";
@@ -104,8 +105,8 @@ export function QueueView({ initial }: { initial: QueueListing }) {
         {aiVideos.map((video) => (
           <Row
             key={video.id}
-            href="/clips?tab=ai"
-            title={video.prompt}
+            href={video.projectId ? `/clips/${video.projectId}` : "/clips?tab=ai"}
+            title={video.kind === "prompt" ? video.prompt : `${AI_CLIP_LABELS[video.kind]}: ${video.prompt}`}
             state={<StatusBadge status={video.status} />}
             detail={video.step ?? (video.status === "queued" ? "Waiting for the worker" : "")}
             cancel={
