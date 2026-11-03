@@ -50,6 +50,17 @@ export function buildClipKey(projectId: string, clipId: string): string {
   return `clips/${projectId}/${clipId}.mp4`;
 }
 
+// A re-rendered clip's file: each version has its own key, so the one being replaced stays until the new one is saved.
+export function buildClipVersionKey(projectId: string, clipId: string, version: number): string {
+  if (!Number.isInteger(version) || version < 2) throw new Error(`clip version ${version} is not a re-render`);
+  return `clips/${projectId}/${clipId}.v${version}.mp4`;
+}
+
+// A captioned clip's cut without captions, for drawing its captions again.
+export function buildClipBaseKey(projectId: string, clipId: string): string {
+  return `clips/${projectId}/${clipId}.base.mp4`;
+}
+
 // The start picture of an AI video, uploaded from the Clips page.
 export function buildAiInputKey(id: string, extension: string): string {
   return `ai-inputs/${id}${extension.toLowerCase()}`;

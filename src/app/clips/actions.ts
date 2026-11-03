@@ -9,7 +9,7 @@ import { s3ClipStore } from "@/lib/clip-store";
 import { addClipLink, removeClipLink } from "@/lib/links";
 import { parseAudioSource } from "@/lib/rights";
 import { prisma } from "@/lib/prisma";
-import { getClipQueue, getPublishQueue, getYouTubePublishQueue } from "@/lib/queues";
+import { getClipQueue, getPublishQueue, getRecaptionJobs, getYouTubePublishQueue } from "@/lib/queues";
 
 function text(formData: FormData, name: string): string {
   return String(formData.get(name) ?? "");
@@ -147,6 +147,22 @@ export async function copyClipAction(_previous: ActionResult, formData: FormData
     await clips.copyClip({ db: prisma, store: s3ClipStore, ownerId: await getOwnerId(), clipId: text(formData, "clipId") });
     revalidatePath(`/clips/${projectId}`);
     return "Copied";
+  });
+}
+
+export async function recaptionClipAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    const projectId = text(formData, "projectId");
+    await clips.startRecaption({
+      db: prisma,
+      queue: getRecaptionJobs(),
+      ownerId: await getOwnerId(),
+      clipId: text(formData, "clipId"),
+      words: text(formData, "words"),
+    });
+    revalidatePath(`/clips/${projectId}`);
+    revalidatePath("/queue");
+    return "Re-rendering the captions";
   });
 }
 

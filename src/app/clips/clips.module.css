@@ -843,3 +843,50 @@
   color: var(--muted);
   font-size: var(--text-sm);
 }
+
+/* A clip's caption lines in its drawer's Captions tab, each word an inline input. */
+.captionLines {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.captionLine {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.captionWords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.captionWord {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.captionWord input {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.captionWord button {
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.captionWord button:hover:not(:disabled) {
+  color: var(--text);
+}

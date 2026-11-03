@@ -303,6 +303,19 @@ model Clip {
   aiGenerated Boolean     @default(false)
   // The library track mixed into the clip when it was made, so scheduling it can add the track's credit line.
   musicTrack  String?
+  // The words captioned on the clip, [{ text, startMs, endMs, lineStart? }] in ms from the clip's start, lineStart
+  // marking the first word of each caption line. Null for a clip made without captions or before they were kept.
+  words       Json?
+  // The clip's cut without captions or extras, kept with its words so the captions can be drawn again without cutting.
+  baseKey     String?
+  // Counts the clip's files: a re-render uploads the next version under a new key.
+  version     Int         @default(1)
+  // While its captions are re-rendered: the job's id, its step and the edited words it draws. recaptionError is why
+  // the last one failed.
+  recaptionId    String?
+  recaptionStep  String?
+  recaptionWords Json?
+  recaptionError String?
   createdAt   DateTime    @default(now())
   aiVideoJob  AiVideoJob?
   slideshowJob SlideshowJob?

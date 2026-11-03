@@ -18,6 +18,7 @@ import {
   scheduleClip,
   scheduleClips,
   setClipDetails,
+  startRecaption,
   startRender,
 } from "./clip-projects";
 import { UserError } from "./user-error";
@@ -93,6 +94,11 @@ function fakeDb(
       const index = tables[table].findIndex((item) => item.id === where.id);
       if (index < 0) throw new Error(`${table} ${where.id} not found`);
       return tables[table].splice(index, 1)[0];
+    },
+    updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Row }) => {
+      const rows = tables[table].filter((row) => matches(table, row, where));
+      for (const row of rows) Object.assign(row, data);
+      return { count: rows.length };
     },
     deleteMany: async ({ where }: { where: Record<string, unknown> }) => {
       const kept = tables[table].filter((row) => !matches(table, row, where));
@@ -1195,5 +1201,92 @@ describe("scheduling to YouTube", () => {
     await expect(scheduleOne(db, q, files.store, { accountIds: ["acc-1"] })).rejects.toThrow("database down");
     expect(q.canceled).toEqual(["ig-job-1", "yt-job-2"]);
     expect(files.removed).toHaveLength(2);
+  });
+});
+
+describe("caption words and the kept cut", () => {
+  const words = [
+    { text: "hello", startMs: 0, endMs: 400, lineStart: true },
+    { text: "um", startMs: 400, endMs: 600 },
+    { text: "world", startMs: 600, endMs: 1000 },
+  ];
+  const captioned = (overrides: Partial<Row> = {}) =>
+    clip({ words, baseKey: "clips/p1/c1.base.mp4", version: 1, recaptionId: null, recaptionError: "earlier", ...overrides });
+  const captionProject = () => project({ withCaptions: true, captionPreset: "classic" });
+  const fakeQueue = (fail = false) => {
+    const sent: Array<[string, string]> = [];
+    return {
+      sent,
+      queue: {
+        send: async (clipId: string, recaptionId: string) => {
+          if (fail) throw new Error("pg-boss is down");
+          sent.push([clipId, recaptionId]);
+          return "job-1";
+        },
+      },
+    };
+  };
+
+  it("queues a re-render with the edited words, checked against the clip's", async () => {
+    const { db, tables } = fakeDb({ projects: [captionProject()], clips: [captioned()] });
+    const { queue, sent } = fakeQueue();
+    const edited = [{ ...words[0], text: "Hello" }, { ...words[2], lineStart: true }];
+
+    await startRecaption({ db, queue, ...owned, clipId: "c1", words: JSON.stringify(edited) });
+
+    const row = tables.clip[0];
+    expect(sent).toEqual([["c1", row.recaptionId]]);
+    expect(row).toMatchObject({ recaptionWords: edited, recaptionStep: null, recaptionError: null, words });
+  });
+
+  it("refuses clips without kept words, one already re-rendering, a busy project and changed times", async () => {
+    const { queue, sent } = fakeQueue();
+    const body = JSON.stringify(words);
+    const old = fakeDb({ projects: [captionProject()], clips: [clip({ words: null, baseKey: null, recaptionId: null })] });
+    await expect(startRecaption({ db: old.db, queue, ...owned, clipId: "c1", words: body })).rejects.toThrow(
+      "Captions can be edited on clips made after this update",
+    );
+    const running = fakeDb({ projects: [captionProject()], clips: [captioned({ recaptionId: "x1" })] });
+    await expect(startRecaption({ db: running.db, queue, ...owned, clipId: "c1", words: body })).rejects.toThrow("already");
+    const busy = fakeDb({ projects: [project({ status: "rendering", captionPreset: "classic" })], clips: [captioned()] });
+    await expect(startRecaption({ db: busy.db, queue, ...owned, clipId: "c1", words: body })).rejects.toThrow("being made");
+    const ok = fakeDb({ projects: [captionProject()], clips: [captioned()] });
+    const moved = JSON.stringify([{ ...words[0], endMs: 500 }]);
+    await expect(startRecaption({ db: ok.db, queue, ...owned, clipId: "c1", words: moved })).rejects.toThrow("do not match");
+    expect(sent).toEqual([]);
+    expect(ok.tables.clip[0].recaptionId).toBeNull();
+  });
+
+  it("clears the re-render when it cannot be queued", async () => {
+    const { db, tables } = fakeDb({ projects: [captionProject()], clips: [captioned()] });
+    await expect(
+      startRecaption({ db, queue: fakeQueue(true).queue, ...owned, clipId: "c1", words: JSON.stringify(words) }),
+    ).rejects.toThrow("pg-boss is down");
+    expect(tables.clip[0]).toMatchObject({ recaptionId: null, recaptionError: "pg-boss is down" });
+  });
+
+  it("copies, moves and deletes the kept cut with its clip, and keeps the words on copies", async () => {
+    const seed = () => ({ projects: [captionProject(), project({ id: "p2" })], clips: [captioned()] });
+
+    const copying = fakeDb(seed());
+    const copyFiles = fakeStore();
+    const copy = await copyClip({ db: copying.db, store: copyFiles.store, ...owned, clipId: "c1" });
+    expect(copyFiles.copies[1]).toEqual(["clips/p1/c1.base.mp4", `clips/p1/${copy.id}.base.mp4`]);
+    expect(copying.tables.clip[1]).toMatchObject({ words, baseKey: `clips/p1/${copy.id}.base.mp4` });
+
+    const moving = fakeDb(seed());
+    const moveFiles = fakeStore();
+    await moveClipsToProject({ db: moving.db, store: moveFiles.store, ...owned, clipIds: ["c1"], projectId: "p2" });
+    expect(moveFiles.copies).toContainEqual(["clips/p1/c1.base.mp4", "clips/p2/c1.base.mp4"]);
+    expect(moveFiles.removed).toEqual(["clips/p1/c1.mp4", "clips/p1/c1.base.mp4"]);
+    expect(moving.tables.clip[0]).toMatchObject({ projectId: "p2", baseKey: "clips/p2/c1.base.mp4" });
+
+    const deleting = fakeDb(seed());
+    const deleteFiles = fakeStore();
+    await deleteClip({ db: deleting.db, store: deleteFiles.store, ...owned, clipId: "c1" });
+    expect(deleteFiles.removed).toEqual(["clips/p1/c1.mp4", "clips/p1/c1.base.mp4"]);
+
+    const busy = fakeDb({ projects: [captionProject(), project({ id: "p2" })], clips: [captioned({ recaptionId: "x1" })] });
+    await expect(deleteClip({ db: busy.db, store: fakeStore().store, ...owned, clipId: "c1" })).rejects.toThrow("re-rendered");
   });
 });

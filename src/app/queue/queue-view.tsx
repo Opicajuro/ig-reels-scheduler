@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/status-badge";
 import type { QueueListing } from "@/lib/work-queue";
 import { formatElapsed } from "../clips/render-progress";
 import { CancelPostForm } from "../scheduled/post-actions";
-import { cancelAiVideoAction, cancelRenderAction, cancelSlideshowAction } from "./actions";
+import { cancelAiVideoAction, cancelRecaptionAction, cancelRenderAction, cancelSlideshowAction } from "./actions";
 import styles from "./queue.module.css";
 
 const POLL_MS = 2000;
@@ -19,6 +19,7 @@ const POLL_MS = 2000;
 function rowKeys(listing: QueueListing): string[] {
   return [
     ...listing.renders.map((row) => `render:${row.id}`),
+    ...listing.recaptions.map((row) => `recaption:${row.id}`),
     ...listing.aiVideos.map((row) => `video:${row.id}`),
     ...listing.slideshows.map((row) => `slideshow:${row.id}`),
     ...listing.engines.map((row) => `engine:${row.id}`),
@@ -53,7 +54,7 @@ export function QueueView({ initial }: { initial: QueueListing }) {
     return () => clearInterval(timer);
   }, [router]);
 
-  const { renders, aiVideos, slideshows, engines, posts } = listing;
+  const { renders, recaptions, aiVideos, slideshows, engines, posts } = listing;
   return (
     <div className={styles.queue}>
       <Section title="Clips being made" empty="No clips are being made.">
@@ -98,6 +99,33 @@ export function QueueView({ initial }: { initial: QueueListing }) {
             />
           );
         })}
+      </Section>
+
+      <Section title="Captions being re-rendered" empty="No clip's captions are being re-rendered.">
+        {recaptions.map((clip) => (
+          <Row
+            key={clip.id}
+            href={`/clips/${clip.projectId}`}
+            title={`${clip.name} · ${clip.projectName}`}
+            state={<StatusBadge status="rendering" label="Re-rendering" />}
+            detail={clip.step ?? "Waiting for the worker"}
+            cancel={
+              <ActionForm
+                action={cancelRecaptionAction}
+                confirm={{
+                  message: `Stop re-rendering the captions of ${clip.name}? The clip stays as it is.`,
+                  confirmLabel: "Stop re-rendering",
+                }}
+              >
+                <input type="hidden" name="clipId" value={clip.id} />
+                <input type="hidden" name="projectId" value={clip.projectId} />
+                <SubmitButton variant="danger" size="sm" pendingLabel="Cancelling…">
+                  Cancel
+                </SubmitButton>
+              </ActionForm>
+            }
+          />
+        ))}
       </Section>
 
       <Section title="AI videos" empty="No AI video is waiting or being made.">

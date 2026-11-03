@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@/generated/prisma/client";
-import type { ClipJobs } from "./queues";
+import type { ClipJobs, RecaptionJobs } from "./queues";
 
 // title is the title kept from the clip this one replaces, for a hook that shows the clip's title.
 export type PlannedClip = { clipId: string; start: number; length: number; title?: string };
@@ -75,6 +75,22 @@ export async function requeueInterruptedRenders({ db, jobs }: { db: PrismaClient
     await db.clipProject.update({ where: { id: project.id }, data: { renderStep } });
     await jobs.send(project.id, renderId);
     requeued.push(project.id);
+  }
+  return requeued;
+}
+
+// Run once when the worker starts, before it takes caption jobs: a clip whose captions were being drawn again when
+// Localirs was closed has its job cancelled and queued again with the same edit.
+export async function requeueInterruptedRecaptions({ db, jobs }: { db: PrismaClient; jobs: RecaptionJobs }): Promise<string[]> {
+  const clips = await db.clip.findMany({ where: { recaptionId: { not: null } }, select: { id: true, recaptionId: true } });
+  const requeued: string[] = [];
+  for (const clip of clips) {
+    if (!clip.recaptionId) throw new Error(`clip ${clip.id} has no recaption id`);
+    const open = await jobs.open(clip.id);
+    if (open.length > 0) await jobs.cancel(open);
+    await db.clip.updateMany({ where: { id: clip.id, recaptionId: clip.recaptionId }, data: { recaptionStep: null } });
+    await jobs.send(clip.id, clip.recaptionId);
+    requeued.push(clip.id);
   }
   return requeued;
 }

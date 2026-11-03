@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ClipProject, Prisma, PrismaClient } from "@/generated/prisma/client";
+import { Prisma, type ClipProject, type PrismaClient } from "@/generated/prisma/client";
 import { requireEnv } from "./env";
-import { buildClipKey, buildClipSourceKey } from "./storage";
+import { buildClipBaseKey, buildClipKey, buildClipSourceKey, buildClipVersionKey } from "./storage";
 import type { ClipStore } from "./clip-store";
 import { captionLines, captionsForClip, captionStills } from "@/clip-engine/captions-timing.js";
 import { downloadVideo } from "@/clip-engine/download.js";
@@ -32,9 +32,50 @@ import { transcribeWithWhisper } from "./whisper";
 import { mixBackgroundMusic } from "@/clip-engine/music.js";
 import { musicFile } from "./music-files";
 import { parseTranscript, validateHighlights, type Highlight, type Word } from "./highlights";
+import { clipLines, clipWords, parseClipWords } from "./caption-words";
 
 // Thrown by a render's write once the render is cancelled, to stop it.
 class RenderCancelled extends Error {}
+
+type Finish = Pick<ClipProject, "progressBar" | "musicTrack" | "musicVolume">;
+
+// The music file is looked up before the first clip is made.
+function finishOptions(project: Finish) {
+  return {
+    progressColor: project.progressBar ? videoColor(project.progressBar) : null,
+    music: project.musicTrack ? musicFile(project.musicTrack) : null,
+    musicVolume: project.musicVolume,
+  };
+}
+
+// The finishing step of every clip: lays the captions, hook, end card and progress bar over the cut from input, then
+// mixes in the music. A render cuts from the source; drawing a clip's captions again starts from its kept cut. Returns
+// the finished file.
+async function finishClip({
+  input,
+  output,
+  start,
+  length,
+  overlay,
+  hook,
+  endCard,
+  options,
+}: {
+  input: string;
+  output: string;
+  start: number;
+  length: number;
+  overlay: string | null;
+  hook: string | null;
+  endCard: string | null;
+  options: ReturnType<typeof finishOptions>;
+}): Promise<string> {
+  await renderClip({ input, output, start, length, overlay, hook, endCard, progressColor: options.progressColor });
+  if (!options.music) return output;
+  const finished = output.replace(/\.mp4$/, "-music.mp4");
+  await mixBackgroundMusic({ input: output, music: options.music, volume: options.musicVolume, output: finished });
+  return finished;
+}
 
 export function clipName(index: number): string {
   return `clip-${String(index + 1).padStart(3, "0")}`;
@@ -123,7 +164,7 @@ export async function renderClipProject({
 
     const saved = await db.clip.findMany({
       where: { projectId },
-      select: { id: true, storageKey: true, start: true, title: true },
+      select: { id: true, storageKey: true, baseKey: true, start: true, title: true },
     });
     const stored = resumablePlan(renderId, project.renderPlan);
     const resume = stored ? { plan: stored, remaining: remainingClips(stored, saved.map((clip) => clip.id)) } : null;
@@ -134,7 +175,10 @@ export async function renderClipProject({
       for (const clip of saved) if (clip.title && !keptTitles.has(clip.start)) keptTitles.set(clip.start, clip.title);
     }
     if (!resume) {
-      for (const clip of saved) await store.remove(clip.storageKey);
+      for (const clip of saved) {
+        await store.remove(clip.storageKey);
+        if (clip.baseKey) await store.remove(clip.baseKey);
+      }
       await db.clip.deleteMany({ where: { projectId } });
     } else if (resume.remaining.length === 0) {
       await write({ status: "done", error: null, renderStep: null });
@@ -186,38 +230,34 @@ export async function renderClipProject({
       words && serveUrl
         ? await captionOverlays(captionLines(words), todoClips, path.join(workDir, "captions"), project, serveUrl)
         : null;
-    if (titles.stills.length > 0 && serveUrl) {
-      await mkdir(path.join(workDir, "titles"), { recursive: true });
-      await renderTitleStills({
-        serveUrl,
-        stills: titles.stills,
-        chromePath: requireEnv("CHROME_PATH"),
-        font: project.captionFont,
-      });
-    }
-    const progressColor = project.progressBar ? videoColor(project.progressBar) : null;
-    const music = project.musicTrack ? musicFile(project.musicTrack) : null;
+    if (serveUrl) await drawTitleStills(titles.stills, path.join(workDir, "titles"), project, serveUrl);
+    const options = finishOptions(project);
 
     for (const { index, clip } of todo) {
       await step(resume ? resumeStep(index + 1, total) : `Making clip ${index + 1} of ${total}`);
       const { clipId } = clip;
-      const output = path.join(workDir, `${clipId}.mp4`);
-      await renderClip({
+      const finished = await finishClip({
         input: sourcePath,
-        output,
+        output: path.join(workDir, `${clipId}.mp4`),
         start: clip.start,
         length: clip.length,
         overlay: overlays?.get(clipId) ?? null,
         hook: titles.hooks.get(clipId) ?? null,
         endCard: titles.endCard,
-        progressColor,
+        options,
       });
-      const finished = music ? path.join(workDir, `${clipId}-music.mp4`) : output;
-      if (music) await mixBackgroundMusic({ input: output, music, volume: project.musicVolume, output: finished });
 
       // The key comes from the planned clip id, so a clip uploaded just before an interruption is overwritten.
       const storageKey = buildClipKey(projectId, clipId);
       await store.upload(storageKey, finished, "video/mp4");
+      // A captioned clip keeps its words and its cut without captions, so its captions can be edited and drawn again.
+      let baseKey: string | null = null;
+      if (words) {
+        const base = path.join(workDir, `${clipId}-base.mp4`);
+        await renderClip({ input: sourcePath, output: base, start: clip.start, length: clip.length, overlay: null });
+        baseKey = buildClipBaseKey(projectId, clipId);
+        await store.upload(baseKey, base, "video/mp4");
+      }
       await db.clip.create({
         data: {
           id: clipId,
@@ -228,6 +268,8 @@ export async function renderClipProject({
           storageKey,
           title: clip.title ?? null,
           musicTrack: project.musicTrack,
+          words: words ? clipWords(words, clip.start, clip.length) : Prisma.DbNull,
+          baseKey,
         },
       });
     }
@@ -297,6 +339,108 @@ export async function captionOverlays(
     lists.set(clip.clipId, list);
   }
   return lists;
+}
+
+async function drawTitleStills(
+  stills: ReturnType<typeof titleStills>["stills"],
+  dir: string,
+  project: Pick<ClipProject, "captionFont">,
+  serveUrl: string,
+) {
+  if (stills.length === 0) return;
+  await mkdir(dir, { recursive: true });
+  await renderTitleStills({ serveUrl, stills, chromePath: requireEnv("CHROME_PATH"), font: project.captionFont });
+}
+
+// Draws a clip's captions again from the words edited in its Captions tab (recaptionWords), over the cut it kept, with
+// its project's caption look, hook, end card, progress bar and music, then replaces the clip's file with the next
+// version. Cancelling clears the clip's recaption id: from then on its writes do not land and nothing is replaced.
+export async function recaptionClip({
+  db,
+  store,
+  clipId,
+  recaptionId,
+  workDir,
+}: {
+  db: PrismaClient;
+  store: ClipStore;
+  clipId: string;
+  recaptionId: string;
+  workDir: string;
+}) {
+  const clip = await db.clip.findUnique({ where: { id: clipId }, include: { project: true } });
+  if (!clip) throw new Error(`clip ${clipId} not found`);
+  // Cancelled before the job started.
+  if (clip.recaptionId === null) return;
+  if (clip.recaptionId !== recaptionId) throw new Error(`caption job for clip ${clipId} is for an earlier edit`);
+  const { project } = clip;
+
+  const write = async (data: Prisma.ClipUpdateManyMutationInput) => {
+    const { count } = await db.clip.updateMany({ where: { id: clipId, recaptionId }, data });
+    if (count === 0) throw new RenderCancelled();
+  };
+  const step = (recaptionStep: string) => write({ recaptionStep });
+
+  try {
+    if (!clip.baseKey) throw new Error(`clip ${clipId} has no cut kept without captions`);
+    if (clip.recaptionWords === null) throw new Error(`clip ${clipId} has no edited words to draw`);
+    const words = parseClipWords(clip.recaptionWords);
+    const options = finishOptions(project);
+
+    await step("Downloading the clip");
+    const base = path.join(workDir, "base.mp4");
+    await store.downloadTo(clip.baseKey, base);
+
+    await step("Drawing captions");
+    const planned: PlannedClip = { clipId, start: 0, length: clip.length, ...(clip.title ? { title: clip.title } : {}) };
+    const titles = titleStills(project, [planned], path.join(workDir, "titles"));
+    const serveUrl = await bundleCaptions();
+    const overlays = await captionOverlays(clipLines(words), [planned], path.join(workDir, "captions"), project, serveUrl);
+    await drawTitleStills(titles.stills, path.join(workDir, "titles"), project, serveUrl);
+
+    await step("Making the clip");
+    const finished = await finishClip({
+      input: base,
+      output: path.join(workDir, "clip.mp4"),
+      start: 0,
+      length: clip.length,
+      overlay: overlays.get(clipId) ?? null,
+      hook: titles.hooks.get(clipId) ?? null,
+      endCard: titles.endCard,
+      options,
+    });
+
+    await step("Saving");
+    const version = clip.version + 1;
+    const storageKey = buildClipVersionKey(clip.projectId, clipId, version);
+    await store.upload(storageKey, finished, "video/mp4");
+    const { count } = await db.clip.updateMany({
+      where: { id: clipId, recaptionId },
+      data: {
+        storageKey,
+        version,
+        words,
+        musicTrack: project.musicTrack,
+        recaptionId: null,
+        recaptionStep: null,
+        recaptionWords: Prisma.DbNull,
+        recaptionError: null,
+      },
+    });
+    if (count === 0) {
+      await store.remove(storageKey);
+      return;
+    }
+    await store.remove(clip.storageKey);
+  } catch (err) {
+    if (err instanceof RenderCancelled) return;
+    const message = err instanceof Error ? err.message : String(err);
+    await db.clip.updateMany({
+      where: { id: clipId, recaptionId },
+      data: { recaptionId: null, recaptionStep: null, recaptionWords: Prisma.DbNull, recaptionError: message },
+    });
+    throw err;
+  }
 }
 
 // The hook titles and the end card to draw for the clips: the stills, which clip shows which hook, and the end card

@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import type { Job } from "pg-boss";
 import { refreshDueTokens } from "@/lib/refresh-job";
-import { renderClipProject } from "@/lib/clip-render";
-import { requeueInterruptedRenders } from "@/lib/clip-resume";
+import { recaptionClip, renderClipProject } from "@/lib/clip-render";
+import { requeueInterruptedRecaptions, requeueInterruptedRenders } from "@/lib/clip-resume";
 import { s3ClipStore } from "@/lib/clip-store";
 import { prisma } from "@/lib/prisma";
 import { loadTokenKey } from "@/lib/token-crypto";
@@ -19,8 +19,10 @@ import {
   AI_VIDEO_QUEUE,
   BACKUP_QUEUE,
   CLIP_QUEUE,
+  CLIP_RECAPTION_QUEUE,
   getBoss,
   getClipJobs,
+  getRecaptionJobs,
   INSIGHTS_QUEUE,
   MEDIA_QUEUE,
   OWNER_ALERTS_QUEUE,
@@ -73,6 +75,18 @@ async function main() {
     try {
       const { projectId, renderId } = job.data;
       await renderClipProject({ db: prisma, store: s3ClipStore, projectId, renderId, workDir });
+    } finally {
+      await rm(workDir, { recursive: true, force: true });
+    }
+  });
+
+  const recaptioned = await requeueInterruptedRecaptions({ db: prisma, jobs: getRecaptionJobs() });
+  if (recaptioned.length > 0) console.log(`re-rendering captions of ${recaptioned.length} clip(s) again`);
+  await boss.work(CLIP_RECAPTION_QUEUE, async ([job]: Job<{ clipId: string; recaptionId: string }>[]) => {
+    const workDir = await mkdtemp(path.join(os.tmpdir(), "clip-recaption-"));
+    try {
+      const { clipId, recaptionId } = job.data;
+      await recaptionClip({ db: prisma, store: s3ClipStore, clipId, recaptionId, workDir });
     } finally {
       await rm(workDir, { recursive: true, force: true });
     }

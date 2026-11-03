@@ -11,6 +11,7 @@ import { Menu } from "@/components/menu";
 import { PlatformChips } from "@/components/platform-links";
 import { Tabs } from "@/components/tabs";
 import { deleteClipAction, deleteClipsAction } from "../actions";
+import { ClipCaptions } from "./clip-captions";
 import { ClipDetails } from "./clip-details";
 import { ClipLinks } from "./clip-links";
 import { ExportForm } from "./export-form";
@@ -20,6 +21,7 @@ import { MoveForm, type ProjectChoice } from "./move-form";
 import styles from "../clips.module.css";
 import { formatTime } from "@/lib/highlights";
 import { creditLine, withCredit } from "@/lib/music-library";
+import type { ClipWord } from "@/lib/caption-words";
 
 export type ClipView = {
   id: string;
@@ -34,6 +36,12 @@ export type ClipView = {
   // Where the clip was posted outside Localirs.
   links: Array<{ id: string; url: string }>;
   downloadUrl: string;
+  // Bumped each time the clip's captions are re-rendered.
+  version: number;
+  // Its caption words, or the edited ones while they are being drawn; null for a clip whose words were not kept.
+  words: ClipWord[] | null;
+  recaption: { step: string | null } | null;
+  recaptionError: string | null;
 };
 
 export type AccountView = { id: string; username: string };
@@ -151,10 +159,13 @@ export function ClipGrid({
   alreadyScheduledTo,
   projects,
   bestTimeSamples,
+  captionsTab,
 }: {
   projectId: string;
   busy: boolean;
   clips: ClipView[];
+  // Projects without a source video make no captions.
+  captionsTab: boolean;
   accounts: AccountView[];
   channels: ChannelView[];
   alreadyScheduledTo: string[];
@@ -252,10 +263,12 @@ export function ClipGrid({
       ) : null}
 
       <Drawer open={openClip !== null} title={openClip?.name} onClose={() => setOpenId(null)}>
-        {openClip ? <video key={openClip.id} className={styles.player} src={openClip.downloadUrl} controls playsInline /> : null}
+        {openClip ? (
+          <video key={`${openClip.id}-${openClip.version}`} className={styles.player} src={openClip.downloadUrl} controls playsInline />
+        ) : null}
         {openClip ? (
           <Tabs
-            key={`${openClip.id}-${openTab}`}
+            key={`${openClip.id}-${openClip.version}-${openTab}`}
             label="Clip"
             initial={openTab}
             tabs={[
@@ -264,6 +277,22 @@ export function ClipGrid({
                 label: "Details",
                 content: <ClipDetails clip={openClip} projectId={projectId} busy={busy} />,
               },
+              ...(captionsTab
+                ? [
+                    {
+                      id: "captions",
+                      label: "Captions",
+                      content: (
+                        <ClipCaptions
+                          key={openClip.recaption ? "recaptioning" : "idle"}
+                          clip={openClip}
+                          projectId={projectId}
+                          busy={busy}
+                        />
+                      ),
+                    },
+                  ]
+                : []),
               {
                 id: "instagram",
                 label: "Schedule",

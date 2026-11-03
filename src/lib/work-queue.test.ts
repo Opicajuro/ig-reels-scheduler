@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
-import type { WorkJobs, ClipJob, ClipJobs } from "./queues";
-import { cancelAiVideo, cancelRender, cancelSlideshow, listQueue, PUBLISH_SOON_MS } from "./work-queue";
+import type { WorkJobs, ClipJob, ClipJobs, RecaptionJobs } from "./queues";
+import { requeueInterruptedRecaptions } from "./clip-resume";
+import { cancelAiVideo, cancelRecaption, cancelRender, cancelSlideshow, listQueue, PUBLISH_SOON_MS } from "./work-queue";
 
 type Row = Record<string, unknown>;
 
@@ -50,6 +51,12 @@ describe("listQueue", () => {
           ];
         },
       },
+      clip: {
+        findMany: async (args: { where: Row }) => {
+          where.recaptions = args.where;
+          return [{ id: "c9", name: "clip-002", recaptionStep: "Drawing captions", project: { id: "p1", name: "Talk" } }];
+        },
+      },
       aiVideoJob: {
         findMany: async (args: { where: Row }) => {
           where.videos = args.where;
@@ -88,6 +95,7 @@ describe("listQueue", () => {
         { id: "p2", name: "Podcast", status: "rendering", step: null, startedAt: "2026-10-30T11:59:00.000Z", clipsDone: 0, clipsTotal: null },
         { id: "p3", name: "Lecture", status: "picking", step: "Analysing motion and sound", startedAt: "2026-10-30T11:59:30.000Z", clipsDone: 2, clipsTotal: null },
       ],
+      recaptions: [{ id: "c9", name: "clip-002", projectId: "p1", projectName: "Talk", step: "Drawing captions" }],
       aiVideos: [{ id: "v1", prompt: "A fox", status: "running", step: "Generating video 40%" }],
       slideshows: [{ id: "s1", topic: "Sleep", status: "writing", step: "Writing script" }],
       engines: [
@@ -97,6 +105,7 @@ describe("listQueue", () => {
       posts: [{ id: "post1", username: "me", caption: "Hello", status: "container_created", scheduledAt: "2026-10-30T12:20:00.000Z" }],
     });
     expect(where.projects).toEqual({ ownerId: "o1", status: { in: ["picking", "rendering"] } });
+    expect(where.recaptions).toEqual({ project: { ownerId: "o1" }, recaptionId: { not: null } });
     expect(where.videos).toEqual({ ownerId: "o1", status: { in: ["queued", "running"] } });
     expect(where.slideshows).toEqual({ ownerId: "o1", status: { in: ["writing", "queued", "running"] } });
     expect(where.posts).toEqual({
@@ -113,6 +122,7 @@ describe("listQueue", () => {
       clipProject: {
         findMany: async () => [{ id: "p1", name: "x", status: "rendering", renderStep: null, renderStartedAt: null, renderId: "r1", renderPlan: null, _count: { clips: 0 } }],
       },
+      clip: { findMany: async () => [] },
       aiVideoJob: { findMany: async () => [] },
       slideshowJob: { findMany: async () => [] },
       aiEngine: { findFirst: async () => null },
@@ -317,5 +327,70 @@ describe("cancelSlideshow", () => {
     await expect(cancelSlideshow({ db: finishing, jobs, ownerId: "o1", jobId: "s1" })).rejects.toThrow("finished before");
     expect(state.show.status).toBe("done");
     expect(cancelled).toEqual([]);
+  });
+});
+
+function fakeClips(clip: Row) {
+  const state = { clip: { ...clip } };
+  const db = {
+    clip: {
+      findFirst: async ({ where }: { where: { id: string; project: { ownerId: string } } }) =>
+        state.clip.id === where.id && state.clip.ownerId === where.project.ownerId ? { ...state.clip } : null,
+      findMany: async () => (state.clip.recaptionId ? [{ id: state.clip.id, recaptionId: state.clip.recaptionId }] : []),
+      updateMany: async ({ where, data }: { where: Row; data: Row }) => {
+        if (state.clip.id !== where.id || state.clip.recaptionId !== where.recaptionId) return { count: 0 };
+        Object.assign(state.clip, data);
+        return { count: 1 };
+      },
+    },
+  };
+  return { db: db as unknown as PrismaClient, state };
+}
+
+function fakeRecaptionJobs(open: string[]) {
+  const cancelled: string[] = [];
+  const sent: [string, string][] = [];
+  const jobs: RecaptionJobs = {
+    open: async () => open,
+    cancel: async (ids) => void cancelled.push(...ids),
+    send: async (clipId, recaptionId) => {
+      sent.push([clipId, recaptionId]);
+      return "j2";
+    },
+  };
+  return { jobs, cancelled, sent };
+}
+
+describe("cancelRecaption", () => {
+  it("clears the clip's re-render, keeping the clip, and cancels its job", async () => {
+    const { db, state } = fakeClips({ id: "c1", ownerId: "o1", recaptionId: "x1", recaptionStep: "Drawing captions", recaptionWords: [] });
+    const { jobs, cancelled } = fakeRecaptionJobs(["j1"]);
+
+    await cancelRecaption({ db, jobs, ownerId: "o1", clipId: "c1" });
+
+    expect(state.clip).toMatchObject({ recaptionId: null, recaptionStep: null });
+    expect(cancelled).toEqual(["j1"]);
+  });
+
+  it("refuses another owner's clip and a clip that is not being re-rendered", async () => {
+    const { jobs, cancelled } = fakeRecaptionJobs(["j1"]);
+    const running = fakeClips({ id: "c1", ownerId: "o1", recaptionId: "x1" }).db;
+    await expect(cancelRecaption({ db: running, jobs, ownerId: "o2", clipId: "c1" })).rejects.toThrow("not found");
+    const idle = fakeClips({ id: "c1", ownerId: "o1", recaptionId: null }).db;
+    await expect(cancelRecaption({ db: idle, jobs, ownerId: "o1", clipId: "c1" })).rejects.toThrow("not being re-rendered");
+    expect(cancelled).toEqual([]);
+  });
+});
+
+describe("requeueInterruptedRecaptions", () => {
+  it("cancels the interrupted job and queues the same edit again", async () => {
+    const { db, state } = fakeClips({ id: "c1", ownerId: "o1", recaptionId: "x1", recaptionStep: "Making the clip" });
+    const { jobs, cancelled, sent } = fakeRecaptionJobs(["j1"]);
+
+    expect(await requeueInterruptedRecaptions({ db, jobs })).toEqual(["c1"]);
+
+    expect(cancelled).toEqual(["j1"]);
+    expect(sent).toEqual([["c1", "x1"]]);
+    expect(state.clip).toMatchObject({ recaptionId: "x1", recaptionStep: null });
   });
 });

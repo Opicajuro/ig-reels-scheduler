@@ -21,10 +21,11 @@ import {
 import type { ClipStore } from "./clip-store";
 import { validateCaption } from "./caption";
 import { parseHighlightsJson } from "./highlights";
-import type { ClipQueue, PublishQueue } from "./queues";
+import type { ClipQueue, PublishQueue, RecaptionQueue } from "./queues";
 import { checkRights, type AudioSourceValue } from "./rights";
 import { publishJobRunAt } from "./scheduling";
-import { buildClipKey, buildClipSourceKey, buildReelKey, buildYouTubeKey } from "./storage";
+import { buildClipBaseKey, buildClipKey, buildClipSourceKey, buildReelKey, buildYouTubeKey } from "./storage";
+import { checkEditedWords, parseClipWords } from "./caption-words";
 import { DEFAULT_MUSIC_VOLUME, parseMusicChoice, withCredit } from "./music-library";
 import { UserError } from "./user-error";
 import { checkYouTubePost, shortsDescription } from "./youtube";
@@ -47,6 +48,21 @@ async function ownedClip(db: PrismaClient, ownerId: string, clipId: string) {
   const clip = await db.clip.findFirst({ where: { id: clipId, project: { ownerId } }, include: { project: true } });
   if (!clip) throw new UserError("clip not found");
   return clip;
+}
+
+const RECAPTIONING = "wait until this clip's captions are re-rendered";
+
+// A clip's caption words and a copy of its kept cut, for its copy with the id copyId in the project projectId.
+async function copyCaptionFiles(
+  store: ClipStore,
+  clip: { words: Prisma.JsonValue; baseKey: string | null },
+  projectId: string,
+  copyId: string,
+) {
+  if (!clip.baseKey) return { words: Prisma.DbNull, baseKey: null };
+  const baseKey = buildClipBaseKey(projectId, copyId);
+  await store.copy(clip.baseKey, baseKey);
+  return { words: clip.words ?? Prisma.DbNull, baseKey };
 }
 
 // Creates a project for an uploaded file. The browser sends the file to the returned sourceKey, then marks it uploaded.
@@ -254,7 +270,7 @@ export async function deleteProject({
   if (project.status === "rendering" || project.status === "picking") throw new UserError("clips are rendering for this project");
 
   // Files go first, so a failed delete leaves the rows in place to retry from.
-  const keys = [project.sourceKey, ...project.clips.map((clip) => clip.storageKey)];
+  const keys = [project.sourceKey, ...project.clips.flatMap((clip) => [clip.storageKey, clip.baseKey])];
   for (const key of keys) {
     if (key) await store.remove(key);
   }
@@ -324,6 +340,7 @@ export async function copyProject({
         description: clip.description,
         aiGenerated: clip.aiGenerated,
         musicTrack: clip.musicTrack,
+        ...(await copyCaptionFiles(store, clip, copy.id, clipId)),
       },
     });
   }
@@ -358,6 +375,7 @@ export async function setClipDetails({
 export async function copyClip({ db, store, ownerId, clipId }: { db: PrismaClient; store: ClipStore; ownerId: string; clipId: string }) {
   const clip = await ownedClip(db, ownerId, clipId);
   if (clip.project.status === "rendering") throw new UserError("clips are rendering for this project");
+  if (clip.recaptionId) throw new UserError(RECAPTIONING);
 
   const copyId = randomUUID();
   const storageKey = buildClipKey(clip.projectId, copyId);
@@ -374,6 +392,7 @@ export async function copyClip({ db, store, ownerId, clipId }: { db: PrismaClien
       description: clip.description,
       aiGenerated: clip.aiGenerated,
       musicTrack: clip.musicTrack,
+      ...(await copyCaptionFiles(store, clip, clip.projectId, copyId)),
     },
   });
 }
@@ -385,6 +404,7 @@ async function ownedClips(db: PrismaClient, ownerId: string, clipIds: string[]) 
   const clips = await db.clip.findMany({ where: { id: { in: ids }, project: { ownerId } }, include: { project: true } });
   if (clips.length !== ids.length) throw new UserError("clip not found");
   if (clips.some((clip) => clip.project.status === "rendering")) throw new UserError("clips are rendering for this project");
+  if (clips.some((clip) => clip.recaptionId)) throw new UserError(RECAPTIONING);
   const byId = new Map(clips.map((clip) => [clip.id, clip]));
   return ids.map((id) => byId.get(id)!);
 }
@@ -407,7 +427,10 @@ export async function deleteClips({
 }) {
   const clips = await ownedClips(db, ownerId, clipIds);
   // Files go first, so a failed delete leaves the rows in place to retry from.
-  for (const clip of clips) await store.remove(clip.storageKey);
+  for (const clip of clips) {
+    await store.remove(clip.storageKey);
+    if (clip.baseKey) await store.remove(clip.baseKey);
+  }
   await db.clip.deleteMany({ where: { id: { in: clips.map((clip) => clip.id) } } });
   return clips.length;
 }
@@ -448,8 +471,14 @@ export async function moveClipsToProject({
   for (const clip of clips) {
     const storageKey = buildClipKey(target.id, clip.id);
     await store.copy(clip.storageKey, storageKey);
-    await db.clip.update({ where: { id: clip.id }, data: { projectId: target.id, name: freeName(clip.name, taken), storageKey } });
+    const baseKey = clip.baseKey ? buildClipBaseKey(target.id, clip.id) : null;
+    if (clip.baseKey && baseKey) await store.copy(clip.baseKey, baseKey);
+    await db.clip.update({
+      where: { id: clip.id },
+      data: { projectId: target.id, name: freeName(clip.name, taken), storageKey, baseKey },
+    });
     await store.remove(clip.storageKey);
+    if (clip.baseKey) await store.remove(clip.baseKey);
   }
   return { projectName: target.name, count: clips.length };
 }
@@ -486,10 +515,52 @@ export async function copyClipsToProject({
         description: clip.description,
         aiGenerated: clip.aiGenerated,
         musicTrack: clip.musicTrack,
+        ...(await copyCaptionFiles(store, clip, target.id, copyId)),
       },
     });
   }
   return { projectName: target.name, count: clips.length };
+}
+
+// Queues drawing a clip's captions again from the words edited in its Captions tab (a JSON list of its words).
+export async function startRecaption({
+  db,
+  queue,
+  ownerId,
+  clipId,
+  words,
+}: {
+  db: PrismaClient;
+  queue: RecaptionQueue;
+  ownerId: string;
+  clipId: string;
+  words: string;
+}) {
+  const clip = await ownedClip(db, ownerId, clipId);
+  if (clip.project.status === "rendering" || clip.project.status === "picking") {
+    throw new UserError("clips are being made for this project");
+  }
+  if (clip.recaptionId) throw new UserError("this clip's captions are already being re-rendered");
+  if (clip.words === null || !clip.baseKey) throw new UserError("Captions can be edited on clips made after this update");
+  if (!clip.project.captionPreset) throw new UserError("choose a caption style for this project first");
+  const edited = checkEditedWords(parseClipWords(clip.words), JSON.parse(words));
+
+  const recaptionId = randomUUID();
+  const { count } = await db.clip.updateMany({
+    where: { id: clipId, recaptionId: null },
+    data: { recaptionId, recaptionStep: null, recaptionWords: edited, recaptionError: null },
+  });
+  if (count === 0) throw new UserError("this clip's captions are already being re-rendered");
+  try {
+    await queue.send(clipId, recaptionId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await db.clip.updateMany({
+      where: { id: clipId, recaptionId },
+      data: { recaptionId: null, recaptionWords: Prisma.DbNull, recaptionError: message },
+    });
+    throw err;
+  }
 }
 
 // Checks one post's time before anything is made.

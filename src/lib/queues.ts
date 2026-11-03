@@ -11,6 +11,7 @@ export const INSIGHTS_QUEUE = "insights";
 export const TOKEN_REFRESH_QUEUE = "token-refresh";
 export const OWNER_ALERTS_QUEUE = "owner-alerts";
 export const CLIP_QUEUE = "clip-project";
+export const CLIP_RECAPTION_QUEUE = "clip-recaption";
 export const AI_ENGINE_QUEUE = "ai-engine";
 export const AI_VIDEO_QUEUE = "ai-video";
 export const BACKUP_QUEUE = "backup";
@@ -49,6 +50,12 @@ export type WorkJobs = {
   cancel(jobIds: string[]): Promise<void>;
 };
 
+// Drawing one clip's captions again from its edited words.
+export type RecaptionQueue = {
+  send(clipId: string, recaptionId: string): Promise<string>;
+};
+export type RecaptionJobs = RecaptionQueue & WorkJobs;
+
 export type InsightQueue = {
   send(postId: string, label: string, runAt: Date): Promise<string | null>;
 };
@@ -75,7 +82,7 @@ async function startBoss(): Promise<PgBoss> {
   await instance.createQueue(MEDIA_QUEUE, keyed);
   await instance.createQueue(INSIGHTS_QUEUE, keyed);
   await instance.createQueue(YOUTUBE_STATS_QUEUE, keyed);
-  for (const name of [PUBLISH_QUEUE, YOUTUBE_PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE, AI_ENGINE_QUEUE, AI_VIDEO_QUEUE, BACKUP_QUEUE, SLIDESHOW_ENGINE_QUEUE, SLIDESHOW_QUEUE]) {
+  for (const name of [PUBLISH_QUEUE, YOUTUBE_PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE, CLIP_RECAPTION_QUEUE, AI_ENGINE_QUEUE, AI_VIDEO_QUEUE, BACKUP_QUEUE, SLIDESHOW_ENGINE_QUEUE, SLIDESHOW_QUEUE]) {
     await instance.createQueue(name);
   }
   return instance;
@@ -173,6 +180,19 @@ function workJobs(queue: string, key: string): WorkJobs {
 
 export function getAiVideoJobs(): WorkJobs {
   return workJobs(AI_VIDEO_QUEUE, "aiVideoJobId");
+}
+
+// One clip's captions take a minute or two; it gets half an hour. It is not retried: the failure is shown in the clip's
+// Captions tab. One cut off by closing Localirs is queued again when the worker starts (requeueInterruptedRecaptions).
+export function getRecaptionJobs(): RecaptionJobs {
+  return {
+    ...workJobs(CLIP_RECAPTION_QUEUE, "clipId"),
+    async send(clipId, recaptionId) {
+      const jobId = await (await getBoss()).send(CLIP_RECAPTION_QUEUE, { clipId, recaptionId }, { retryLimit: 0, expireInSeconds: 30 * 60 });
+      if (jobId === null) throw new Error(`caption job for clip ${clipId} was not queued`);
+      return jobId;
+    },
+  };
 }
 
 export function getSlideshowJobs(): WorkJobs {

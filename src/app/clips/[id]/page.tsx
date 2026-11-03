@@ -28,6 +28,7 @@ import { ProjectTitle } from "./project-title";
 import { VIDEO_COLOR_NAMES, videoColor } from "@/clip-engine/remotion/caption-presets.js";
 import { END_CARD_TEXT_MAX, HOOK_TEXT_MAX } from "@/clip-engine/helpers.js";
 import { lengthLimits, parseTranscript, validateHighlights } from "@/lib/highlights";
+import { parseClipWords } from "@/lib/caption-words";
 
 export const metadata: Metadata = { title: "Clip project" };
 
@@ -145,6 +146,10 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       musicTrack: clip.musicTrack,
       links: clip.links,
       downloadUrl: await presignDownload(clip.storageKey, 3600),
+      version: clip.version,
+      words: clip.recaptionWords !== null ? parseClipWords(clip.recaptionWords) : clip.words === null ? null : parseClipWords(clip.words),
+      recaption: clip.recaptionId ? { step: clip.recaptionStep } : null,
+      recaptionError: clip.recaptionError,
     })),
   );
 
@@ -228,7 +233,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
             confirm={
               clips.length > 0
                 ? {
-                    message: `Making clips again replaces ${clips.length === 1 ? "the current clip" : `the ${clips.length} current clips`} and the titles and descriptions you edited. A hook that uses the clip title keeps the titles. Continue?`,
+                    message: `Making clips again replaces ${clips.length === 1 ? "the current clip" : `the ${clips.length} current clips`} and the titles, descriptions and captions you edited. A hook that uses the clip title keeps the titles. Continue?`,
                     confirmLabel: "Replace clips",
                   }
                 : undefined
@@ -421,6 +426,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
               alreadyScheduledTo={alreadyScheduledTo}
               projects={otherProjects}
               bestTimeSamples={bestTimeSamples}
+              captionsTab={!noSource}
             />
           </section>
         </div>

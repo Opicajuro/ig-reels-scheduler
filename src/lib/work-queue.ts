@@ -1,7 +1,7 @@
-import type { PrismaClient } from "@/generated/prisma/client";
+import { Prisma, type PrismaClient } from "@/generated/prisma/client";
 import { AI_VIDEO_CANCELLED } from "./ai-video";
 import { requireRenderId, resumablePlan } from "./clip-resume";
-import type { ClipJobs, WorkJobs } from "./queues";
+import type { ClipJobs, RecaptionJobs, WorkJobs } from "./queues";
 import { isSlideshowEngineId, SLIDESHOW_ENGINES } from "./slideshow-engines";
 import { UserError } from "./user-error";
 
@@ -23,6 +23,8 @@ export type QueueRender = {
   // Known once the render has picked its clips.
   clipsTotal: number | null;
 };
+// A clip whose captions are drawn again from its edited words.
+export type QueueRecaption = { id: string; name: string; projectId: string; projectName: string; step: string | null };
 export type QueueAiVideo = { id: string; prompt: string; status: "queued" | "running"; step: string | null };
 export type QueueSlideshow = { id: string; topic: string; status: "writing" | "queued" | "running"; step: string | null };
 // The AI video engine ("ai") or a slideshow engine being installed. They are not owned: one install serves the PC.
@@ -36,6 +38,7 @@ export type QueuePost = {
 };
 export type QueueListing = {
   renders: QueueRender[];
+  recaptions: QueueRecaption[];
   aiVideos: QueueAiVideo[];
   slideshows: QueueSlideshow[];
   engines: QueueEngine[];
@@ -43,7 +46,7 @@ export type QueueListing = {
 };
 
 export async function listQueue({ db, ownerId, now }: { db: PrismaClient; ownerId: string; now: Date }): Promise<QueueListing> {
-  const [projects, videos, slideshows, aiEngine, slideshowEngines, posts] = await Promise.all([
+  const [projects, recaptions, videos, slideshows, aiEngine, slideshowEngines, posts] = await Promise.all([
     db.clipProject.findMany({
       where: { ownerId, status: { in: ["picking", "rendering"] } },
       orderBy: { renderStartedAt: "asc" },
@@ -57,6 +60,11 @@ export async function listQueue({ db, ownerId, now }: { db: PrismaClient; ownerI
         renderPlan: true,
         _count: { select: { clips: true } },
       },
+    }),
+    db.clip.findMany({
+      where: { project: { ownerId }, recaptionId: { not: null } },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, name: true, recaptionStep: true, project: { select: { id: true, name: true } } },
     }),
     db.aiVideoJob.findMany({
       where: { ownerId, status: { in: ["queued", "running"] } },
@@ -98,6 +106,13 @@ export async function listQueue({ db, ownerId, now }: { db: PrismaClient; ownerI
         clipsTotal: plan ? plan.clips.length : null,
       };
     }),
+    recaptions: recaptions.map((clip) => ({
+      id: clip.id,
+      name: clip.name,
+      projectId: clip.project.id,
+      projectName: clip.project.name,
+      step: clip.recaptionStep,
+    })),
     aiVideos: videos.map((video) => {
       if (video.status !== "queued" && video.status !== "running") throw new Error(`AI video ${video.id} is ${video.status}`);
       return { id: video.id, prompt: video.prompt, status: video.status, step: video.step };
@@ -162,6 +177,32 @@ export async function cancelRender({
     },
   });
   if (count === 0) throw new UserError("the clips finished before they could be cancelled");
+}
+
+// Stops drawing a clip's captions again: its waiting job is dropped, and a running one stops at its next step, as the
+// clip no longer carries its recaption id. The clip and its words stay as they were.
+export async function cancelRecaption({
+  db,
+  jobs,
+  ownerId,
+  clipId,
+}: {
+  db: PrismaClient;
+  jobs: RecaptionJobs;
+  ownerId: string;
+  clipId: string;
+}) {
+  const clip = await db.clip.findFirst({ where: { id: clipId, project: { ownerId } }, select: { recaptionId: true } });
+  if (!clip) throw new UserError("clip not found");
+  if (!clip.recaptionId) throw new UserError("this clip's captions are not being re-rendered");
+
+  const { count } = await db.clip.updateMany({
+    where: { id: clipId, recaptionId: clip.recaptionId },
+    data: { recaptionId: null, recaptionStep: null, recaptionWords: Prisma.DbNull },
+  });
+  if (count === 0) throw new UserError("the captions finished before they could be cancelled");
+  const open = await jobs.open(clipId);
+  if (open.length > 0) await jobs.cancel(open);
 }
 
 // Stops an AI video: it is marked failed with "Cancelled", its job is dropped, and ComfyUI is interrupted when the

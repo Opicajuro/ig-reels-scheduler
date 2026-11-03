@@ -3,9 +3,9 @@ import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { PrismaClient } from "@/generated/prisma/client";
+import { Prisma, type PrismaClient } from "@/generated/prisma/client";
 import { END_CARD_SECONDS, HOOK_SECONDS, probeDuration } from "@/clip-engine/ffmpeg.js";
-import { renderClipProject } from "./clip-render";
+import { recaptionClip, renderClipProject } from "./clip-render";
 import type { ClipStore } from "./clip-store";
 import { validateHighlights } from "./highlights";
 
@@ -54,7 +54,27 @@ function fakeDb(project: Row, onStep: (step: string, project: Row) => void = () 
     },
     clip: {
       findMany: async () =>
-        state.clips.map((clip) => ({ id: clip.id, storageKey: clip.storageKey, start: clip.start, title: clip.title ?? null })),
+        state.clips.map((clip) => ({
+          id: clip.id,
+          storageKey: clip.storageKey,
+          baseKey: clip.baseKey ?? null,
+          start: clip.start,
+          title: clip.title ?? null,
+        })),
+      findUnique: async ({ where }: { where: { id: string } }) => {
+        const clip = state.clips.find((row) => row.id === where.id);
+        return clip ? { ...clip, project: { ...state.project } } : null;
+      },
+      updateMany: async ({ where, data }: { where: Row; data: Row }) => {
+        const clip = state.clips.find((row) => Object.entries(where).every(([key, value]) => row[key] === value));
+        if (!clip) return { count: 0 };
+        Object.assign(clip, data);
+        if (typeof data.recaptionStep === "string") {
+          state.steps.push(data.recaptionStep);
+          onStep(data.recaptionStep, clip);
+        }
+        return { count: 1 };
+      },
       deleteMany: async () => {
         state.clips = [];
       },
@@ -70,8 +90,12 @@ function fakeDb(project: Row, onStep: (step: string, project: Row) => void = () 
 function bucketStore(bucket: string) {
   const uploaded: string[] = [];
   const removed: string[] = [];
+  const downloaded: string[] = [];
   const store: ClipStore = {
-    downloadTo: async (key, filePath) => copyFile(path.join(bucket, key), filePath),
+    downloadTo: async (key, filePath) => {
+      downloaded.push(key);
+      await copyFile(path.join(bucket, key), filePath);
+    },
     upload: async (key, filePath) => {
       await mkdir(path.dirname(path.join(bucket, key)), { recursive: true });
       await copyFile(filePath, path.join(bucket, key));
@@ -86,7 +110,7 @@ function bucketStore(bucket: string) {
       await rm(path.join(bucket, key), { force: true });
     },
   };
-  return { store, uploaded, removed };
+  return { store, uploaded, removed, downloaded };
 }
 
 function renderingProject(overrides: Row = {}): Row {
@@ -470,6 +494,111 @@ describe("renderClipProject in two phases", () => {
     });
 
     expect(deps.state.project).toMatchObject({ status: "ready", renderStep: "Cancelled", highlights: null });
+  });
+});
+
+describe("recaptionClip", () => {
+  const transcript = [
+    { text: "hello", startMs: 3000, endMs: 3600 },
+    { text: "world", startMs: 3600, endMs: 4200 },
+  ];
+
+  // A captioned project with one clip made from 2 s to 17 s.
+  async function captionedClip(onStep?: (step: string, row: Row) => void) {
+    const deps = fakeDb(
+      renderingProject({
+        withCaptions: true,
+        captionPreset: "box",
+        durationSeconds: 40,
+        transcript,
+        highlights: [{ start: 2, length: 15 }],
+        progressBar: "cyan",
+      }),
+      onStep,
+    );
+    const bucket = bucketStore(root);
+    await renderClipProject({
+      db: deps.db,
+      store: bucket.store,
+      projectId: "p1",
+      renderId: "r1",
+      workDir: await mkdtemp(path.join(workRoot, "run-")),
+    });
+    deps.state.steps = [];
+    return { deps, bucket, clip: deps.state.clips[0] };
+  }
+
+  it("keeps a captioned clip's words and its cut without captions", async () => {
+    const { clip, bucket } = await captionedClip();
+
+    expect(clip.words).toEqual([
+      { text: "hello", startMs: 1000, endMs: 1600, lineStart: true },
+      { text: "world", startMs: 1600, endMs: 2200 },
+    ]);
+    expect(clip.baseKey).toBe(`clips/p1/${clip.id}.base.mp4`);
+    expect(bucket.uploaded).toEqual([`clips/p1/${clip.id}.mp4`, `clips/p1/${clip.id}.base.mp4`]);
+    const duration = await probeDuration(path.join(root, String(clip.baseKey)));
+    expect(Math.abs(duration - 15)).toBeLessThan(0.2);
+  });
+
+  it("draws the edited words over the kept cut and replaces the clip with the next version", async () => {
+    const { deps, bucket, clip } = await captionedClip();
+    const before = path.join(workRoot, `${clip.id}-before.mp4`);
+    await copyFile(path.join(root, String(clip.storageKey)), before);
+    const edited = [{ text: "WWWWWWWWWW", startMs: 1000, endMs: 1600, lineStart: true }];
+    Object.assign(clip, { version: 1, recaptionId: "x1", recaptionWords: edited, recaptionStep: null, recaptionError: null });
+    bucket.downloaded.length = 0;
+
+    await recaptionClip({ db: deps.db, store: bucket.store, clipId: String(clip.id), recaptionId: "x1", workDir: await mkdtemp(path.join(workRoot, "run-")) });
+
+    // Only the kept cut is read: the source is not cut again.
+    expect(bucket.downloaded).toEqual([`clips/p1/${clip.id}.base.mp4`]);
+    expect(deps.state.steps).toEqual(["Downloading the clip", "Drawing captions", "Making the clip", "Saving"]);
+    expect(clip).toMatchObject({
+      storageKey: `clips/p1/${clip.id}.v2.mp4`,
+      version: 2,
+      words: edited,
+      recaptionId: null,
+      recaptionStep: null,
+      recaptionWords: Prisma.DbNull,
+      recaptionError: null,
+    });
+    expect(bucket.removed).toContain(`clips/p1/${clip.id}.mp4`);
+    const after = path.join(root, String(clip.storageKey));
+    expect(Math.abs((await probeDuration(after)) - (await probeDuration(before)))).toBeLessThan(0.1);
+    // The caption shown at 1.3 s changed; after the captions, the picture is the same.
+    expect(changedShare(grayRows(before, 1.3, 960, 960), grayRows(after, 1.3, 960, 960))).toBeGreaterThan(0.01);
+    expect(changedShare(grayRows(before, 8, 0, 1900), grayRows(after, 8, 0, 1900))).toBeLessThan(0.005);
+  });
+
+  it("replaces nothing once cancelled", async () => {
+    let cancelAt = "";
+    const { deps, bucket, clip } = await captionedClip((step, row) => {
+      if (step === cancelAt) Object.assign(row, { recaptionId: null, recaptionStep: null, recaptionWords: null });
+    });
+    cancelAt = "Drawing captions";
+    const storageKey = clip.storageKey;
+    Object.assign(clip, { version: 1, recaptionId: "x1", recaptionWords: clip.words, recaptionStep: null });
+    bucket.uploaded.length = 0;
+
+    await recaptionClip({ db: deps.db, store: bucket.store, clipId: String(clip.id), recaptionId: "x1", workDir: await mkdtemp(path.join(workRoot, "run-")) });
+
+    expect(clip).toMatchObject({ storageKey, version: 1, recaptionId: null });
+    expect(bucket.uploaded).toEqual([]);
+    // A job that starts after its re-render was cancelled does nothing.
+    await recaptionClip({ db: deps.db, store: bucket.store, clipId: String(clip.id), recaptionId: "x1", workDir: workRoot });
+    expect(deps.state.steps).toEqual(["Downloading the clip", "Drawing captions"]);
+  });
+
+  it("records why a re-render failed and clears it", async () => {
+    const { deps, bucket, clip } = await captionedClip();
+    Object.assign(clip, { version: 1, recaptionId: "x1", recaptionWords: clip.words, baseKey: "clips/p1/missing.base.mp4" });
+
+    await expect(
+      recaptionClip({ db: deps.db, store: bucket.store, clipId: String(clip.id), recaptionId: "x1", workDir: await mkdtemp(path.join(workRoot, "run-")) }),
+    ).rejects.toThrow();
+    expect(clip).toMatchObject({ recaptionId: null, recaptionStep: null, version: 1 });
+    expect(String(clip.recaptionError)).not.toBe("");
   });
 });
 
