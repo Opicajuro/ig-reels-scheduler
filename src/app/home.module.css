@@ -75,3 +75,7 @@
     gap: 0;
   }
 }
+
+.lowSpace {
+  margin-bottom: var(--space-4);
+}

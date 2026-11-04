@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Alert } from "@/components/alert";
+import { ButtonLink } from "@/components/button";
 import { Card } from "@/components/card";
 import { EmptyState } from "@/components/empty-state";
 import { Field } from "@/components/field";
@@ -192,6 +193,16 @@ export default async function SettingsPage() {
       <MusicSection />
 
       <BackupsSection />
+
+      <h2 id="storage">Storage</h2>
+      <Card>
+        <div className={styles.row}>
+          <span className={styles.note}>
+            How much space videos, clips, AI engines, backups and logs take, and clean-ups that free it.
+          </span>
+          <ButtonLink href="/storage">Open Storage</ButtonLink>
+        </div>
+      </Card>
 
       <h2>Data folder and logs</h2>
       <Card>

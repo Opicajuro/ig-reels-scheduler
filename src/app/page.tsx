@@ -13,6 +13,10 @@ import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
 import { platformName } from "@/lib/platforms";
 import { getSettings, r2Settings } from "@/lib/settings";
+import { formatBytes } from "@/lib/backup";
+import { requireEnv } from "@/lib/env";
+import { driveFreeBytes, LOW_SPACE_BYTES } from "@/lib/free-space";
+import { Alert } from "@/components/alert";
 import styles from "./home.module.css";
 
 const NEXT_POSTS = 5;
@@ -68,6 +72,7 @@ export default async function Home() {
     .sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())
     .slice(0, NEXT_POSTS);
 
+  const freeBytes = await driveFreeBytes(requireEnv("LOCALIRS_DATA_DIR"));
   const metaReady = metaAppConfig(settings, process.env.IG_REDIRECT_URI) !== null;
   const r2Ready = r2Settings(settings) !== null;
   const reconnect = accounts.filter(
@@ -94,6 +99,14 @@ export default async function Home() {
           </ButtonLink>
         }
       />
+
+      {freeBytes < LOW_SPACE_BYTES ? (
+        <div className={styles.lowSpace}>
+          <Alert tone="error">
+            Only {formatBytes(freeBytes)} is free on the data drive. <Link href="/storage">Free up space on the Storage page</Link>
+          </Alert>
+        </div>
+      ) : null}
 
       {profiles.length > 0 ? (
         <nav className={styles.profiles} aria-label="Your profiles">

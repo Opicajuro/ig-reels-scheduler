@@ -14,7 +14,13 @@ function fakeDb({ engines = { script: "installed", picture: "installed" }, job =
       update: async ({ data }: { data: Row }) => (state.updates.push(data), data),
     },
     clip: { findFirst: async ({ where }: { where: Row }) => (where.id === "clip-1" ? { id: "clip-1", length: 30 } : null) },
-    clipProject: { findFirst: async ({ where }: { where: Row }) => (where.id === "project-1" ? { id: "project-1", durationSeconds: 600 } : null) },
+    clipProject: {
+      findFirst: async ({ where }: { where: Row }) =>
+        ({
+          "project-1": { id: "project-1", durationSeconds: 600, sourceKey: "clip-sources/project-1.mp4", sourceDeletedAt: null },
+          "project-deleted": { id: "project-deleted", durationSeconds: 600, sourceKey: null, sourceDeletedAt: new Date("2026-11-04T00:00:00Z") },
+        })[String(where.id)] ?? null,
+    },
   };
   return { db: db as unknown as PrismaClient, state };
 }
@@ -89,7 +95,7 @@ describe("startSlideshowRender", () => {
     expect(sent).toEqual([["show-1", "render"]]);
   });
 
-  it("refuses slides without a picture, someone else's clip, a moment past the end, a foreign key or a missing picture maker", async () => {
+  it("refuses slides without a picture, someone else's clip, a deleted video, a moment past the end, a foreign key or a missing picture maker", async () => {
     const { db } = fakeDb({ job: draft });
     const withSource = (index: number, source: unknown) => slides.map((slide, at) => (at === index ? { ...slide, source } : slide));
     await expect(startSlideshowRender({ ...base(db), slides: withSource(0, null) })).rejects.toThrow("choose a picture for slide 1");
@@ -98,6 +104,12 @@ describe("startSlideshowRender", () => {
     );
     await expect(startSlideshowRender({ ...base(db), slides: withSource(1, { kind: "clip", clipId: "clip-1", at: 31 }) })).rejects.toThrow(
       "outside the video",
+    );
+    await expect(
+      startSlideshowRender({ ...base(db), slides: withSource(1, { kind: "video", projectId: "project-deleted", at: 1 }) }),
+    ).rejects.toThrow("the video picked for slide 2 was deleted on the Storage page to free space");
+    await expect(startSlideshowRender({ ...base(db), slides: withSource(1, { kind: "video", projectId: "missing", at: 1 }) })).rejects.toThrow(
+      "no longer exists",
     );
     await expect(startSlideshowRender({ ...base(db), slides: withSource(2, { kind: "photo", key: "clips/p/c.mp4" }) })).rejects.toThrow(
       "not valid",

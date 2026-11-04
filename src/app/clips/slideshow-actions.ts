@@ -5,6 +5,8 @@ import { runAction, type ActionResult } from "@/lib/action-result";
 import { s3ClipStore } from "@/lib/clip-store";
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
+import { requireEnv } from "@/lib/env";
+import { requireFreeSpace } from "@/lib/free-space";
 import { getSlideshowQueue } from "@/lib/queues";
 import { createSlideshowScript, startSlideshowRender } from "@/lib/slideshow";
 import { UserError } from "@/lib/user-error";
@@ -33,6 +35,7 @@ export async function makeSlideshowAction(_previous: ActionResult, formData: For
     } catch {
       throw new UserError("the slides could not be read; reload the page and try again");
     }
+    await requireFreeSpace(requireEnv("LOCALIRS_DATA_DIR"));
     await startSlideshowRender({
       db: prisma,
       queue: getSlideshowQueue(),

@@ -1,0 +1,143 @@
+.back {
+  display: inline-block;
+  margin-bottom: var(--space-3);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.back:hover {
+  color: var(--text);
+}
+
+.banner {
+  margin-bottom: var(--space-4);
+}
+
+.sections {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.sections h2 {
+  margin: 0 0 var(--space-2);
+}
+
+.stack {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.note {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.stack .note,
+.what .note {
+  margin: 0;
+}
+
+.note code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.free {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.freeBytes {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: var(--heading-weight);
+  letter-spacing: var(--heading-tracking);
+}
+
+.totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.total {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm);
+}
+
+.total dt {
+  color: var(--muted);
+}
+
+.total dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.sum dt,
+.sum dd {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list li {
+  margin: 0;
+  padding: var(--space-3) 0;
+}
+
+.list li + li {
+  border-top: 1px solid var(--border);
+}
+
+/* What a row is about on the left, its buttons on the right; they drop under it on a phone. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.what {
+  display: grid;
+  flex: 1 1 320px;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.days {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.daysInput {
+  width: 6em;
+}

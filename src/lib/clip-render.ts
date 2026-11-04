@@ -34,6 +34,7 @@ import { musicFile } from "./music-files";
 import { parseTranscript, validateHighlights, type Highlight, type Word } from "./highlights";
 import { clipLines, clipWords, parseClipWords } from "./caption-words";
 import { tightenClip } from "@/clip-engine/pacing.js";
+import { SOURCE_DELETED } from "./storage-messages";
 import { parseCropMode, type Crop } from "@/clip-engine/crop.js";
 import { followCrop } from "@/clip-engine/follow.js";
 import { loadDetectors } from "@/clip-engine/subject.js";
@@ -128,6 +129,7 @@ export async function renderClipProject({
   // The source video in the work folder. A linked video is downloaded once and stored with the project.
   const fetchSource = async () => {
     if (project.sourceKey) return store.downloadTo(project.sourceKey, sourcePath);
+    if (project.sourceDeletedAt) throw new Error(SOURCE_DELETED);
     if (!project.sourceUrl) throw new Error("project has neither an uploaded source nor a link");
     await downloadVideo(project.sourceUrl, workDir);
     const sourceKey = buildClipSourceKey(projectId, ".mp4");

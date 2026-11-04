@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import { prisma } from "@/lib/prisma";
+import { requireEnv } from "@/lib/env";
+import { requireFreeSpace } from "@/lib/free-space";
+import { forgetStorage } from "@/lib/storage-usage";
 import { getSlideshowEngineQueue } from "@/lib/queues";
 import {
   isSlideshowEngineId,
@@ -24,6 +27,7 @@ function engineOf(formData: FormData): SlideshowEngineId {
 export async function installSlideshowEngineAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
     const engine = engineOf(formData);
+    await requireFreeSpace(requireEnv("LOCALIRS_DATA_DIR"));
     await startSlideshowEngineInstall({ db: prisma, queue: getSlideshowEngineQueue(), engine });
     revalidatePath("/settings");
     revalidatePath("/clips");
@@ -37,6 +41,8 @@ export async function uninstallSlideshowEngineAction(_previous: ActionResult, fo
     await uninstallSlideshowEngine({ db: prisma, root: slideshowDir(), engine });
     revalidatePath("/settings");
     revalidatePath("/clips");
+    revalidatePath("/storage");
+    forgetStorage();
     return `${SLIDESHOW_ENGINES[engine].name} removed`;
   });
 }

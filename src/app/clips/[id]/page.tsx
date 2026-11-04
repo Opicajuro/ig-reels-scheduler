@@ -33,6 +33,7 @@ import { NoAiGpuNote } from "@/components/no-ai-gpu-note";
 import { getAiEngine } from "@/lib/ai-engine";
 import { checkGpu } from "@/lib/ai-gpu";
 import { MAX_PROMPT_LENGTH } from "@/lib/ai-video";
+import { SOURCE_DELETED } from "@/lib/storage-messages";
 
 export const metadata: Metadata = { title: "Clip project" };
 
@@ -191,6 +192,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       downloadUrl: await presignDownload(clip.storageKey, 3600),
       version: clip.version,
       words: clip.recaptionWords !== null ? parseClipWords(clip.recaptionWords) : clip.words === null ? null : parseClipWords(clip.words),
+      baseCutRemoved: clip.words !== null && clip.baseKey === null,
       recaption: clip.recaptionId ? { step: clip.recaptionStep } : null,
       recaptionError: clip.recaptionError,
       firstWords: wordsInRange(transcript, clip).split(" ").slice(0, FIRST_WORDS).join(" "),
@@ -202,6 +204,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
   const busy = project.status === "rendering" || project.status === "picking";
   const review = project.status === "review" ? await reviewState(project) : null;
   const waiting = project.status === "awaiting_source";
+  const sourceDeleted = project.sourceDeletedAt !== null;
   const preset = project.captionPreset ?? "classic";
   const failed = project.status === "failed";
   const summary = describeClipProject({ status: project.status, error: project.error, renderStep: project.renderStep, clipCount: clips.length });
@@ -256,6 +259,13 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       {failed ? (
         <div className={styles.failure}>
           <Alert tone="error">{summary}</Alert>
+        </div>
+      ) : null}
+      {sourceDeleted ? (
+        <div className={styles.failure}>
+          <Alert tone="info">
+            {SOURCE_DELETED} <Link href="/storage">Storage</Link>
+          </Alert>
         </div>
       ) : null}
       {busy ? (
@@ -442,7 +452,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
                     <span>Review highlights before making clips</span>
                     <input type="checkbox" name="review" defaultChecked />
                   </label>
-                  <SubmitButton variant="primary" disabled={busy || waiting} pendingLabel="Starting…">
+                  <SubmitButton variant="primary" disabled={busy || waiting || sourceDeleted} pendingLabel="Starting…">
                     <span className={styles.findLabel}>Find highlights</span>
                     <span className={styles.makeLabel}>Make clips</span>
                   </SubmitButton>

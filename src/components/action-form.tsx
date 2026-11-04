@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   createContext,
   startTransition,
@@ -71,7 +72,17 @@ export function ActionForm({
       }}
     >
       <Pending value={pending}>{children}</Pending>
-      {state?.ok === false ? <Alert tone="error">{state.error}</Alert> : null}
+      {state?.ok === false ? (
+        <Alert tone="error">
+          {state.error}
+          {state.link ? (
+            <>
+              {" "}
+              <Link href={state.link.href}>{state.link.label}</Link>
+            </>
+          ) : null}
+        </Alert>
+      ) : null}
       {confirm ? (
         <ConfirmDialog
           open={asking !== null}

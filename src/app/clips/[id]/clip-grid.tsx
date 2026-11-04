@@ -42,6 +42,8 @@ export type ClipView = {
   version: number;
   // Its caption words, or the edited ones while they are being drawn; null for a clip whose words were not kept.
   words: ClipWord[] | null;
+  // Its caption words were kept, but the Storage page removed the uncaptioned cut they are drawn over.
+  baseCutRemoved: boolean;
   recaption: { step: string | null } | null;
   recaptionError: string | null;
   // The start of what is said in the clip, for the AI panels' suggested prompt.

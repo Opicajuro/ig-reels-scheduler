@@ -73,6 +73,11 @@ function checkText(value: unknown, what: string, max: number, index: number): st
   return text;
 }
 
+// A slide's frame taken from a project's source video that the Storage page deleted to free space.
+export function sourceVideoDeleted(index: number): string {
+  return `the video picked for slide ${index + 1} was deleted on the Storage page to free space; pick a picture from one of its clips instead`;
+}
+
 function checkTime(value: unknown, length: number, index: number): number {
   const at = Number(value);
   if (!Number.isFinite(at) || at < 0 || at > length) throw new UserError(`the moment picked for slide ${index + 1} is outside the video`);
@@ -98,10 +103,11 @@ export async function checkSlides(db: PrismaClient, ownerId: string, input: unkn
       slides.push({ text, picture, source: { kind: "clip", clipId: clip.id, at: checkTime(source.at, clip.length, index) } });
     } else if (source.kind === "video") {
       const project = await db.clipProject.findFirst({
-        where: { id: String(source.projectId), ownerId, sourceKey: { not: null } },
-        select: { id: true, durationSeconds: true },
+        where: { id: String(source.projectId), ownerId },
+        select: { id: true, durationSeconds: true, sourceKey: true, sourceDeletedAt: true },
       });
-      if (!project || project.durationSeconds === null) throw new UserError(`the video picked for slide ${index + 1} no longer exists`);
+      if (project?.sourceDeletedAt) throw new UserError(sourceVideoDeleted(index));
+      if (!project?.sourceKey || project.durationSeconds === null) throw new UserError(`the video picked for slide ${index + 1} no longer exists`);
       slides.push({ text, picture, source: { kind: "video", projectId: project.id, at: checkTime(source.at, project.durationSeconds, index) } });
     } else if (source.kind === "photo") {
       if (typeof source.key !== "string" || !PHOTO_KEY.test(source.key)) throw new UserError(`the photo of slide ${index + 1} is not valid`);

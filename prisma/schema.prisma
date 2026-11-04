@@ -240,6 +240,9 @@ model ClipProject {
   name            String
   sourceUrl       String?
   sourceKey       String?
+  // When the source video was deleted on the Storage page to free space. The clips stay; finding highlights and
+  // making clips again need the video.
+  sourceDeletedAt DateTime?
   status          ClipProjectStatus @default(awaiting_source)
   error           String?
   renderStep      String?

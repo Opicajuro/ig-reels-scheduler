@@ -7,6 +7,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -137,4 +138,22 @@ export async function readObjectRange(key: string, start: number, end: number): 
   const bytes = await response.Body.transformToByteArray();
   if (bytes.byteLength !== end - start + 1) throw new Error(`${key}: read ${bytes.byteLength} bytes, expected ${end - start + 1}`);
   return bytes;
+}
+
+export type StoredObject = { key: string; size: number; lastModified: Date };
+
+// Every object in the bucket, a page of up to 1000 at a time.
+export async function* listObjects(): AsyncGenerator<StoredObject> {
+  const bucket = requireEnv("S3_BUCKET");
+  let token: string | undefined;
+  do {
+    const page = await client().send(new ListObjectsV2Command({ Bucket: bucket, ContinuationToken: token }));
+    for (const item of page.Contents ?? []) {
+      if (item.Key === undefined || item.Size === undefined || item.LastModified === undefined) {
+        throw new Error(`the storage listing has an object without its key, size or date: ${JSON.stringify(item)}`);
+      }
+      yield { key: item.Key, size: item.Size, lastModified: item.LastModified };
+    }
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
 }

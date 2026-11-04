@@ -9,6 +9,8 @@ import { s3ClipStore } from "@/lib/clip-store";
 import { addClipLink, removeClipLink } from "@/lib/links";
 import { parseAudioSource } from "@/lib/rights";
 import { prisma } from "@/lib/prisma";
+import { requireEnv } from "@/lib/env";
+import { requireFreeSpace } from "@/lib/free-space";
 import { getClipQueue, getPublishQueue, getRecaptionJobs, getYouTubePublishQueue } from "@/lib/queues";
 
 function text(formData: FormData, name: string): string {
@@ -59,6 +61,7 @@ export async function startRenderAction(_previous: ActionResult, formData: FormD
     const intent = text(formData, "intent");
     if (!["", "pick", "reviewed"].includes(intent)) throw new Error(`unknown intent "${intent}"`);
     const review = intent === "pick" || (intent === "" && formData.get("review") === "on");
+    await requireFreeSpace(requireEnv("LOCALIRS_DATA_DIR"));
     await clips.startRender({
       db: prisma,
       queue: getClipQueue(),

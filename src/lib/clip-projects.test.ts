@@ -10,6 +10,7 @@ import {
   deleteClip,
   deleteClips,
   deleteProject,
+  deleteProjectSource,
   discardHighlights,
   markSourceUploaded,
   moveClipsToProject,
@@ -21,6 +22,7 @@ import {
   startRecaption,
   startRender,
 } from "./clip-projects";
+import { BASE_CUT_REMOVED, SOURCE_DELETED } from "./storage-messages";
 import { UserError } from "./user-error";
 
 type Row = Record<string, unknown> & { id: string };
@@ -1302,5 +1304,76 @@ describe("caption words and the kept cut", () => {
 
     const busy = fakeDb({ projects: [captionProject(), project({ id: "p2" })], clips: [captioned({ recaptionId: "x1" })] });
     await expect(deleteClip({ db: busy.db, store: fakeStore().store, ...owned, clipId: "c1" })).rejects.toThrow("re-rendered");
+  });
+});
+
+describe("deleting a project's source video", () => {
+  const at = new Date("2026-11-04T12:00:00Z");
+
+  it("removes the video and keeps the clips, and the project then says why it cannot find highlights or make clips", async () => {
+    const { db, tables } = fakeDb({ projects: [project()], clips: [clip()] });
+    const files = fakeStore();
+    await deleteProjectSource({ db, store: files.store, ...owned, projectId: "p1", now: at });
+
+    expect(files.removed).toEqual(["clip-sources/p1.mp4"]);
+    expect(tables.clipProject[0]).toMatchObject({ sourceKey: null, sourceDeletedAt: at, status: "done" });
+    expect(tables.clip).toHaveLength(1);
+
+    const queue = { send: async () => "job-1" };
+    const making = await startRender({ db, queue, ...owned, projectId: "p1", clipSeconds: 30, clipCount: null, withCaptions: false }).catch(
+      (err: unknown) => err,
+    );
+    expect(making).toBeInstanceOf(UserError);
+    expect((making as Error).message).toBe(SOURCE_DELETED);
+    await expect(
+      startRender({ db, queue, ...owned, projectId: "p1", review: true, clipSeconds: 30, clipCount: null, withCaptions: false }),
+    ).rejects.toThrow("source video was deleted on the Storage page");
+    await expect(deleteProjectSource({ db, store: files.store, ...owned, projectId: "p1", now: at })).rejects.toThrow("already deleted");
+  });
+
+  it("refuses while clips are being made, highlights found or reviewed, and for projects without a video", async () => {
+    const cases: Array<[Partial<Row>, string]> = [
+      [{ status: "rendering" }, "being made"],
+      [{ status: "picking" }, "being made"],
+      [{ status: "review" }, "reviewing the highlights"],
+      [{ status: "awaiting_source" }, "no stored source video"],
+      [{ sourceKey: null, sourceUrl: "https://example.com/v" }, "no stored source video"],
+      [{ aiVideos: true, sourceKey: null }, "no source video"],
+    ];
+    for (const [overrides, message] of cases) {
+      const { db, tables } = fakeDb({ projects: [project(overrides)] });
+      const files = fakeStore();
+      await expect(deleteProjectSource({ db, store: files.store, ...owned, projectId: "p1", now: at })).rejects.toThrow(message);
+      expect(files.removed).toEqual([]);
+      expect(tables.clipProject[0].sourceDeletedAt).toBeUndefined();
+    }
+  });
+
+  it("refuses another owner's project", async () => {
+    const { db } = fakeDb({ projects: [project({ ownerId: "user-2" })] });
+    await expect(deleteProjectSource({ db, store: fakeStore().store, ...owned, projectId: "p1", now: at })).rejects.toThrow("project not found");
+  });
+
+  it("carries over to a copy of the project", async () => {
+    const { db, tables } = fakeDb({ projects: [project({ sourceKey: null, sourceDeletedAt: at })], clips: [clip()] });
+    await copyProject({ db, store: fakeStore().store, ...owned, projectId: "p1" });
+    expect(tables.clipProject[1]).toMatchObject({ sourceDeletedAt: at });
+    expect(tables.clipProject[1].sourceKey).toBeUndefined();
+  });
+});
+
+describe("a clip whose caption-edit copy the Storage page removed", () => {
+  const words = [{ text: "hello", startMs: 0, endMs: 400, lineStart: true }];
+
+  it("says why its captions cannot be edited, and its copies keep the words to say so too", async () => {
+    const { db, tables } = fakeDb({
+      projects: [project({ withCaptions: true, captionPreset: "classic" })],
+      clips: [clip({ words, baseKey: null, recaptionId: null })],
+    });
+    const queue = { send: async () => "job-1" };
+    await expect(startRecaption({ db, queue, ...owned, clipId: "c1", words: JSON.stringify(words) })).rejects.toThrow(BASE_CUT_REMOVED);
+
+    await copyClip({ db, store: fakeStore().store, ...owned, clipId: "c1" });
+    expect(tables.clip[1]).toMatchObject({ words, baseKey: null });
   });
 });

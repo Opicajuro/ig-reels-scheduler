@@ -27,6 +27,7 @@ import { publishJobRunAt } from "./scheduling";
 import { buildClipBaseKey, buildClipKey, buildClipSourceKey, buildReelKey, buildYouTubeKey } from "./storage";
 import { checkEditedWords, parseClipWords } from "./caption-words";
 import { DEFAULT_MUSIC_VOLUME, parseMusicChoice, withCredit } from "./music-library";
+import { BASE_CUT_REMOVED, SOURCE_DELETED } from "./storage-messages";
 import { UserError } from "./user-error";
 import { parseCropMode } from "@/clip-engine/crop.js";
 import { checkYouTubePost, shortsDescription } from "./youtube";
@@ -60,7 +61,7 @@ async function copyCaptionFiles(
   projectId: string,
   copyId: string,
 ) {
-  if (!clip.baseKey) return { words: Prisma.DbNull, baseKey: null };
+  if (!clip.baseKey) return { words: clip.words ?? Prisma.DbNull, baseKey: null };
   const baseKey = buildClipBaseKey(projectId, copyId);
   await store.copy(clip.baseKey, baseKey);
   return { words: clip.words ?? Prisma.DbNull, baseKey };
@@ -171,6 +172,7 @@ export async function startRender({
   crop?: unknown;
 }) {
   const project = await ownedProject(db, ownerId, projectId);
+  if (project.sourceDeletedAt) throw new UserError(SOURCE_DELETED);
   if (project.status === "awaiting_source") throw new UserError("upload the video before making clips");
   if (project.status === "rendering") throw new UserError("clips are already rendering for this project");
   if (project.status === "picking") throw new UserError("the highlights are still being found for this project");
@@ -286,6 +288,40 @@ export async function deleteProject({
   await db.clipProject.delete({ where: { id: projectId } });
 }
 
+// "Delete source video" on the Storage page: the clips stay, and the project remembers why it has no video. Not while
+// clips are being made or highlights found or reviewed, which use the video. The row changes first, guarded on the
+// state checked, so a render started meanwhile is not left without its video; a file left by a failed delete is an
+// orphan the Storage page removes.
+export async function deleteProjectSource({
+  db,
+  store,
+  ownerId,
+  projectId,
+  now,
+}: {
+  db: PrismaClient;
+  store: ClipStore;
+  ownerId: string;
+  projectId: string;
+  now: Date;
+}) {
+  const project = await ownedProject(db, ownerId, projectId);
+  if (project.aiVideos || project.slideshows) throw new UserError("this project has no source video");
+  if (project.status === "rendering" || project.status === "picking") {
+    throw new UserError("clips are being made for this project; wait until they are done");
+  }
+  if (project.status === "review") throw new UserError("finish reviewing the highlights, or discard them, first: the review plays the video");
+  if (project.sourceDeletedAt) throw new UserError("this project's source video is already deleted");
+  if (project.status === "awaiting_source" || !project.sourceKey) throw new UserError("this project has no stored source video");
+
+  const { count } = await db.clipProject.updateMany({
+    where: { id: projectId, sourceKey: project.sourceKey, status: { in: ["ready", "done", "failed"] } },
+    data: { sourceKey: null, sourceDeletedAt: now },
+  });
+  if (count === 0) throw new UserError("the project changed meanwhile; reload the page and try again");
+  await store.remove(project.sourceKey);
+}
+
 export async function copyProject({
   db,
   store,
@@ -306,6 +342,7 @@ export async function copyProject({
       ownerId,
       name: `${original.name} copy`,
       sourceUrl: original.sourceUrl,
+      sourceDeletedAt: original.sourceDeletedAt,
       status: original.status,
       error: original.error,
       durationSeconds: original.durationSeconds,
@@ -552,6 +589,7 @@ export async function startRecaption({
     throw new UserError("clips are being made for this project");
   }
   if (clip.recaptionId) throw new UserError("this clip's captions are already being re-rendered");
+  if (clip.words !== null && !clip.baseKey) throw new UserError(BASE_CUT_REMOVED);
   if (clip.words === null || !clip.baseKey) throw new UserError("Captions can be edited on clips made after this update");
   if (!clip.project.captionPreset) throw new UserError("choose a caption style for this project first");
   const edited = checkEditedWords(parseClipWords(clip.words), JSON.parse(words));

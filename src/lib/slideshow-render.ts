@@ -12,7 +12,7 @@ import { requireEnv } from "./env";
 import { drawPicture, type DrawPicture } from "./image-gen";
 import { musicFile } from "./music-files";
 import { startLlamaServer, writeScript, type StartLlm } from "./llm-script";
-import { SLIDESHOW_PROJECT_NAME } from "./slideshow";
+import { SLIDESHOW_PROJECT_NAME, sourceVideoDeleted } from "./slideshow";
 import type { ReadySlide, Slide } from "./slideshow-options";
 import { getSlideshowEngine, pictureMakerPaths, scriptWriterPaths, slideshowDir } from "./slideshow-engines";
 import { buildClipKey } from "./storage";
@@ -172,7 +172,8 @@ export async function runSlideshowJob({
           if (!clip) throw new Error(`the clip picked for slide ${index + 1} no longer exists`);
           await preparePicture({ input: await fetchFile(clip.storageKey), output: picture, at: source.at });
         } else {
-          const project = await db.clipProject.findUnique({ where: { id: source.projectId }, select: { sourceKey: true } });
+          const project = await db.clipProject.findUnique({ where: { id: source.projectId }, select: { sourceKey: true, sourceDeletedAt: true } });
+          if (project?.sourceDeletedAt) throw new Error(sourceVideoDeleted(index));
           if (!project?.sourceKey) throw new Error(`the video picked for slide ${index + 1} no longer exists`);
           await preparePicture({ input: await fetchFile(project.sourceKey), output: picture, at: source.at });
         }

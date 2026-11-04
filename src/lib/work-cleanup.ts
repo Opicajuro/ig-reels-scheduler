@@ -83,7 +83,7 @@ export async function deleteSlideshow({ db, store, ownerId, jobId }: { db: Prism
 }
 
 // The storage keys of the photos uploaded for a slideshow's slides.
-function photoKeys(slides: unknown): string[] {
+export function photoKeys(slides: unknown): string[] {
   if (slides === null) return [];
   if (!Array.isArray(slides)) throw new Error("the stored slides are not a list");
   return slides.flatMap((slide: { source?: { kind?: unknown; key?: unknown } | null }) => {

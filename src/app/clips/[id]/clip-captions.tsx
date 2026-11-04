@@ -14,6 +14,7 @@ import {
   WORD_MAX,
   type ClipWord,
 } from "@/lib/caption-words";
+import { BASE_CUT_REMOVED } from "@/lib/storage-messages";
 import { cancelRecaptionAction } from "../../queue/actions";
 import { recaptionClipAction } from "../actions";
 import styles from "../clips.module.css";
@@ -28,6 +29,7 @@ function seconds(ms: number): string {
 // The Captions tab of a clip's drawer: the clip's words in the lines its captions show, to fix, split or merge, or
 // delete, then draw again over the clip's kept cut. The times stay as they were spoken.
 export function ClipCaptions({ clip, projectId, busy }: { clip: ClipView; projectId: string; busy: boolean }) {
+  if (clip.baseCutRemoved) return <p className={styles.muted}>{BASE_CUT_REMOVED}</p>;
   if (clip.words === null) {
     return <p className={styles.muted}>Captions can be edited on clips made after this update, with captions on.</p>;
   }
