@@ -11,6 +11,7 @@ import { getSlideshowEngine } from "@/lib/slideshow-engines";
 import { presignDownload } from "@/lib/storage";
 import aiStyles from "./ai.module.css";
 import styles from "./clips.module.css";
+import { JobMenu } from "./job-menu";
 import { SlideshowEditor, type FrameMedia } from "./slideshow-editor";
 import { SlideshowProgress } from "./slideshow-progress";
 import { writeScriptAction } from "./slideshow-actions";
@@ -97,6 +98,13 @@ export async function SlideshowTab({ ownerId }: { ownerId: string }) {
                   canDraw={picture.status === "installed"}
                 />
               ) : null}
+              <JobMenu
+                kind="slideshow"
+                jobId={job.id}
+                title={job.topic}
+                busy={job.status === "writing" || job.status === "queued" || job.status === "running"}
+                hasClip={job.clip !== null}
+              />
             </li>
           ))}
         </ul>

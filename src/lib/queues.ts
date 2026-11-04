@@ -50,6 +50,11 @@ export type WorkJobs = {
   cancel(jobIds: string[]): Promise<void>;
 };
 
+// The worker also asks, when it starts, which of them are still waiting to be taken.
+export type StartupWorkJobs = WorkJobs & {
+  waiting(id: string): Promise<string[]>;
+};
+
 // Drawing one clip's captions again from its edited words.
 export type RecaptionQueue = {
   send(clipId: string, recaptionId: string): Promise<string>;
@@ -166,11 +171,15 @@ export function getAiVideoQueue(): AiVideoQueue {
 }
 
 // The open jobs of one queue whose data carries the id under key.
-function workJobs(queue: string, key: string): WorkJobs {
+function workJobs(queue: string, key: string): StartupWorkJobs {
   return {
     async open(id) {
       const jobs = await (await getBoss()).findJobs(queue, { data: { [key]: id } });
       return jobs.flatMap((job) => (job.state === "created" || job.state === "retry" || job.state === "active" ? [job.id] : []));
+    },
+    async waiting(id) {
+      const jobs = await (await getBoss()).findJobs(queue, { data: { [key]: id } });
+      return jobs.flatMap((job) => (job.state === "created" || job.state === "retry" ? [job.id] : []));
     },
     async cancel(jobIds) {
       await (await getBoss()).cancel(queue, jobIds);
@@ -178,7 +187,7 @@ function workJobs(queue: string, key: string): WorkJobs {
   };
 }
 
-export function getAiVideoJobs(): WorkJobs {
+export function getAiVideoJobs(): StartupWorkJobs {
   return workJobs(AI_VIDEO_QUEUE, "aiVideoJobId");
 }
 
@@ -195,7 +204,7 @@ export function getRecaptionJobs(): RecaptionJobs {
   };
 }
 
-export function getSlideshowJobs(): WorkJobs {
+export function getSlideshowJobs(): StartupWorkJobs {
   return workJobs(SLIDESHOW_QUEUE, "slideshowJobId");
 }
 

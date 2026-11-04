@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { runAction, type ActionResult } from "@/lib/action-result";
+import { s3ClipStore } from "@/lib/clip-store";
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
 import { getSlideshowQueue } from "@/lib/queues";
 import { createSlideshowScript, startSlideshowRender } from "@/lib/slideshow";
 import { UserError } from "@/lib/user-error";
+import { deleteSlideshow } from "@/lib/work-cleanup";
 
 export async function writeScriptAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
@@ -44,5 +46,13 @@ export async function makeSlideshowAction(_previous: ActionResult, formData: For
     });
     revalidatePath("/clips");
     return "Making the slideshow";
+  });
+}
+
+export async function deleteSlideshowAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    await deleteSlideshow({ db: prisma, store: s3ClipStore, ownerId: await getOwnerId(), jobId: String(formData.get("jobId")) });
+    revalidatePath("/clips");
+    return "Slideshow deleted";
   });
 }

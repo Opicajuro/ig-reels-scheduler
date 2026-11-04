@@ -20,6 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { createLinkProjectAction } from "./actions";
 import aiStyles from "./ai.module.css";
 import styles from "./clips.module.css";
+import { JobMenu } from "./job-menu";
 import { NewVideoForm } from "./new-video-form";
 import { SlideshowTab } from "./slideshow-tab";
 import { SourceLink } from "./source-link";
@@ -105,6 +106,13 @@ export default async function ClipsPage({ searchParams }: PageProps<"/clips">) {
                   ) : null}
                 </div>
                 {job.status === "failed" ? <Alert tone="error">{job.error}</Alert> : null}
+                <JobMenu
+                  kind="ai"
+                  jobId={job.id}
+                  title={job.prompt}
+                  busy={job.status === "queued" || job.status === "running"}
+                  hasClip={job.clip !== null}
+                />
               </li>
             ))}
           </ul>
