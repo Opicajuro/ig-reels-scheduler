@@ -73,6 +73,7 @@
 }
 
 .jobs li {
+  position: relative;
   display: grid;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
@@ -83,7 +84,20 @@
 
 .prompt {
   margin: 0;
+  /* Clear of the entry's ⋯ menu. */
+  padding-right: 40px;
   overflow-wrap: anywhere;
+}
+
+.jobMenu {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+}
+
+/* The menu's form shows only an error; without one it takes no room. */
+.jobForm:not(:has([role="alert"])) {
+  margin-top: calc(-1 * var(--space-2));
 }
 
 .jobMeta,

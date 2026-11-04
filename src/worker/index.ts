@@ -5,6 +5,7 @@ import type { Job } from "pg-boss";
 import { refreshDueTokens } from "@/lib/refresh-job";
 import { recaptionClip, renderClipProject } from "@/lib/clip-render";
 import { requeueInterruptedRecaptions, requeueInterruptedRenders } from "@/lib/clip-resume";
+import { failInterruptedAiVideos, failInterruptedSlideshows } from "@/lib/work-cleanup";
 import { s3ClipStore } from "@/lib/clip-store";
 import { prisma } from "@/lib/prisma";
 import { loadTokenKey } from "@/lib/token-crypto";
@@ -20,9 +21,11 @@ import {
   BACKUP_QUEUE,
   CLIP_QUEUE,
   CLIP_RECAPTION_QUEUE,
+  getAiVideoJobs,
   getBoss,
   getClipJobs,
   getRecaptionJobs,
+  getSlideshowJobs,
   INSIGHTS_QUEUE,
   MEDIA_QUEUE,
   OWNER_ALERTS_QUEUE,
@@ -96,6 +99,8 @@ async function main() {
     await installAiEngine({ db: prisma, dir: aiDir() });
   });
 
+  const stopped = await failInterruptedAiVideos({ db: prisma, jobs: getAiVideoJobs() });
+  if (stopped.length > 0) console.log(`marked ${stopped.length} AI video(s) cut off by closing Localirs as failed`);
   // One video at a time (pg-boss hands out one job per worker by default): the graphics card holds one model.
   await boss.work(AI_VIDEO_QUEUE, async ([job]: Job<{ aiVideoJobId: string }>[]) => {
     const workDir = await mkdtemp(path.join(os.tmpdir(), "ai-video-"));
@@ -118,6 +123,8 @@ async function main() {
     await installSlideshowEngine({ db: prisma, root: slideshowDir(), engine });
   });
 
+  const stoppedShows = await failInterruptedSlideshows({ db: prisma, jobs: getSlideshowJobs() });
+  if (stoppedShows.length > 0) console.log(`marked ${stoppedShows.length} slideshow(s) cut off by closing Localirs as failed`);
   // One slideshow at a time: the script writer and the picture maker each fill the graphics card.
   await boss.work(SLIDESHOW_QUEUE, async ([job]: Job<{ slideshowJobId: string; kind: "script" | "render" }>[]) => {
     const workDir = await mkdtemp(path.join(os.tmpdir(), "slideshow-"));

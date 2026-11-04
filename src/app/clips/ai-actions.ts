@@ -5,10 +5,12 @@ import { runAction, type ActionResult } from "@/lib/action-result";
 import { requireReadyGpu } from "@/lib/ai-gpu";
 import { AI_CLIP_LABELS, type AiClipKind } from "@/lib/ai-clip-options";
 import { createAiClipVideo, createAiVideo } from "@/lib/ai-video";
+import { s3ClipStore } from "@/lib/clip-store";
 import { UserError } from "@/lib/user-error";
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
 import { getAiVideoQueue } from "@/lib/queues";
+import { deleteAiVideo } from "@/lib/work-cleanup";
 
 export async function createAiVideoAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
   return runAction(async () => {
@@ -46,5 +48,13 @@ export async function createAiClipAction(_previous: ActionResult, formData: Form
     });
     revalidatePath("/queue");
     return `Making the ${AI_CLIP_LABELS[kind]}. It is added to this project when it is done; follow it on the Queue page.`;
+  });
+}
+
+export async function deleteAiVideoAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
+  return runAction(async () => {
+    await deleteAiVideo({ db: prisma, store: s3ClipStore, ownerId: await getOwnerId(), jobId: String(formData.get("jobId")) });
+    revalidatePath("/clips");
+    return "AI video deleted";
   });
 }

@@ -6,9 +6,13 @@ import styles from "./tabs.module.css";
 export type Tab = { id: string; label: string; content: ReactNode };
 
 // Tabs over panels. Every panel stays mounted, so typed form values survive switching tabs. Arrow keys move between tabs.
-// `initial` picks the tab shown first.
+// `initial` picks the tab shown first. Next keeps a visited page mounted, so a link to the same page with another
+// `initial` (as /clips?tab=ai) reuses this one: a tab picked here only counts while `initial` is the one it was picked
+// under.
 export function Tabs({ label, tabs, initial = tabs[0].id }: { label: string; tabs: Tab[]; initial?: string }) {
-  const [active, setActive] = useState(initial);
+  const [picked, setPicked] = useState({ id: initial, under: initial });
+  const active = picked.under === initial ? picked.id : initial;
+  const setActive = (id: string) => setPicked({ id, under: initial });
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
   const baseId = useId();
 
