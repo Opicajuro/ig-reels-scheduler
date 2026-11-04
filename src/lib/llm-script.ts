@@ -81,7 +81,46 @@ function promptFor(topic: string, count: number): string {
   ].join(" ");
 }
 
-// Asks the running server for a script. Thinking is turned off: the answer is the JSON alone.
+// Asks the running server for an answer held to schema, and returns it unparsed. Thinking is turned off: the answer is
+// the JSON alone.
+export async function askLlm({
+  url,
+  system,
+  prompt,
+  schema,
+  temperature,
+  signal,
+}: {
+  url: string;
+  system: string;
+  prompt: string;
+  schema: object;
+  temperature: number;
+  signal: AbortSignal;
+}): Promise<string> {
+  const response = await fetch(`${url}/v1/chat/completions`, {
+    method: "POST",
+    signal,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: prompt },
+      ],
+      response_format: { type: "json_object", schema },
+      chat_template_kwargs: { enable_thinking: false },
+      temperature,
+      max_tokens: 4096,
+    }),
+  });
+  if (!response.ok) throw new Error(`the script writer failed with HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
+  const body = (await response.json()) as { choices?: { message?: { content?: string } }[] };
+  const content = body.choices?.[0]?.message?.content;
+  if (typeof content !== "string") throw new Error("the script writer gave no answer");
+  return content;
+}
+
+// Asks the running server for a script.
 export async function requestScript({
   url,
   topic,
@@ -93,25 +132,14 @@ export async function requestScript({
   count: number;
   signal: AbortSignal;
 }): Promise<ScriptSlide[]> {
-  const response = await fetch(`${url}/v1/chat/completions`, {
-    method: "POST",
+  const content = await askLlm({
+    url,
+    system: "You write scripts for short vertical videos.",
+    prompt: promptFor(topic, count),
+    schema: scriptSchema(count),
+    temperature: 0.7,
     signal,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages: [
-        { role: "system", content: "You write scripts for short vertical videos." },
-        { role: "user", content: promptFor(topic, count) },
-      ],
-      response_format: { type: "json_object", schema: scriptSchema(count) },
-      chat_template_kwargs: { enable_thinking: false },
-      temperature: 0.7,
-      max_tokens: 4096,
-    }),
   });
-  if (!response.ok) throw new Error(`the script writer failed with HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
-  const body = (await response.json()) as { choices?: { message?: { content?: string } }[] };
-  const content = body.choices?.[0]?.message?.content;
-  if (typeof content !== "string") throw new Error("the script writer gave no answer");
   return parseScript(content, count);
 }
 

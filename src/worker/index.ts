@@ -5,6 +5,8 @@ import type { Job } from "pg-boss";
 import { refreshDueTokens } from "@/lib/refresh-job";
 import { recaptionClip, renderClipProject } from "@/lib/clip-render";
 import { requeueInterruptedRecaptions, requeueInterruptedRenders } from "@/lib/clip-resume";
+import { failInterruptedWrites, runClipWriter } from "@/lib/clip-writer";
+import { startLlamaServer } from "@/lib/llm-script";
 import { failInterruptedAiVideos, failInterruptedSlideshows } from "@/lib/work-cleanup";
 import { s3ClipStore } from "@/lib/clip-store";
 import { prisma } from "@/lib/prisma";
@@ -13,7 +15,7 @@ import { aiDir, comfyRoot } from "@/lib/ai-engine";
 import { installAiEngine } from "@/lib/ai-install";
 import { runAiVideoJob } from "@/lib/ai-video";
 import { startComfy } from "@/lib/comfy";
-import { installSlideshowEngine, isSlideshowEngineId, slideshowDir } from "@/lib/slideshow-engines";
+import { installSlideshowEngine, isSlideshowEngineId, scriptWriterPaths, slideshowDir } from "@/lib/slideshow-engines";
 import { localSlideshowTools, runSlideshowJob } from "@/lib/slideshow-render";
 import {
   AI_ENGINE_QUEUE,
@@ -21,9 +23,11 @@ import {
   BACKUP_QUEUE,
   CLIP_QUEUE,
   CLIP_RECAPTION_QUEUE,
+  CLIP_WRITER_QUEUE,
   getAiVideoJobs,
   getBoss,
   getClipJobs,
+  getClipWriterJobs,
   getRecaptionJobs,
   getSlideshowJobs,
   INSIGHTS_QUEUE,
@@ -136,6 +140,22 @@ async function main() {
     }
   });
 
+  const unwritten = await failInterruptedWrites({ db: prisma, jobs: getClipWriterJobs() });
+  if (unwritten.length > 0) console.log(`marked ${unwritten.length} title writing job(s) cut off by closing Localirs as failed`);
+  // One at a time, like the slideshows: the script writer fills the graphics card.
+  await boss.work(CLIP_WRITER_QUEUE, async ([job]: Job<{ writeId: string; clipIds: string[] }>[]) => {
+    const root = slideshowDir();
+    const script = scriptWriterPaths(root);
+    await runClipWriter({
+      db: prisma,
+      writeId: job.data.writeId,
+      clipIds: job.data.clipIds,
+      // Its own log, as a slideshow's script may be written at the same time.
+      startLlm: (signal) =>
+        startLlamaServer({ server: script.server, model: script.model, logPath: path.join(root, "llama-server-titles.log"), signal }),
+    });
+  });
+
   await boss.work(PUBLISH_QUEUE, createPublishProcessor());
   await boss.work(INSIGHTS_QUEUE, processInsightsJob);
   await boss.work(YOUTUBE_PUBLISH_QUEUE, createYouTubePublishProcessor());
@@ -170,7 +190,7 @@ async function main() {
     await runBackup({ db: prisma, env, now: new Date() });
   });
 
-  console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media, clips, AI videos, slideshows, Instagram and YouTube publishing enabled, backups at 03:30 ${timeZone}`);
+  console.log(`worker running: token refresh at ${DAILY_AT_03_UTC} UTC, media, clips, AI videos, slideshows, AI titles, Instagram and YouTube publishing enabled, backups at 03:30 ${timeZone}`);
 }
 
 main().catch((err) => {
