@@ -409,6 +409,13 @@ model Clip {
   recaptionStep  String?
   recaptionWords Json?
   recaptionError String?
+  // "Write with AI": while the script writer writes the clip's title, description and hashtags, the job's id (shared by
+  // the clips of one bulk job) and its step. aiSuggestion is what it wrote, { title, description, hashtags }, kept until
+  // the person uses or discards it; aiWriteError is why the last one failed.
+  aiWriteId      String?
+  aiWriteStep    String?
+  aiSuggestion   Json?
+  aiWriteError   String?
   createdAt   DateTime    @default(now())
   aiVideoJob  AiVideoJob? @relation("AiVideoClip")
   // AI intros and B-roll asked for from this clip.

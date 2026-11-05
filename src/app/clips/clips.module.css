@@ -890,3 +890,30 @@
 .captionWord button:hover:not(:disabled) {
   color: var(--text);
 }
+
+/* What the script writer suggested for a clip: its title, description and hashtags. */
+.suggestion {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.suggestion p {
+  margin: 0;
+}
+
+.suggestions {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suggestions li {
+  display: grid;
+  gap: var(--space-1);
+}

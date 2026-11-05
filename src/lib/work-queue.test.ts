@@ -53,6 +53,10 @@ describe("listQueue", () => {
       },
       clip: {
         findMany: async (args: { where: Row }) => {
+          if ("aiWriteId" in args.where) {
+            where.writers = args.where;
+            return [{ id: "c7", name: "clip-001", aiWriteStep: "Writing", project: { id: "p1", name: "Talk" } }];
+          }
           where.recaptions = args.where;
           return [{ id: "c9", name: "clip-002", recaptionStep: "Drawing captions", project: { id: "p1", name: "Talk" } }];
         },
@@ -99,6 +103,7 @@ describe("listQueue", () => {
         { id: "p3", name: "Lecture", status: "picking", step: "Analysing motion and sound", startedAt: "2026-10-30T11:59:30.000Z", clipsDone: 2, clipsTotal: null },
       ],
       recaptions: [{ id: "c9", name: "clip-002", projectId: "p1", projectName: "Talk", step: "Drawing captions" }],
+      writers: [{ id: "c7", name: "clip-001", projectId: "p1", projectName: "Talk", step: "Writing" }],
       aiVideos: [
         { id: "v1", prompt: "A fox", kind: "prompt", projectId: null, status: "running", step: "Generating video 40%" },
         { id: "v2", prompt: "A sunrise", kind: "intro", projectId: "p9", status: "queued", step: null },
@@ -112,6 +117,7 @@ describe("listQueue", () => {
     });
     expect(where.projects).toEqual({ ownerId: "o1", status: { in: ["picking", "rendering"] } });
     expect(where.recaptions).toEqual({ project: { ownerId: "o1" }, recaptionId: { not: null } });
+    expect(where.writers).toEqual({ project: { ownerId: "o1" }, aiWriteId: { not: null } });
     expect(where.videos).toEqual({ ownerId: "o1", status: { in: ["queued", "running"] } });
     expect(where.slideshows).toEqual({ ownerId: "o1", status: { in: ["writing", "queued", "running"] } });
     expect(where.posts).toEqual({

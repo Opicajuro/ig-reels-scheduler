@@ -26,6 +26,8 @@ export type QueueRender = {
 // A clip whose captions are drawn again from its edited words.
 export type QueueRecaption = { id: string; name: string; projectId: string; projectName: string; step: string | null };
 // An intro or B-roll names the project of the clip it is made from.
+// A clip whose title, description and hashtags the script writer is writing.
+export type QueueWriter = { id: string; name: string; projectId: string; projectName: string; step: string | null };
 export type QueueAiVideo = {
   id: string;
   prompt: string;
@@ -47,6 +49,7 @@ export type QueuePost = {
 export type QueueListing = {
   renders: QueueRender[];
   recaptions: QueueRecaption[];
+  writers: QueueWriter[];
   aiVideos: QueueAiVideo[];
   slideshows: QueueSlideshow[];
   engines: QueueEngine[];
@@ -54,7 +57,7 @@ export type QueueListing = {
 };
 
 export async function listQueue({ db, ownerId, now }: { db: PrismaClient; ownerId: string; now: Date }): Promise<QueueListing> {
-  const [projects, recaptions, videos, slideshows, aiEngine, slideshowEngines, posts] = await Promise.all([
+  const [projects, recaptions, writers, videos, slideshows, aiEngine, slideshowEngines, posts] = await Promise.all([
     db.clipProject.findMany({
       where: { ownerId, status: { in: ["picking", "rendering"] } },
       orderBy: { renderStartedAt: "asc" },
@@ -73,6 +76,11 @@ export async function listQueue({ db, ownerId, now }: { db: PrismaClient; ownerI
       where: { project: { ownerId }, recaptionId: { not: null } },
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true, recaptionStep: true, project: { select: { id: true, name: true } } },
+    }),
+    db.clip.findMany({
+      where: { project: { ownerId }, aiWriteId: { not: null } },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, name: true, aiWriteStep: true, project: { select: { id: true, name: true } } },
     }),
     db.aiVideoJob.findMany({
       where: { ownerId, status: { in: ["queued", "running"] } },
@@ -120,6 +128,13 @@ export async function listQueue({ db, ownerId, now }: { db: PrismaClient; ownerI
       projectId: clip.project.id,
       projectName: clip.project.name,
       step: clip.recaptionStep,
+    })),
+    writers: writers.map((clip) => ({
+      id: clip.id,
+      name: clip.name,
+      projectId: clip.project.id,
+      projectName: clip.project.name,
+      step: clip.aiWriteStep,
     })),
     aiVideos: videos.map((video) => {
       if (video.status !== "queued" && video.status !== "running") throw new Error(`AI video ${video.id} is ${video.status}`);

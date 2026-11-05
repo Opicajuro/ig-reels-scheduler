@@ -34,6 +34,8 @@ import { getAiEngine } from "@/lib/ai-engine";
 import { checkGpu } from "@/lib/ai-gpu";
 import { MAX_PROMPT_LENGTH } from "@/lib/ai-video";
 import { SOURCE_DELETED } from "@/lib/storage-messages";
+import { parseSuggestion } from "@/lib/clip-writer";
+import { getSlideshowEngine } from "@/lib/slideshow-engines";
 
 export const metadata: Metadata = { title: "Clip project" };
 
@@ -202,6 +204,9 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       recaption: clip.recaptionId ? { step: clip.recaptionStep } : null,
       recaptionError: clip.recaptionError,
       firstWords: wordsInRange(transcript, clip).split(" ").slice(0, FIRST_WORDS).join(" "),
+      writer: clip.aiWriteId ? { step: clip.aiWriteStep } : null,
+      suggestion: clip.aiSuggestion === null ? null : parseSuggestion(clip.aiSuggestion),
+      writeError: clip.aiWriteError,
     })),
   );
 
@@ -502,6 +507,7 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
               bestTimeSamples={bestTimeSamples}
               captionsTab={!noSource}
               ai={{ unavailable: await aiUnavailable(), maxPromptLength: MAX_PROMPT_LENGTH }}
+              writerInstalled={(await getSlideshowEngine(prisma, "script")).status === "installed"}
             />
           </section>
         </div>

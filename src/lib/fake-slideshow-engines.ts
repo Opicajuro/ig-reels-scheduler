@@ -2,8 +2,8 @@ import { chmod, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 // For tests: stand-ins for llama-server and sd-cli, written as Node scripts into dir. The fake llama-server answers
-// /health (503 while "loading", then 200) and /v1/chat/completions with the slides the request's schema asks for, or
-// FAKE_LLAMA_REPLY, or never when that is "slow"; it logs each request and its stop to FAKE_LLAMA_RECORD. The fake
+// /health (503 while "loading", then 200) and /v1/chat/completions with the slides the request's schema asks for (or,
+// for a clip's title, a suggestion naming the request's number), or FAKE_LLAMA_REPLY, or never when that is "slow" (only to its first request when "slow-first"); it logs each request and its stop to FAKE_LLAMA_RECORD. The fake
 // sd-cli logs its arguments to FAKE_SD_RECORD and copies FAKE_SD_PICTURE to its -o path, fails like a card out of
 // memory when the prompt says so, or draws for a minute when the prompt says "slow", logging "drawing" once it can be
 // stopped and "stopped" when it is.
@@ -15,6 +15,8 @@ const args = process.argv.slice(2);
 const arg = (name) => args[args.indexOf(name) + 1];
 const record = (entry) => fs.appendFileSync(process.env.FAKE_LLAMA_RECORD, JSON.stringify(entry) + "\n");
 let ready = false;
+let answered = 0;
+let requests = 0;
 setTimeout(() => (ready = true), 300);
 const server = http.createServer((request, response) => {
   if (request.url === "/health") {
@@ -27,10 +29,19 @@ const server = http.createServer((request, response) => {
     request.on("end", () => {
       const sent = JSON.parse(body);
       record({ args, request: sent });
-      if (process.env.FAKE_LLAMA_REPLY === "slow") return;
-      const count = sent.response_format.schema.properties.slides.minItems;
-      const slides = Array.from({ length: count }, (_, index) => ({ text: " Line " + (index + 1) + ". ", picture: "Picture " + (index + 1) }));
-      const content = process.env.FAKE_LLAMA_REPLY || JSON.stringify({ slides });
+      requests += 1;
+      if (process.env.FAKE_LLAMA_REPLY === "slow" || (process.env.FAKE_LLAMA_REPLY === "slow-first" && requests === 1)) return;
+      const { properties } = sent.response_format.schema;
+      let answer;
+      if (properties.slides) {
+        const count = properties.slides.minItems;
+        answer = { slides: Array.from({ length: count }, (_, index) => ({ text: " Line " + (index + 1) + ". ", picture: "Picture " + (index + 1) })) };
+      } else {
+        answered += 1;
+        answer = { title: " Title " + answered + " ", description: "The first sentence. The second one.", hashtags: ["one", "two", "three"] };
+      }
+      const reply = process.env.FAKE_LLAMA_REPLY;
+      const content = reply && reply !== "slow-first" ? reply : JSON.stringify(answer);
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content } }] }));
     });

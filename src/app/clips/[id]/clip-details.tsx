@@ -7,12 +7,24 @@ import { Field } from "@/components/field";
 import { copyClipAction, deleteClipAction, renameClipAction, saveClipDetailsAction } from "../actions";
 import styles from "../clips.module.css";
 import type { ClipView } from "./clip-grid";
+import { WriteWithAi } from "./clip-writer";
 
 // Instagram cuts a caption at 2,200 characters, and the description is what a bulk schedule posts as the caption.
 const CAPTION_MAX = 2200;
 
-// The Details tab of a clip's drawer: its name, the title and description it is posted with, and the clip's own actions.
-export function ClipDetails({ clip, projectId, busy }: { clip: ClipView; projectId: string; busy: boolean }) {
+// The Details tab of a clip's drawer: its name, the title and description it is posted with, what the script writer
+// suggests for them, and the clip's own actions.
+export function ClipDetails({
+  clip,
+  projectId,
+  busy,
+  writerInstalled,
+}: {
+  clip: ClipView;
+  projectId: string;
+  busy: boolean;
+  writerInstalled: boolean;
+}) {
   const [description, setDescription] = useState(clip.description ?? "");
   const over = description.length > CAPTION_MAX;
 
@@ -26,6 +38,8 @@ export function ClipDetails({ clip, projectId, busy }: { clip: ClipView; project
         </Field>
         <SubmitButton pendingLabel="Renaming…">Rename</SubmitButton>
       </ActionForm>
+
+      <WriteWithAi clip={clip} projectId={projectId} installed={writerInstalled} busy={busy} />
 
       <ActionForm action={saveClipDetailsAction} className={styles.panel}>
         <input type="hidden" name="clipId" value={clip.id} />

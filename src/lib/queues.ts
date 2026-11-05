@@ -1,6 +1,7 @@
 import { PgBoss } from "pg-boss";
 import type { AiEngineQueue } from "./ai-engine";
 import type { AiVideoQueue } from "./ai-video";
+import type { ClipWriterQueue } from "./clip-writer";
 import type { SlideshowQueue } from "./slideshow";
 import type { SlideshowEngineQueue } from "./slideshow-engines";
 import { requireEnv } from "./env";
@@ -12,6 +13,7 @@ export const TOKEN_REFRESH_QUEUE = "token-refresh";
 export const OWNER_ALERTS_QUEUE = "owner-alerts";
 export const CLIP_QUEUE = "clip-project";
 export const CLIP_RECAPTION_QUEUE = "clip-recaption";
+export const CLIP_WRITER_QUEUE = "clip-writer";
 export const AI_ENGINE_QUEUE = "ai-engine";
 export const AI_VIDEO_QUEUE = "ai-video";
 export const BACKUP_QUEUE = "backup";
@@ -89,7 +91,7 @@ async function startBoss(): Promise<PgBoss> {
   await instance.createQueue(MEDIA_QUEUE, keyed);
   await instance.createQueue(INSIGHTS_QUEUE, keyed);
   await instance.createQueue(YOUTUBE_STATS_QUEUE, keyed);
-  for (const name of [PUBLISH_QUEUE, YOUTUBE_PUBLISH_QUEUE, FACEBOOK_PUBLISH_QUEUE, TIKTOK_PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE, CLIP_RECAPTION_QUEUE, AI_ENGINE_QUEUE, AI_VIDEO_QUEUE, BACKUP_QUEUE, SLIDESHOW_ENGINE_QUEUE, SLIDESHOW_QUEUE]) {
+  for (const name of [PUBLISH_QUEUE, YOUTUBE_PUBLISH_QUEUE, FACEBOOK_PUBLISH_QUEUE, TIKTOK_PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE, CLIP_RECAPTION_QUEUE, CLIP_WRITER_QUEUE, AI_ENGINE_QUEUE, AI_VIDEO_QUEUE, BACKUP_QUEUE, SLIDESHOW_ENGINE_QUEUE, SLIDESHOW_QUEUE]) {
     await instance.createQueue(name);
   }
   return instance;
@@ -211,6 +213,20 @@ export function getRecaptionJobs(): RecaptionJobs {
     async send(clipId, recaptionId) {
       const jobId = await (await getBoss()).send(CLIP_RECAPTION_QUEUE, { clipId, recaptionId }, { retryLimit: 0, expireInSeconds: 30 * 60 });
       if (jobId === null) throw new Error(`caption job for clip ${clipId} was not queued`);
+      return jobId;
+    },
+  };
+}
+
+// Writing a clip's title takes seconds once the script writer has loaded, which takes up to 5 minutes; a job writing
+// 50 clips gets an hour. It is not retried: the failure is shown on each clip. One cut off by closing Localirs is marked
+// failed when the worker starts (failInterruptedWrites).
+export function getClipWriterJobs(): ClipWriterQueue & StartupWorkJobs {
+  return {
+    ...workJobs(CLIP_WRITER_QUEUE, "writeId"),
+    async send(writeId, clipIds) {
+      const jobId = await (await getBoss()).send(CLIP_WRITER_QUEUE, { writeId, clipIds }, { retryLimit: 0, expireInSeconds: 60 * 60 });
+      if (jobId === null) throw new Error(`writing job ${writeId} was not queued`);
       return jobId;
     },
   };
