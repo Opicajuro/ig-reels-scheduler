@@ -16,7 +16,7 @@ import { AiClipForm, type AiClipSetup } from "./ai-clip-form";
 import { ClipDetails } from "./clip-details";
 import { ClipLinks } from "./clip-links";
 import { ExportForm } from "./export-form";
-import { ScheduleForm } from "./schedule-form";
+import { ScheduleForm, type ChannelChoice } from "./schedule-form";
 import { BulkScheduleForm } from "./bulk-schedule-form";
 import { MoveForm, type ProjectChoice } from "./move-form";
 import styles from "../clips.module.css";
@@ -51,7 +51,7 @@ export type ClipView = {
 };
 
 export type AccountView = { id: string; username: string };
-export type ChannelView = { id: string; title: string };
+export type ChannelView = ChannelChoice;
 
 // What a clip is posted with on Instagram, the same fallback the server uses, with its music's credit line.
 function captionOf(clip: ClipView): string {

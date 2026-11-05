@@ -43,29 +43,52 @@ async function loadR2(db: PrismaClient): Promise<R2Config | null> {
   return r2Settings(await getSettings(db));
 }
 
-// Uploads the post's Reel to R2, replacing any earlier copy, and returns a link to it that works for an hour.
-export async function stageIgPostVideo(db: PrismaClient, open: OpenReel, postId: string, reelKey: string): Promise<string> {
-  const config = await loadR2(db);
-  if (!config) throw new R2NotSetUp();
+// A Facebook Reel is handed over the same way when R2 is set up (file_url); without R2 it is uploaded from this PC.
+export function fbPostKey(postId: string): string {
+  return `fb-posts/${postId}.mp4`;
+}
+
+async function stageCopy(config: R2Config, open: OpenReel, key: string, sourceKey: string): Promise<string> {
   const client = r2Client(config);
-  const key = igPostKey(postId);
-  const { body, size } = await open(reelKey);
+  const { body, size } = await open(sourceKey);
   await client.send(
     new PutObjectCommand({ Bucket: config.bucket, Key: key, Body: body, ContentLength: size, ContentType: "video/mp4" }),
   );
   return getSignedUrl(client, new GetObjectCommand({ Bucket: config.bucket, Key: key }), { expiresIn: LINK_SECONDS });
 }
 
-// Deletes the post's copy in R2 once the post is published, failed for good or canceled. The post's own outcome does not
+// Uploads the post's Reel to R2, replacing any earlier copy, and returns a link to it that works for an hour.
+export async function stageIgPostVideo(db: PrismaClient, open: OpenReel, postId: string, reelKey: string): Promise<string> {
+  const config = await loadR2(db);
+  if (!config) throw new R2NotSetUp();
+  return stageCopy(config, open, igPostKey(postId), reelKey);
+}
+
+// The same for a Facebook Reel, or null without R2.
+export async function stageFbPostVideo(db: PrismaClient, open: OpenReel, postId: string, videoKey: string): Promise<string | null> {
+  const config = await loadR2(db);
+  if (!config) return null;
+  return stageCopy(config, open, fbPostKey(postId), videoKey);
+}
+
+// Deletes a post's copy in R2 once the post is published, failed for good or canceled. The post's own outcome does not
 // depend on it, so a failed delete is logged rather than thrown. Deleting a copy that is not there is not an error.
-export async function discardIgPostVideo(db: PrismaClient, postId: string): Promise<void> {
+async function discardCopy(db: PrismaClient, key: string): Promise<void> {
   try {
     const config = await loadR2(db);
     if (!config) return;
-    await r2Client(config).send(new DeleteObjectCommand({ Bucket: config.bucket, Key: igPostKey(postId) }));
+    await r2Client(config).send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }));
   } catch (err) {
-    console.warn(`could not delete ${igPostKey(postId)} from R2: ${err instanceof Error ? err.message : String(err)}`);
+    console.warn(`could not delete ${key} from R2: ${err instanceof Error ? err.message : String(err)}`);
   }
+}
+
+export async function discardIgPostVideo(db: PrismaClient, postId: string): Promise<void> {
+  await discardCopy(db, igPostKey(postId));
+}
+
+export async function discardFbPostVideo(db: PrismaClient, postId: string): Promise<void> {
+  await discardCopy(db, fbPostKey(postId));
 }
 
 // The R2 error in words a person can act on.

@@ -6,7 +6,16 @@ import { ActionForm, SubmitButton } from "@/components/action-form";
 import { UseBestTime, type BestTimeSample } from "@/components/best-time";
 import { Field } from "@/components/field";
 import styles from "../clips.module.css";
-import { DestinationFields, YouTubeFields, type AccountChoice, type ChannelChoice, type Destinations } from "./destination-fields";
+import {
+  anyDestination,
+  DestinationFields,
+  NO_DESTINATIONS,
+  OtherPlatformNotes,
+  YouTubeFields,
+  type AccountChoice,
+  type ChannelChoice,
+  type Destinations,
+} from "./destination-fields";
 
 export type { AccountChoice, ChannelChoice } from "./destination-fields";
 
@@ -41,7 +50,7 @@ export function ScheduleForm({
 }) {
   const [destinations, setDestinations] = useState<Destinations>({
     accountIds: accounts.slice(0, 1).map((account) => account.id),
-    ytAccountIds: [],
+    ...NO_DESTINATIONS,
   });
   const [when, setWhen] = useState("");
   const [audioSource, setAudioSource] = useState("unknown");
@@ -49,6 +58,8 @@ export function ScheduleForm({
   const scheduledAt = when ? new Date(when).toISOString() : "";
   const instagram = destinations.accountIds.length > 0;
   const youtube = destinations.ytAccountIds.length > 0;
+  const facebook = destinations.fbPageIds.length > 0;
+  const tiktok = destinations.ttAccountIds.length > 0;
 
   return (
     <ActionForm action={scheduleClipAction} className={styles.panel}>
@@ -60,7 +71,14 @@ export function ScheduleForm({
       </Field>
       {instagram ? <UseBestTime samples={bestTimeSamples} accountId={destinations.accountIds[0]} onPick={setWhen} /> : null}
       <input type="hidden" name="scheduledAt" value={scheduledAt} />
-      <Field label="Caption" hint={youtube ? "Also the YouTube description, with #Shorts added." : undefined}>
+      <Field
+        label="Caption"
+        hint={
+          [youtube ? "Also the YouTube description, with #Shorts added." : "", facebook ? "Also the Facebook Reel's description." : ""]
+            .filter(Boolean)
+            .join(" ") || undefined
+        }
+      >
         <textarea
           name="caption"
           rows={credit ? 5 : 3}
@@ -76,6 +94,7 @@ export function ScheduleForm({
         </p>
       ) : null}
       {youtube ? <YouTubeFields defaultTitle={defaultTitle} /> : null}
+      <OtherPlatformNotes facebook={facebook} tiktok={tiktok} />
       <Field label="Audio source">
         <select name="audioSource" value={audioSource} onChange={(event) => setAudioSource(event.target.value)}>
           <option value="unknown">Unknown</option>
@@ -95,12 +114,13 @@ export function ScheduleForm({
       ) : null}
       <label className={styles.rights}>
         <input type="checkbox" name="aiGenerated" defaultChecked={clipAiGenerated} disabled={clipAiGenerated} /> This video is
-        AI-generated (Instagram shows an AI info label; YouTube is told it has altered or synthetic content)
+        AI-generated (Instagram shows an AI info label; YouTube is told it has altered or synthetic content; Facebook is told
+        it was made with AI; on TikTok, turn on the AI-generated label when you post the draft)
       </label>
       <label className={styles.rights}>
         <input type="checkbox" name="rightsConfirmed" required /> I own or hold a license to this clip&apos;s video and audio
       </label>
-      <SubmitButton disabled={!scheduledAt || (!instagram && !youtube)} pendingLabel="Scheduling…">
+      <SubmitButton disabled={!scheduledAt || !anyDestination(destinations)} pendingLabel="Scheduling…">
         Schedule
       </SubmitButton>
     </ActionForm>

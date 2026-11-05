@@ -7,7 +7,9 @@ import {
   openSecret,
   r2Settings,
   saveR2Settings,
+  saveFacebookSettings,
   saveSettings,
+  saveTikTokSettings,
   saveYouTubeSettings,
   sealSecret,
   type R2SettingsInput,
@@ -25,7 +27,7 @@ function fakeDb(initial: Row | null = null) {
     setting: {
       findUnique: async () => row,
       upsert: async ({ create, update }: { create: Row; update: Row }) => {
-        row = row ? { ...row, ...update } : { metaAppSecret: null, resendApiKey: null, r2SecretAccessKey: null, googleClientSecret: null, ...create };
+        row = row ? { ...row, ...update } : { metaAppSecret: null, resendApiKey: null, r2SecretAccessKey: null, googleClientSecret: null, tiktokClientSecret: null, ...create };
         return row;
       },
     },
@@ -75,6 +77,9 @@ describe("getSettings", () => {
       r2Bucket: null,
       googleClientId: null,
       googleClientSecret: null,
+      fbLoginConfigId: null,
+      tiktokClientKey: null,
+      tiktokClientSecret: null,
     });
   });
 });
@@ -249,5 +254,39 @@ describe("saveYouTubeSettings", () => {
     await saveYouTubeSettings(db, CLIENT);
     await saveYouTubeSettings(db, { googleClientId: "", googleClientSecret: "" });
     expect(await getSettings(db)).toMatchObject({ googleClientId: null, googleClientSecret: null });
+  });
+});
+
+describe("saveFacebookSettings", () => {
+  it("stores the configuration ID, and clears it when empty", async () => {
+    const { db } = fakeDb();
+    await saveFacebookSettings(db, { fbLoginConfigId: " 1234567890 " });
+    expect(await getSettings(db)).toMatchObject({ fbLoginConfigId: "1234567890" });
+    await saveFacebookSettings(db, { fbLoginConfigId: "" });
+    expect(await getSettings(db)).toMatchObject({ fbLoginConfigId: null });
+  });
+
+  it("refuses a configuration ID that is not a number", async () => {
+    await expect(saveFacebookSettings(fakeDb().db, { fbLoginConfigId: "abc" })).rejects.toThrow(/number/);
+  });
+});
+
+describe("saveTikTokSettings", () => {
+  const APP = { tiktokClientKey: "awabc123", tiktokClientSecret: "tt-secret" };
+
+  it("stores the client secret sealed and keeps it when its field is left empty", async () => {
+    const { db, row } = fakeDb();
+    await saveTikTokSettings(db, APP);
+    expect(row()?.tiktokClientSecret).not.toContain("tt-secret");
+    await saveTikTokSettings(db, { ...APP, tiktokClientSecret: "" });
+    expect(await getSettings(db)).toMatchObject(APP);
+  });
+
+  it("refuses half an app and clears both when both are empty", async () => {
+    await expect(saveTikTokSettings(fakeDb().db, { ...APP, tiktokClientSecret: "" })).rejects.toThrow(/both/);
+    const { db } = fakeDb();
+    await saveTikTokSettings(db, APP);
+    await saveTikTokSettings(db, { tiktokClientKey: "", tiktokClientSecret: "" });
+    expect(await getSettings(db)).toMatchObject({ tiktokClientKey: null, tiktokClientSecret: null });
   });
 });

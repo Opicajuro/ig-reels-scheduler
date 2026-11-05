@@ -19,6 +19,8 @@ export const SLIDESHOW_ENGINE_QUEUE = "slideshow-engine";
 export const SLIDESHOW_QUEUE = "slideshow";
 export const YOUTUBE_PUBLISH_QUEUE = "youtube-publish";
 export const YOUTUBE_STATS_QUEUE = "youtube-stats";
+export const FACEBOOK_PUBLISH_QUEUE = "facebook-publish";
+export const TIKTOK_PUBLISH_QUEUE = "tiktok-publish";
 
 // A publish job runs up to 5 times: the first try, then 4 retries 60 seconds apart, doubling each time.
 export const PUBLISH_RETRY_LIMIT = 4;
@@ -87,7 +89,7 @@ async function startBoss(): Promise<PgBoss> {
   await instance.createQueue(MEDIA_QUEUE, keyed);
   await instance.createQueue(INSIGHTS_QUEUE, keyed);
   await instance.createQueue(YOUTUBE_STATS_QUEUE, keyed);
-  for (const name of [PUBLISH_QUEUE, YOUTUBE_PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE, CLIP_RECAPTION_QUEUE, AI_ENGINE_QUEUE, AI_VIDEO_QUEUE, BACKUP_QUEUE, SLIDESHOW_ENGINE_QUEUE, SLIDESHOW_QUEUE]) {
+  for (const name of [PUBLISH_QUEUE, YOUTUBE_PUBLISH_QUEUE, FACEBOOK_PUBLISH_QUEUE, TIKTOK_PUBLISH_QUEUE, TOKEN_REFRESH_QUEUE, OWNER_ALERTS_QUEUE, CLIP_QUEUE, CLIP_RECAPTION_QUEUE, AI_ENGINE_QUEUE, AI_VIDEO_QUEUE, BACKUP_QUEUE, SLIDESHOW_ENGINE_QUEUE, SLIDESHOW_QUEUE]) {
     await instance.createQueue(name);
   }
   return instance;
@@ -114,6 +116,16 @@ export function getPublishQueue(): PublishQueue {
 // 2, 4 and 8 minutes after that, each going on from the stored upload session.
 export function getYouTubePublishQueue(): PublishQueue {
   return publishQueue(YOUTUBE_PUBLISH_QUEUE);
+}
+
+// Facebook Reels and TikTok drafts get the same retries: a rate limit, a 5xx or a dropped connection is tried again a
+// minute later, then 2, 4 and 8 minutes after that, each going on with the stored upload.
+export function getFacebookPublishQueue(): PublishQueue {
+  return publishQueue(FACEBOOK_PUBLISH_QUEUE);
+}
+
+export function getTikTokPublishQueue(): PublishQueue {
+  return publishQueue(TIKTOK_PUBLISH_QUEUE);
 }
 
 // Rendering a long video can take hours, and pg-boss expires a job after 15 minutes by default. A render gets 6 hours.

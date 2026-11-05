@@ -4,15 +4,30 @@ import { Field } from "@/components/field";
 import styles from "../clips.module.css";
 
 export type AccountChoice = { id: string; username: string };
-export type ChannelChoice = { id: string; title: string };
-export type Destinations = { accountIds: string[]; ytAccountIds: string[] };
+// A YouTube channel, a Facebook Page or a TikTok account.
+export type ChannelChoice = { id: string; title: string; platform: "youtube" | "facebook" | "tiktok" };
+export type Destinations = { accountIds: string[]; ytAccountIds: string[]; fbPageIds: string[]; ttAccountIds: string[] };
+
+export const NO_DESTINATIONS: Omit<Destinations, "accountIds"> = { ytAccountIds: [], fbPageIds: [], ttAccountIds: [] };
+
+export function anyDestination(value: Destinations): boolean {
+  return value.accountIds.length + value.ytAccountIds.length + value.fbPageIds.length + value.ttAccountIds.length > 0;
+}
+
+// Each kind of channel: its form field, its list in Destinations and its label.
+const CHANNEL_KINDS = {
+  youtube: { name: "ytAccountId", list: "ytAccountIds", label: "YouTube Shorts" },
+  facebook: { name: "fbPageId", list: "fbPageIds", label: "Facebook Page" },
+  tiktok: { name: "ttAccountId", list: "ttAccountIds", label: "TikTok (draft)" },
+} as const;
 
 function toggle(list: string[], id: string, on: boolean): string[] {
   return on ? [...list, id] : list.filter((item) => item !== id);
 }
 
-// Where a clip goes: a box per Instagram account (accountId) and per YouTube channel (ytAccountId). With a channel
-// ticked, the YouTube choices follow: privacy and whether it is made for kids, which YouTube requires.
+// Where a clip goes: a box per Instagram account (accountId), YouTube channel (ytAccountId), Facebook Page (fbPageId) and
+// TikTok account (ttAccountId). With a YouTube channel ticked, the YouTube choices follow: privacy and whether it is
+// made for kids, which YouTube requires.
 export function DestinationFields({
   accounts,
   channels,
@@ -25,7 +40,11 @@ export function DestinationFields({
   onChange: (value: Destinations) => void;
 }) {
   if (accounts.length === 0 && channels.length === 0) {
-    return <p className={styles.muted}>Connect an Instagram account or a YouTube channel on the Accounts page to schedule.</p>;
+    return (
+      <p className={styles.muted}>
+        Connect an Instagram account, a YouTube channel, a Facebook Page or a TikTok account on the Accounts page to schedule.
+      </p>
+    );
   }
   return (
     <fieldset className={styles.destinations}>
@@ -42,20 +61,21 @@ export function DestinationFields({
           Instagram @{account.username}
         </label>
       ))}
-      {channels.map((channel) => (
-        <label key={channel.id} className={styles.rights}>
-          <input
-            type="checkbox"
-            name="ytAccountId"
-            value={channel.id}
-            checked={value.ytAccountIds.includes(channel.id)}
-            onChange={(event) =>
-              onChange({ ...value, ytAccountIds: toggle(value.ytAccountIds, channel.id, event.target.checked) })
-            }
-          />{" "}
-          YouTube Shorts: {channel.title}
-        </label>
-      ))}
+      {channels.map((channel) => {
+        const kind = CHANNEL_KINDS[channel.platform];
+        return (
+          <label key={channel.id} className={styles.rights}>
+            <input
+              type="checkbox"
+              name={kind.name}
+              value={channel.id}
+              checked={value[kind.list].includes(channel.id)}
+              onChange={(event) => onChange({ ...value, [kind.list]: toggle(value[kind.list], channel.id, event.target.checked) })}
+            />{" "}
+            {kind.label}: {channel.title}
+          </label>
+        );
+      })}
     </fieldset>
   );
 }
@@ -87,5 +107,21 @@ export function YouTubeFields({ defaultTitle }: { defaultTitle?: string }) {
         <input type="radio" name="ytMadeForKids" value="yes" /> Yes, it is made for kids
       </label>
     </fieldset>
+  );
+}
+
+// What happens on Facebook and TikTok, shown once one of them is ticked.
+export function OtherPlatformNotes({ facebook, tiktok }: { facebook: boolean; tiktok: boolean }) {
+  if (!facebook && !tiktok) return null;
+  return (
+    <ul className={styles.muted}>
+      {facebook ? <li>Facebook: published as a Reel on the Page at the publish time, described with the caption. A Reel is 3 to 90 seconds.</li> : null}
+      {tiktok ? (
+        <li>
+          TikTok: sent to the account&apos;s inbox as a draft at the publish time. TikTok notifies you in the app, where you add
+          the caption and post it.
+        </li>
+      ) : null}
+    </ul>
   );
 }

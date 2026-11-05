@@ -10,6 +10,7 @@ import { linksByClip } from "@/lib/links";
 import { describePostError } from "@/lib/meta-errors";
 import { getOwnerId } from "@/lib/owner";
 import { prisma } from "@/lib/prisma";
+import { TIKTOK_SENT, TIKTOK_SENT_LONG } from "@/lib/tiktok";
 import { CancelPostForm, RetryPostForm } from "./post-actions";
 import { PostCalendar } from "./post-calendar";
 import styles from "./scheduled.module.css";
@@ -34,9 +35,11 @@ export default async function ScheduledPage({ searchParams }: PageProps<"/schedu
   const ownerId = await getOwnerId();
 
   const order = tab.id === "upcoming" || tab.id === "publishing" ? "asc" : "desc";
-  const [counts, ytCounts, igPosts, ytPosts] = await Promise.all([
+  const [counts, ytCounts, fbCounts, ttCounts, igPosts, ytPosts, fbPosts, ttPosts] = await Promise.all([
     prisma.post.groupBy({ by: ["status"], where: { account: { ownerId } }, _count: true }),
     prisma.ytPost.groupBy({ by: ["status"], where: { ytAccount: { ownerId } }, _count: true }),
+    prisma.fbPost.groupBy({ by: ["status"], where: { fbPage: { ownerId } }, _count: true }),
+    prisma.ttPost.groupBy({ by: ["status"], where: { ttAccount: { ownerId } }, _count: true }),
     prisma.post.findMany({
       where: { status: { in: tab.statuses }, account: { ownerId } },
       // Upcoming posts soonest first; finished ones newest first.
@@ -52,13 +55,24 @@ export default async function ScheduledPage({ searchParams }: PageProps<"/schedu
       orderBy: { scheduledAt: order },
       include: { ytAccount: { select: { channelTitle: true } } },
     }),
+    prisma.fbPost.findMany({
+      where: { status: { in: tab.statuses }, fbPage: { ownerId } },
+      orderBy: { scheduledAt: order },
+      include: { fbPage: { select: { name: true } } },
+    }),
+    prisma.ttPost.findMany({
+      where: { status: { in: tab.statuses }, ttAccount: { ownerId } },
+      orderBy: { scheduledAt: order },
+      include: { ttAccount: { select: { displayName: true } } },
+    }),
   ]);
   // Where each post's clip was also posted, outside Localirs.
   const elsewhere = await linksByClip(
     prisma,
-    [...igPosts.map((post) => post.media.sourceClipId), ...ytPosts.map((post) => post.sourceClipId)].flatMap((id) =>
-      id ? [id] : [],
-    ),
+    [
+      ...igPosts.map((post) => post.media.sourceClipId),
+      ...[...ytPosts, ...fbPosts, ...ttPosts].map((post) => post.sourceClipId),
+    ].flatMap((id) => (id ? [id] : [])),
   );
   const posts = [
     ...igPosts.map((post) => ({
@@ -103,18 +117,65 @@ export default async function ScheduledPage({ searchParams }: PageProps<"/schedu
         ) : null,
       actions:
         post.status === "scheduled" ? (
-          <CancelPostForm postId={post.id} youtube />
+          <CancelPostForm postId={post.id} platform="youtube" />
         ) : post.status === "failed" ? (
-          <RetryPostForm postId={post.id} youtube />
+          <RetryPostForm postId={post.id} platform="youtube" />
+        ) : null,
+    })),
+    ...fbPosts.map((post) => ({
+      id: post.id,
+      scheduledAt: post.scheduledAt,
+      status: post.status,
+      caption: post.description,
+      aiGenerated: post.aiGenerated,
+      aiTitle: "Published with Facebook's AI-generated flag",
+      destination: `Facebook: ${post.fbPage.name}`,
+      elsewhere: post.sourceClipId ? elsewhere.get(post.sourceClipId) : undefined,
+      details:
+        post.status === "failed" ? (
+          <p className={styles.error}>{post.lastError ?? "Failed for an unknown reason."}</p>
+        ) : post.status === "published" && post.permalink ? (
+          <ExternalLink href={post.permalink} className={styles.permalink}>
+            View on Facebook
+          </ExternalLink>
+        ) : null,
+      actions:
+        post.status === "scheduled" ? (
+          <CancelPostForm postId={post.id} platform="facebook" />
+        ) : post.status === "failed" ? (
+          <RetryPostForm postId={post.id} platform="facebook" />
+        ) : null,
+    })),
+    ...ttPosts.map((post) => ({
+      id: post.id,
+      scheduledAt: post.scheduledAt,
+      status: post.status,
+      statusLabel: post.status === "published" ? TIKTOK_SENT : post.status === "container_created" ? "Uploading" : undefined,
+      caption: post.caption,
+      aiGenerated: post.aiGenerated,
+      aiTitle: "Turn on TikTok's AI-generated label when you post the draft",
+      destination: `TikTok (draft): ${post.ttAccount.displayName}`,
+      elsewhere: post.sourceClipId ? elsewhere.get(post.sourceClipId) : undefined,
+      details:
+        post.status === "failed" ? (
+          <p className={styles.error}>{post.lastError ?? "Failed for an unknown reason."}</p>
+        ) : post.status === "published" ? (
+          <p>{TIKTOK_SENT_LONG}</p>
+        ) : null,
+      actions:
+        post.status === "scheduled" ? (
+          <CancelPostForm postId={post.id} platform="tiktok" />
+        ) : post.status === "failed" ? (
+          <RetryPostForm postId={post.id} platform="tiktok" />
         ) : null,
     })),
   ].sort((a, b) => (order === "asc" ? 1 : -1) * (a.scheduledAt.getTime() - b.scheduledAt.getTime()));
   const countOf = (statuses: PostStatus[]) =>
-    [...counts, ...ytCounts].filter((row) => statuses.includes(row.status)).reduce((sum, row) => sum + row._count, 0);
+    [...counts, ...ytCounts, ...fbCounts, ...ttCounts].filter((row) => statuses.includes(row.status)).reduce((sum, row) => sum + row._count, 0);
 
   return (
     <main>
-      <PageHeader title="Scheduled" description="Your Instagram and YouTube posts: what is coming up, what went out and what failed." />
+      <PageHeader title="Scheduled" description="Your Instagram, YouTube, Facebook and TikTok posts: what is coming up, what went out and what failed." />
       <nav className={styles.views} aria-label="View">
         {[
           { id: "list", label: "List", on: !calendar },

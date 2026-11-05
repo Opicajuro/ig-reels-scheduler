@@ -25,7 +25,9 @@ export type StoredCategory = keyof typeof STORED_CATEGORIES;
 export function storedCategory(key: string): StoredCategory {
   if (key.startsWith("clip-sources/")) return "sources";
   if (key.startsWith("clips/")) return key.endsWith(".base.mp4") ? "captionCopies" : "clips";
-  if (key.startsWith("raw/") || key.startsWith("reels/") || key.startsWith("youtube/")) return "posts";
+  if (key.startsWith("raw/") || key.startsWith("reels/") || key.startsWith("youtube/") || key.startsWith("facebook/") || key.startsWith("tiktok/")) {
+    return "posts";
+  }
   if (key.startsWith("ai-inputs/") || key.startsWith("slideshow-inputs/")) return "pictures";
   return "other";
 }

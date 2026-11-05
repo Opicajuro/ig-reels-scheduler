@@ -26,10 +26,12 @@ const now = new Date("2026-11-04T12:00:00Z");
 const hoursAgo = (hours: number) => new Date(now.getTime() - hours * 60 * 60 * 1000);
 
 // Enough of Prisma for the clean-ups: equality, { in }, { not: null } and { lt } filters.
-function fakeDb(seed: Partial<Record<"media" | "ytPost" | "clipProject" | "clip" | "aiVideoJob" | "slideshowJob" | "backup", Row[]>> = {}) {
+function fakeDb(seed: Partial<Record<"media" | "ytPost" | "fbPost" | "ttPost" | "clipProject" | "clip" | "aiVideoJob" | "slideshowJob" | "backup", Row[]>> = {}) {
   const tables: Record<string, Row[]> = {
     media: [],
     ytPost: [],
+    fbPost: [],
+    ttPost: [],
     clipProject: [],
     clip: [],
     aiVideoJob: [],
@@ -106,6 +108,8 @@ describe("orphaned files", () => {
     fakeDb({
       media: [{ id: "m1", rawKey: "raw/m1.mp4", reelKey: "reels/m1.mp4", coverKey: null }],
       ytPost: [{ id: "y1", videoKey: "youtube/y1.mp4" }],
+      fbPost: [{ id: "f1", videoKey: "facebook/f1.mp4" }],
+      ttPost: [{ id: "t1", videoKey: "tiktok/t1.mp4" }],
       clipProject: [{ id: "p1", sourceKey: "clip-sources/p1.mp4" }],
       clip: [{ id: "c1", storageKey: "clips/p1/c1.v2.mp4", baseKey: "clips/p1/c1.base.mp4" }],
       aiVideoJob: [{ id: "a1", startImageKey: "ai-inputs/a1.png" }],
@@ -121,6 +125,8 @@ describe("orphaned files", () => {
       "raw/m1.mp4",
       "reels/m1.mp4",
       "youtube/y1.mp4",
+      "facebook/f1.mp4",
+      "tiktok/t1.mp4",
       "clip-sources/p1.mp4",
       "clips/p1/c1.v2.mp4",
       "clips/p1/c1.base.mp4",

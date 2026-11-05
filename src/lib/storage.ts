@@ -43,6 +43,15 @@ export function buildYouTubeKey(postId: string): string {
   return `youtube/${postId}.mp4`;
 }
 
+// A Facebook post's and a TikTok post's own copies of their clips.
+export function buildFacebookKey(postId: string): string {
+  return `facebook/${postId}.mp4`;
+}
+
+export function buildTikTokKey(postId: string): string {
+  return `tiktok/${postId}.mp4`;
+}
+
 export function buildClipSourceKey(projectId: string, extension: string): string {
   return `clip-sources/${projectId}${extension.toLowerCase()}`;
 }

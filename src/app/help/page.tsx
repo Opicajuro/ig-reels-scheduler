@@ -27,7 +27,18 @@ const YOUTUBE_INSERT_DOCS = "https://developers.google.com/youtube/v3/docs/video
 const GOOGLE_TOKEN_EXPIRY = "https://developers.google.com/identity/protocols/oauth2#expiration";
 const YOUTUBE_SYNTHETIC = "https://blog.youtube/inside-youtube/our-approach-to-responsible-ai-innovation/";
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/connections";
+const FB_LOGIN_BUSINESS = "https://developers.facebook.com/docs/facebook-login/facebook-login-for-business";
+const FB_ACCESS_LEVELS = "https://developers.facebook.com/docs/graph-api/overview/access-levels";
+const FB_REELS_DOCS = "https://developers.facebook.com/docs/video-api/guides/reels-publishing";
+const FB_REELS_REFERENCE = "https://developers.facebook.com/docs/graph-api/reference/page/video_reels/";
+const FB_LONG_LIVED = "https://developers.facebook.com/docs/facebook-login/guides/access-tokens/get-long-lived";
+const TIKTOK_DEVELOPERS = "https://developers.tiktok.com/apps/";
 const TIKTOK_POSTING_DOCS = "https://developers.tiktok.com/doc/content-posting-api-get-started";
+const TIKTOK_UPLOAD_DOCS = "https://developers.tiktok.com/doc/content-posting-api-get-started-upload-content";
+const TIKTOK_UPLOAD_REFERENCE = "https://developers.tiktok.com/doc/content-posting-api-reference-upload-video";
+const TIKTOK_MEDIA_TRANSFER = "https://developers.tiktok.com/doc/content-posting-api-media-transfer-guide";
+const TIKTOK_LOGIN_DESKTOP = "https://developers.tiktok.com/doc/login-kit-desktop/";
+const TIKTOK_SANDBOX = "https://developers.tiktok.com/doc/add-a-sandbox/";
 const LATEST_RELEASE = "https://github.com/Opicajuro/ig-reels-scheduler/releases/latest";
 
 // Short guides in plain words, and the video guides the owner added in Settings.
@@ -37,14 +48,15 @@ export default async function HelpPage() {
 
   return (
     <main className={styles.page}>
-      <PageHeader title="Help" description="How to make clips, connect Instagram and YouTube, make AI videos and keep Localirs up to date." />
+      <PageHeader title="Help" description="How to make clips, connect Instagram, YouTube, Facebook and TikTok, make AI videos and keep Localirs up to date." />
 
       <nav className={styles.contents} aria-label="On this page">
         <a href="#videos">Video guides</a>
         <a href="#start">Getting started</a>
         <a href="#instagram">Connecting Instagram</a>
         <a href="#youtube">Connecting YouTube</a>
-        <a href="#tiktok">TikTok</a>
+        <a href="#facebook">Connecting Facebook Pages</a>
+        <a href="#tiktok">TikTok drafts</a>
         <a href="#ai">AI video</a>
         <a href="#update">Updating Localirs</a>
         <a href="#logs">Logs</a>
@@ -236,15 +248,138 @@ export default async function HelpPage() {
         </ul>
       </section>
 
-      <section id="tiktok">
-        <h2>TikTok</h2>
+      <section id="facebook">
+        <h2>Connecting Facebook Pages</h2>
         <p>
-          Localirs does not post to TikTok yet. TikTok&apos;s{" "}
-          <ExternalLink href={TIKTOK_POSTING_DOCS}>Content Posting API</ExternalLink> needs an app that has passed
-          TikTok&apos;s audit before its posts can be public: everything an unaudited app posts is visible only to its
-          creator. For now, download clips with <strong>Download for posting (ZIP)</strong>, post them in the TikTok app,
-          and add the link on the clip&apos;s <strong>Links</strong> tab.
+          Localirs publishes Reels to a Facebook Page through the same Meta app as Instagram. Instagram Login, which
+          connects the Instagram accounts, gives no access to Facebook Pages, so the app needs a second product:{" "}
+          <ExternalLink href={FB_LOGIN_BUSINESS}>Facebook Login for Business</ExternalLink>. You need a Page on which your
+          Facebook account can create content.
         </p>
+        <ol>
+          <li>
+            Open your app on the <ExternalLink href={META_APPS}>Meta app dashboard</ExternalLink> and add the{" "}
+            <strong>Facebook Login for Business</strong> product, if it is not there yet. Meta offers it to Business type
+            apps and to apps with a use case that supports it.
+          </li>
+          <li>
+            Under <strong>Facebook Login for Business</strong>, <strong>Settings</strong>, add this address to{" "}
+            <strong>Valid OAuth Redirect URIs</strong>:{" "}
+            <code>{new URL("/api/facebook/callback", requireEnv("APP_URL")).toString()}</code>
+          </li>
+          <li>
+            Under <strong>Configurations</strong>, create a configuration: choose the <strong>User access token</strong>,
+            the <strong>Pages</strong> asset and the permissions <code>pages_show_list</code>,{" "}
+            <code>pages_read_engagement</code> and <code>pages_manage_posts</code>, the three Meta&apos;s{" "}
+            <ExternalLink href={FB_REELS_DOCS}>Reels Publishing API</ExternalLink> asks for. Copy its{" "}
+            <strong>Configuration ID</strong> into <strong>Facebook Pages</strong> on the <Link href="/settings">Settings</Link>{" "}
+            page and save. The app ID and secret are the ones already saved under <strong>Meta app</strong>.
+          </li>
+          <li>
+            On <Link href="/accounts">Accounts</Link>, press <strong>Connect Facebook Page</strong>, log in, choose your
+            Page and allow everything. Back in Localirs, tick the Pages to post to.
+          </li>
+        </ol>
+        <p>Good to know, from Meta&apos;s documentation as of November 2026:</p>
+        <ul>
+          <li>
+            <strong>No App Review for your own Pages.</strong> Meta&apos;s{" "}
+            <ExternalLink href={FB_ACCESS_LEVELS}>access levels</ExternalLink>: Business apps are automatically approved
+            for Standard Access to every permission, and permissions with Standard Access &ldquo;can only be requested from
+            app users who have a role on the requesting app&rdquo;. So as the app&apos;s admin (or a developer or tester
+            you add under App roles), you can connect your own Pages with the app still in Development mode, without App
+            Review. Other people need Advanced Access, which takes App Review and Business Verification.
+          </li>
+          <li>
+            <strong>The login lasts.</strong> Localirs keeps only the Page tokens, made from a long-lived user token, and
+            Meta&apos;s <ExternalLink href={FB_LONG_LIVED}>long-lived token guide</ExternalLink> says those have no expiry
+            date. They stop working if you change your Facebook password, lose your role on the Page or remove the app
+            under Business Integrations in Facebook&apos;s settings; the Page then shows <strong>Needs reconnecting</strong>.
+          </li>
+          <li>
+            <strong>Reels.</strong> A Reel is 3 to 90 seconds long, 9:16, at least 540&times;960 and 24 to 60 frames a
+            second; Localirs clips are 1080&times;1920, and clips outside 3 to 90 seconds are refused when you schedule. A
+            Page can publish 30 Reels through the API in 24 hours; past that the post fails with a message that says so.
+            The caption becomes the Reel&apos;s description.
+          </li>
+          <li>
+            <strong>How the video gets there.</strong> With Cloudflare R2 set up, Facebook downloads the video from a
+            one-hour R2 link, as Instagram does (the API&apos;s <code>file_url</code>); without R2, Localirs uploads the
+            file from this PC. Either way the upload, Facebook&apos;s processing and the publishing are checked until the
+            Reel is live, and its link is shown on Scheduled and on the post&apos;s page.
+          </li>
+          <li>
+            <strong>AI content.</strong> A clip made with AI, or one you tick as AI-generated, is published with the Reels
+            API&apos;s <code>is_ai_generated</code> flag (&ldquo;a boolean flag for developers to self-claim whether the
+            video was created with AI&rdquo;, in the <ExternalLink href={FB_REELS_REFERENCE}>video_reels reference</ExternalLink>).
+          </li>
+        </ul>
+      </section>
+
+      <section id="tiktok">
+        <h2>TikTok drafts</h2>
+        <p>
+          Localirs sends clips to your TikTok inbox as drafts, with TikTok&apos;s{" "}
+          <ExternalLink href={TIKTOK_UPLOAD_DOCS}>Content Posting API upload</ExternalLink>. At the publish time TikTok
+          notifies you in the TikTok app; open the notification, add the caption (shown on the post&apos;s page in
+          Localirs) and post it. It goes through your own TikTok developer app.
+        </p>
+        <ol>
+          <li>
+            Log in at <ExternalLink href={TIKTOK_DEVELOPERS}>TikTok for Developers</ExternalLink> and create an app.
+          </li>
+          <li>
+            Add the <strong>Login Kit</strong> and <strong>Content Posting API</strong> products, and the scopes{" "}
+            <code>user.info.basic</code> and <code>video.upload</code>. Leave Direct Post off: Localirs only sends drafts.
+          </li>
+          <li>
+            In Login Kit, choose the <strong>Desktop</strong> platform, which accepts a <code>http://localhost</code>{" "}
+            address (<ExternalLink href={TIKTOK_LOGIN_DESKTOP}>Login Kit for Desktop</ExternalLink>), and add this redirect
+            URI exactly: <code>{new URL("/api/tiktok/callback", requireEnv("APP_URL")).toString()}</code>
+          </li>
+          <li>
+            Copy the app&apos;s <strong>client key</strong> and <strong>client secret</strong> into <strong>TikTok</strong>{" "}
+            on the <Link href="/settings">Settings</Link> page and save.
+          </li>
+          <li>
+            On <Link href="/accounts">Accounts</Link>, press <strong>Connect TikTok</strong>, log in and allow both
+            permissions.
+          </li>
+        </ol>
+        <p>Good to know, from TikTok&apos;s documentation as of November 2026:</p>
+        <ul>
+          <li>
+            <strong>Review and audit.</strong> The upload guide&apos;s prerequisites are that &ldquo;your app must be
+            approved for the <code>video.upload</code> scope&rdquo; and that the user authorized it. Until TikTok approves
+            the app, use its <ExternalLink href={TIKTOK_SANDBOX}>Sandbox</ExternalLink> and add your TikTok account as a
+            target user. The separate content-sharing audit is about{" "}
+            <ExternalLink href={TIKTOK_POSTING_DOCS}>Direct Post</ExternalLink>, where &ldquo;all content posted by unaudited
+            clients will be restricted to private viewing mode&rdquo;; a draft is posted by you in the TikTok app, where you
+            choose who can see it. If TikTok still answers with an unaudited-app limit (only private accounts, or at most 5
+            accounts a day), the post fails with that message in plain words.
+          </li>
+          <li>
+            <strong>At most 5 drafts waiting.</strong> The{" "}
+            <ExternalLink href={TIKTOK_UPLOAD_REFERENCE}>upload reference</ExternalLink>: &ldquo;There may be at most 5
+            pending shares within any 24-hour period.&rdquo; Post or delete drafts in the app before sending more; past the
+            limit the post fails and <strong>Retry</strong> works later.
+          </li>
+          <li>
+            <strong>Upload.</strong> The video is sent from this PC in chunks of 10&nbsp;MB, by the{" "}
+            <ExternalLink href={TIKTOK_MEDIA_TRANSFER}>Media Transfer Guide</ExternalLink>&apos;s rules (5 to 64&nbsp;MB, the
+            last chunk takes the rest, up to 128&nbsp;MB). Uploading from a link would need a domain verified with TikTok,
+            so Localirs does not use it. An interrupted upload goes on from the chunks TikTok has.
+          </li>
+          <li>
+            <strong>AI content.</strong> TikTok&apos;s draft upload has no AI setting. For a clip made with AI, turn on
+            TikTok&apos;s AI-generated content label when you post the draft; Localirs reminds you on the post&apos;s page.
+          </li>
+          <li>
+            <strong>Login.</strong> TikTok&apos;s access token lasts a day and Localirs renews it; the renewal token lasts a
+            year, after which the account shows <strong>Needs reconnecting</strong>. Remove the access under{" "}
+            <strong>Manage app permissions</strong> in the TikTok app.
+          </li>
+        </ul>
       </section>
 
       <section id="ai">

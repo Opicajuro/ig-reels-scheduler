@@ -22,6 +22,8 @@ model User {
   profileLinks  ProfileLink[]
   guideLinks    GuideLink[]
   ytAccounts    YtAccount[]
+  fbPages       FbPage[]
+  ttAccounts    TtAccount[]
 }
 
 enum AccountStatus {
@@ -202,6 +204,88 @@ model YtInsight {
   fetchedAt DateTime @default(now())
 }
 
+// A Facebook Page connected through Facebook Login for Business on the same Meta app as Instagram. The Page access
+// token, made from a long-lived user token so it does not expire, is sealed with TOKEN_ENC_KEY and removed on
+// disconnect.
+model FbPage {
+  id        String        @id @default(cuid())
+  ownerId   String
+  owner     User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  pageId    String        @unique
+  name      String
+  status    AccountStatus @default(active)
+  pageToken String?
+  createdAt DateTime      @default(now())
+  posts     FbPost[]
+}
+
+// A clip scheduled as a Facebook Reel. container_created means the upload is under way. videoId is the Reel's video,
+// made by the start of the upload, so a retried job goes on with it; fbPostId and permalink are set once it is
+// published.
+model FbPost {
+  id                String     @id @default(cuid())
+  fbPageId          String
+  fbPage            FbPage     @relation(fields: [fbPageId], references: [id], onDelete: Cascade)
+  videoKey          String
+  durationMs        Int
+  sourceProjectId   String?
+  sourceClipId      String?
+  description       String
+  // Sent as is_ai_generated, the Reels API's own AI claim.
+  aiGenerated       Boolean    @default(false)
+  scheduledAt       DateTime
+  status            PostStatus @default(scheduled)
+  queueJobId        String?
+  videoId           String?
+  fbPostId          String?
+  permalink         String?
+  attempts          Int        @default(0)
+  lastError         String?
+  rightsConfirmedAt DateTime?
+  createdAt         DateTime   @default(now())
+}
+
+// A TikTok account connected with the owner's own TikTok developer app (Login Kit). The refresh token and the current
+// access token are sealed with TOKEN_ENC_KEY; TikTok may send a new refresh token with each refresh.
+model TtAccount {
+  id              String        @id @default(cuid())
+  ownerId         String
+  owner           User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  openId          String        @unique
+  displayName     String
+  status          AccountStatus @default(active)
+  refreshToken    String?
+  accessToken     String?
+  accessExpiresAt DateTime?
+  createdAt       DateTime      @default(now())
+  posts           TtPost[]
+}
+
+// A clip sent to a TikTok account's inbox as a draft, which the person finishes and posts in the TikTok app. published
+// means TikTok has put it in the inbox. publishId and uploadUrl are TikTok's upload, so a retried job goes on with it.
+model TtPost {
+  id                String     @id @default(cuid())
+  ttAccountId       String
+  ttAccount         TtAccount  @relation(fields: [ttAccountId], references: [id], onDelete: Cascade)
+  videoKey          String
+  durationMs        Int
+  sourceProjectId   String?
+  sourceClipId      String?
+  // Not sent: an inbox draft has no caption. Shown so it can be pasted in the TikTok app.
+  caption           String
+  // TikTok's draft upload has no AI flag; shown as a reminder to turn on TikTok's AI-generated label in the app.
+  aiGenerated       Boolean    @default(false)
+  scheduledAt       DateTime
+  status            PostStatus @default(scheduled)
+  queueJobId        String?
+  publishId         String?
+  uploadUrl         String?
+  attempts          Int        @default(0)
+  lastError         String?
+  rightsConfirmedAt DateTime?
+  createdAt         DateTime   @default(now())
+}
+
 model Insight {
   id        String   @id @default(cuid())
   postId    String
@@ -379,6 +463,11 @@ model Setting {
   // The owner's own Google Cloud OAuth client, for connecting YouTube channels. The secret is sealed too.
   googleClientId     String?
   googleClientSecret String?
+  // The Facebook Login for Business configuration on the Meta app above, for connecting Facebook Pages.
+  fbLoginConfigId    String?
+  // The owner's own TikTok developer app (Login Kit and Content Posting). The client secret is sealed too.
+  tiktokClientKey    String?
+  tiktokClientSecret String?
   // The look of the app (src/lib/appearance.ts): a design, Night Spring's colour palette, and a colour shift in degrees.
   design            String  @default("night")
   palette           String  @default("default")

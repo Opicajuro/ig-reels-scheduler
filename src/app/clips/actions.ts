@@ -11,13 +11,21 @@ import { parseAudioSource } from "@/lib/rights";
 import { prisma } from "@/lib/prisma";
 import { requireEnv } from "@/lib/env";
 import { requireFreeSpace } from "@/lib/free-space";
-import { getClipQueue, getPublishQueue, getRecaptionJobs, getYouTubePublishQueue } from "@/lib/queues";
+import {
+  getClipQueue,
+  getFacebookPublishQueue,
+  getPublishQueue,
+  getRecaptionJobs,
+  getTikTokPublishQueue,
+  getYouTubePublishQueue,
+} from "@/lib/queues";
 
 function text(formData: FormData, name: string): string {
   return String(formData.get(name) ?? "");
 }
 
-// The destination boxes: Instagram accounts as accountId, YouTube channels as ytAccountId, with the YouTube choices.
+// The destination boxes: Instagram accounts as accountId, YouTube channels as ytAccountId with the YouTube choices,
+// Facebook Pages as fbPageId and TikTok accounts as ttAccountId.
 function destinations(formData: FormData, withTitle: boolean) {
   return {
     accountIds: formData.getAll("accountId").map(String),
@@ -28,11 +36,13 @@ function destinations(formData: FormData, withTitle: boolean) {
       madeForKids: text(formData, "ytMadeForKids"),
       ...(withTitle ? { title: text(formData, "ytTitle") } : {}),
     },
+    facebook: { queue: getFacebookPublishQueue(), fbPageIds: formData.getAll("fbPageId").map(String) },
+    tiktok: { queue: getTikTokPublishQueue(), ttAccountIds: formData.getAll("ttAccountId").map(String) },
   };
 }
 
-function scheduledMessage(result: { posts: unknown[]; ytPosts: unknown[] }): string {
-  const count = result.posts.length + result.ytPosts.length;
+function scheduledMessage(result: { posts: unknown[]; ytPosts: unknown[]; fbPosts: unknown[]; ttPosts: unknown[] }): string {
+  const count = result.posts.length + result.ytPosts.length + result.fbPosts.length + result.ttPosts.length;
   return `Scheduled ${count} ${count === 1 ? "post" : "posts"}`;
 }
 

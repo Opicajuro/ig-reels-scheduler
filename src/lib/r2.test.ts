@@ -53,6 +53,7 @@ function fakeDb(r2: R2Config | null) {
         metaAppSecret: null,
         resendApiKey: null,
         googleClientSecret: null,
+        tiktokClientSecret: null,
       }
     : null;
   return { setting: { findUnique: async () => row } } as unknown as PrismaClient;

@@ -60,6 +60,32 @@ export default async function Home() {
     }),
     prisma.ytAccount.findMany({ where: { ownerId, status: "reauth_required" } }),
   ]);
+  const [fbUpcoming, ttUpcoming, fbFailed, ttFailed, fbReconnect, ttReconnect] = await Promise.all([
+    prisma.fbPost.findMany({
+      where: { status: { in: ["scheduled", "container_created"] }, fbPage: { ownerId } },
+      orderBy: { scheduledAt: "asc" },
+      take: NEXT_POSTS,
+      include: { fbPage: { select: { name: true } } },
+    }),
+    prisma.ttPost.findMany({
+      where: { status: { in: ["scheduled", "container_created"] }, ttAccount: { ownerId } },
+      orderBy: { scheduledAt: "asc" },
+      take: NEXT_POSTS,
+      include: { ttAccount: { select: { displayName: true } } },
+    }),
+    prisma.fbPost.findMany({
+      where: { status: "failed", fbPage: { ownerId } },
+      orderBy: { scheduledAt: "desc" },
+      include: { fbPage: { select: { name: true } } },
+    }),
+    prisma.ttPost.findMany({
+      where: { status: "failed", ttAccount: { ownerId } },
+      orderBy: { scheduledAt: "desc" },
+      include: { ttAccount: { select: { displayName: true } } },
+    }),
+    prisma.fbPage.findMany({ where: { ownerId, status: "reauth_required" } }),
+    prisma.ttAccount.findMany({ where: { ownerId, status: "reauth_required" } }),
+  ]);
   const upcoming = [
     ...igUpcoming.map((post) => ({ ...post, destination: `@${post.account.username}` })),
     ...ytUpcoming.map((post) => ({
@@ -67,6 +93,17 @@ export default async function Home() {
       caption: post.title,
       destination: `YouTube: ${post.ytAccount.channelTitle}`,
       aiTitle: "Disclosed to YouTube as altered or synthetic content",
+    })),
+    ...fbUpcoming.map((post) => ({
+      ...post,
+      caption: post.description,
+      destination: `Facebook: ${post.fbPage.name}`,
+      aiTitle: "Published with Facebook's AI-generated flag",
+    })),
+    ...ttUpcoming.map((post) => ({
+      ...post,
+      destination: `TikTok (draft): ${post.ttAccount.displayName}`,
+      aiTitle: "Turn on TikTok's AI-generated label when you post the draft",
     })),
   ]
     .sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())
@@ -86,13 +123,17 @@ export default async function Home() {
     reconnect.length === 0 &&
     rateLimited.length === 0 &&
     ytFailed.length === 0 &&
-    channels.length === 0;
+    channels.length === 0 &&
+    fbFailed.length === 0 &&
+    ttFailed.length === 0 &&
+    fbReconnect.length === 0 &&
+    ttReconnect.length === 0;
 
   return (
     <main>
       <PageHeader
         title="Localirs"
-        description="Cut long videos into clips and schedule them to Instagram Reels and YouTube Shorts."
+        description="Cut long videos into clips and schedule them to Instagram Reels, YouTube Shorts, Facebook Reels and TikTok drafts."
         actions={
           <ButtonLink href="/clips" variant="primary">
             New clips from a video
@@ -156,6 +197,30 @@ export default async function Home() {
           {ytFailed.map((post) => (
             <li key={post.id}>
               <Link href={`/posts/${post.id}`}>YouTube post to {post.ytAccount.channelTitle}</Link> for{" "}
+              <LocalTime date={post.scheduledAt} /> failed: {post.lastError ?? "Failed for an unknown reason."}
+            </li>
+          ))}
+          {fbReconnect.map((page) => (
+            <li key={page.id}>
+              Facebook Page {page.name} needs to be reconnected before it can publish.{" "}
+              <a href="/api/facebook/connect">Reconnect</a>
+            </li>
+          ))}
+          {ttReconnect.map((account) => (
+            <li key={account.id}>
+              TikTok account {account.displayName} needs to be reconnected before drafts can be sent.{" "}
+              <a href="/api/tiktok/connect">Reconnect</a>
+            </li>
+          ))}
+          {fbFailed.map((post) => (
+            <li key={post.id}>
+              <Link href={`/posts/${post.id}`}>Facebook Reel to {post.fbPage.name}</Link> for <LocalTime date={post.scheduledAt} />{" "}
+              failed: {post.lastError ?? "Failed for an unknown reason."}
+            </li>
+          ))}
+          {ttFailed.map((post) => (
+            <li key={post.id}>
+              <Link href={`/posts/${post.id}`}>TikTok draft to {post.ttAccount.displayName}</Link> for{" "}
               <LocalTime date={post.scheduledAt} /> failed: {post.lastError ?? "Failed for an unknown reason."}
             </li>
           ))}

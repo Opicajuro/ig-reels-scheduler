@@ -7,7 +7,16 @@ import { metaAppConfig } from "@/lib/ig-connect";
 import { mockConnectEnabled } from "@/lib/mock-accounts";
 import { getSettings } from "@/lib/settings";
 import { youTubeAppConfig } from "@/lib/youtube";
-import { disconnectAccountAction, disconnectYouTubeAction, pauseAccountAction, resumeAccountAction } from "./actions";
+import { facebookAppConfig } from "@/lib/facebook";
+import { tikTokAppConfig } from "@/lib/tiktok";
+import {
+  disconnectAccountAction,
+  disconnectFacebookAction,
+  disconnectTikTokAction,
+  disconnectYouTubeAction,
+  pauseAccountAction,
+  resumeAccountAction,
+} from "./actions";
 import { prisma } from "@/lib/prisma";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { Alert } from "@/components/alert";
@@ -26,20 +35,24 @@ export default async function AccountsPage() {
   await connection();
   const ownerId = await getOwnerId();
 
-  const [accounts, channels, settings] = await Promise.all([
+  const [accounts, channels, pages, tiktokAccounts, settings] = await Promise.all([
     prisma.igAccount.findMany({ where: { ownerId }, orderBy: { createdAt: "asc" }, include: { token: true } }),
     prisma.ytAccount.findMany({ where: { ownerId }, orderBy: { createdAt: "asc" } }),
+    prisma.fbPage.findMany({ where: { ownerId }, orderBy: { createdAt: "asc" } }),
+    prisma.ttAccount.findMany({ where: { ownerId }, orderBy: { createdAt: "asc" } }),
     getSettings(prisma),
   ]);
   const metaReady = metaAppConfig(settings, process.env.IG_REDIRECT_URI) !== null;
   const youTubeReady = youTubeAppConfig(settings, process.env.APP_URL) !== null;
+  const facebookReady = facebookAppConfig(settings, process.env.APP_URL) !== null;
+  const tikTokReady = tikTokAppConfig(settings, process.env.APP_URL) !== null;
   const now = new Date();
 
   return (
     <main>
       <PageHeader
         title="Accounts"
-        description="The Instagram accounts and YouTube channels Localirs publishes to."
+        description="The Instagram accounts, YouTube channels, Facebook Pages and TikTok accounts Localirs publishes to."
         actions={
           metaReady ? (
             <ButtonLink href="/api/ig/connect" variant="primary">
@@ -197,6 +210,122 @@ export default async function AccountsPage() {
                       }}
                     >
                       <input type="hidden" name="ytAccountId" value={channel.id} />
+                      <SubmitButton variant="danger" size="sm" pendingLabel="Disconnecting…">
+                        Disconnect
+                      </SubmitButton>
+                    </ActionForm>
+                  ) : null}
+                </div>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className={styles.section}>
+        <h2>Facebook Pages</h2>
+        {facebookReady ? (
+          <ButtonLink href="/api/facebook/connect" variant="primary">
+            Connect Facebook Page
+          </ButtonLink>
+        ) : null}
+      </div>
+      {facebookReady ? null : (
+        <Alert tone="info">
+          Connecting a Facebook Page needs the Meta app with the Facebook Login for Business product added to it, and its
+          configuration ID. Set them up on the <Link href="/settings">Settings</Link> page; the{" "}
+          <Link href="/help#facebook">Help</Link> page shows how.
+        </Alert>
+      )}
+      {pages.length === 0 ? (
+        <EmptyState>No Facebook Page connected yet.</EmptyState>
+      ) : (
+        <ul className={styles.list}>
+          {pages.map((page) => (
+            <li key={page.id}>
+              <Card>
+                <div className={styles.head}>
+                  <h2>{page.name}</h2>
+                  <span className={page.status === "reauth_required" ? styles.warning : styles.muted}>
+                    {STATUS_TEXT[page.status]} · Facebook Page
+                  </span>
+                </div>
+                <div className={styles.actions}>
+                  {page.status !== "active" ? (
+                    facebookReady ? (
+                      <ButtonLink href="/api/facebook/connect" variant="primary" size="sm">
+                        Reconnect
+                      </ButtonLink>
+                    ) : (
+                      <Link href="/settings">Set up Facebook Login for Business to reconnect</Link>
+                    )
+                  ) : null}
+                  {page.status !== "revoked" ? (
+                    <ActionForm
+                      action={disconnectFacebookAction}
+                      confirm={{
+                        message: `Disconnect ${page.name}? Its scheduled posts will be canceled.`,
+                        confirmLabel: "Disconnect",
+                      }}
+                    >
+                      <input type="hidden" name="fbPageId" value={page.id} />
+                      <SubmitButton variant="danger" size="sm" pendingLabel="Disconnecting…">
+                        Disconnect
+                      </SubmitButton>
+                    </ActionForm>
+                  ) : null}
+                </div>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className={styles.section}>
+        <h2>TikTok</h2>
+        {tikTokReady ? (
+          <ButtonLink href="/api/tiktok/connect" variant="primary">
+            Connect TikTok
+          </ButtonLink>
+        ) : null}
+      </div>
+      {tikTokReady ? null : (
+        <Alert tone="info">
+          Sending drafts to TikTok needs your own TikTok developer app. Add its client key and secret on the{" "}
+          <Link href="/settings">Settings</Link> page; the <Link href="/help#tiktok">Help</Link> page shows how to make one.
+        </Alert>
+      )}
+      {tiktokAccounts.length === 0 ? (
+        <EmptyState>No TikTok account connected yet.</EmptyState>
+      ) : (
+        <ul className={styles.list}>
+          {tiktokAccounts.map((account) => (
+            <li key={account.id}>
+              <Card>
+                <div className={styles.head}>
+                  <h2>{account.displayName}</h2>
+                  <span className={account.status === "reauth_required" ? styles.warning : styles.muted}>
+                    {STATUS_TEXT[account.status]} · TikTok (drafts)
+                  </span>
+                </div>
+                <div className={styles.actions}>
+                  {account.status !== "active" ? (
+                    tikTokReady ? (
+                      <ButtonLink href="/api/tiktok/connect" variant="primary" size="sm">
+                        Reconnect
+                      </ButtonLink>
+                    ) : (
+                      <Link href="/settings">Set up the TikTok app to reconnect</Link>
+                    )
+                  ) : null}
+                  {account.status !== "revoked" ? (
+                    <ActionForm
+                      action={disconnectTikTokAction}
+                      confirm={{
+                        message: `Disconnect ${account.displayName}? Its scheduled drafts will be canceled.`,
+                        confirmLabel: "Disconnect",
+                      }}
+                    >
+                      <input type="hidden" name="ttAccountId" value={account.id} />
                       <SubmitButton variant="danger" size="sm" pendingLabel="Disconnecting…">
                         Disconnect
                       </SubmitButton>

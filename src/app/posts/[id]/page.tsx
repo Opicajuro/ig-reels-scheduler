@@ -19,6 +19,8 @@ import { presignDownload } from "@/lib/storage";
 import { CancelPostForm, RetryPostForm } from "../../scheduled/post-actions";
 import { InsightsTable } from "./insights-table";
 import { YouTubePost } from "./youtube-post";
+import { FacebookPost } from "./facebook-post";
+import { TikTokPost } from "./tiktok-post";
 import styles from "./post.module.css";
 
 export const metadata: Metadata = { title: "Post" };
@@ -52,8 +54,15 @@ export default async function PostPage({ params }: PageProps<"/posts/[id]">) {
       where: { id, ytAccount: { ownerId } },
       include: { ytAccount: { select: { channelTitle: true } }, insights: true },
     });
-    if (!ytPost) notFound();
-    return <YouTubePost post={ytPost} />;
+    if (ytPost) return <YouTubePost post={ytPost} />;
+    const fbPost = await prisma.fbPost.findFirst({ where: { id, fbPage: { ownerId } }, include: { fbPage: { select: { name: true } } } });
+    if (fbPost) return <FacebookPost post={fbPost} />;
+    const ttPost = await prisma.ttPost.findFirst({
+      where: { id, ttAccount: { ownerId } },
+      include: { ttAccount: { select: { displayName: true } } },
+    });
+    if (!ttPost) notFound();
+    return <TikTokPost post={ttPost} />;
   }
 
   const videoUrl = post.media.reelKey ? await presignDownload(post.media.reelKey, VIDEO_LINK_SECONDS) : null;

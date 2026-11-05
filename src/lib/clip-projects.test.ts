@@ -37,6 +37,8 @@ function fakeDb(
     posts?: Row[];
     clipLinks?: Row[];
     channels?: Row[];
+    pages?: Row[];
+    tiktoks?: Row[];
   } = {},
 ) {
   const tables: Record<string, Row[]> = {
@@ -48,6 +50,10 @@ function fakeDb(
     clipLink: seed.clipLinks ?? [],
     ytAccount: seed.channels ?? [],
     ytPost: [],
+    fbPage: seed.pages ?? [],
+    fbPost: [],
+    ttAccount: seed.tiktoks ?? [],
+    ttPost: [],
     auditLog: [],
   };
   const relations: Record<string, Record<string, (row: Row) => Row | undefined>> = {
@@ -117,6 +123,10 @@ function fakeDb(
     post: model("post"),
     ytAccount: model("ytAccount"),
     ytPost: model("ytPost"),
+    fbPage: model("fbPage"),
+    fbPost: model("fbPost"),
+    ttAccount: model("ttAccount"),
+    ttPost: model("ttPost"),
     auditLog: model("auditLog"),
   };
   // An interactive transaction: a throw inside it puts every table back as it was.
@@ -1217,6 +1227,158 @@ describe("scheduling to YouTube", () => {
     await expect(scheduleOne(db, q, files.store, { accountIds: ["acc-1"] })).rejects.toThrow("database down");
     expect(q.canceled).toEqual(["ig-job-1", "yt-job-2"]);
     expect(files.removed).toHaveLength(2);
+  });
+});
+
+describe("scheduling to Facebook and TikTok", () => {
+  const HOUR = 60 * 60 * 1000;
+  const account = { id: "acc-1", ownerId: "user-1", status: "active" };
+  const channel = { id: "yt-1", ownerId: "user-1", status: "active" };
+  const page = { id: "fb-1", ownerId: "user-1", status: "active" };
+  const tiktok = { id: "tt-1", ownerId: "user-1", status: "active" };
+  const scheduledAt = new Date(Date.now() + 3 * HOUR).toISOString();
+
+  function queues() {
+    const sent: Array<[string, string]> = [];
+    const canceled: string[] = [];
+    const make = (name: string) => ({
+      send: async (postId: string) => (sent.push([name, postId]), `${name}-job-${sent.length}`),
+      cancel: async (jobId: string) => void canceled.push(jobId),
+    });
+    return { instagram: make("ig"), youtube: make("yt"), facebook: make("fb"), tiktok: make("tt"), sent, canceled };
+  }
+
+  const seeded = (clips: Row[] = [clip()]) =>
+    fakeDb({ projects: [project()], clips, accounts: [account], channels: [channel], pages: [page], tiktoks: [tiktok] });
+
+  function scheduleEverywhere(db: PrismaClient, q: ReturnType<typeof queues>, store: ClipStore, overrides: Record<string, unknown> = {}) {
+    return scheduleClip({
+      db,
+      store,
+      queue: q.instagram,
+      ...owned,
+      clipId: "c1",
+      accountIds: ["acc-1"],
+      youtube: { queue: q.youtube, ytAccountIds: ["yt-1"], privacy: "public", madeForKids: "no", title: "Wait for it" },
+      facebook: { queue: q.facebook, fbPageIds: ["fb-1"] },
+      tiktok: { queue: q.tiktok, ttAccountIds: ["tt-1"] },
+      caption: "Watch to the end",
+      scheduledAt,
+      aiGenerated: false,
+      rightsConfirmed: true,
+      audioSource: "original",
+      now: new Date(),
+      ...overrides,
+    });
+  }
+
+  it("posts one clip to Instagram, YouTube, a Facebook Page and a TikTok inbox together, each with its own copy and job", async () => {
+    const { db, tables } = seeded([clip({ aiGenerated: true })]);
+    const files = fakeStore();
+    const q = queues();
+    const result = await scheduleEverywhere(db, q, files.store);
+
+    expect([result.posts.length, result.ytPosts.length, result.fbPosts.length, result.ttPosts.length]).toEqual([1, 1, 1, 1]);
+    const fb = tables.fbPost[0];
+    expect(fb).toMatchObject({
+      fbPageId: "fb-1",
+      description: "Watch to the end",
+      aiGenerated: true,
+      sourceClipId: "c1",
+      videoKey: `facebook/${fb.id}.mp4`,
+      queueJobId: "fb-job-3",
+    });
+    const tt = tables.ttPost[0];
+    expect(tt).toMatchObject({
+      ttAccountId: "tt-1",
+      caption: "Watch to the end",
+      aiGenerated: true,
+      videoKey: `tiktok/${tt.id}.mp4`,
+      queueJobId: "tt-job-4",
+    });
+    expect(files.copies).toContainEqual(["clips/p1/c1.mp4", `facebook/${fb.id}.mp4`]);
+    expect(files.copies).toContainEqual(["clips/p1/c1.mp4", `tiktok/${tt.id}.mp4`]);
+    expect(q.sent.map(([name]) => name)).toEqual(["ig", "yt", "fb", "tt"]);
+    expect(tables.auditLog.map((log) => log.targetType)).toEqual(["Post", "YtPost", "FbPost", "TtPost"]);
+  });
+
+  it("schedules several clips to Facebook and TikTok only, spaced by the gap, with the credit-carrying caption", async () => {
+    const { db, tables } = seeded([clip(), clip({ id: "c2", name: "clip-002", storageKey: "clips/p1/c2.mp4", description: "Second" })]);
+    const q = queues();
+    const first = Date.now() + 3 * HOUR;
+    await scheduleClips({
+      db,
+      store: fakeStore().store,
+      queue: q.instagram,
+      ...owned,
+      clipIds: ["c1", "c2"],
+      accountIds: [],
+      facebook: { queue: q.facebook, fbPageIds: ["fb-1"] },
+      tiktok: { queue: q.tiktok, ttAccountIds: ["tt-1"] },
+      firstScheduledAt: new Date(first).toISOString(),
+      gapHours: 3,
+      aiGenerated: true,
+      rightsConfirmed: true,
+      audioSource: "original",
+      now: new Date(),
+    });
+
+    expect(tables.post).toEqual([]);
+    expect(tables.fbPost.map((post) => [(post.scheduledAt as Date).getTime(), post.aiGenerated])).toEqual([
+      [first, true],
+      [first + 3 * HOUR, true],
+    ]);
+    expect(tables.ttPost.map((post) => post.caption)).toEqual([expect.any(String), "Second"]);
+  });
+
+  it("refuses a clip outside a Facebook Reel's 3 to 90 seconds and makes nothing anywhere", async () => {
+    for (const length of [2, 91]) {
+      const { db, tables } = seeded([clip({ length })]);
+      const files = fakeStore();
+      const q = queues();
+      await expect(scheduleEverywhere(db, q, files.store)).rejects.toThrow("clip-001: a Facebook Reel is 3 to 90 seconds long");
+      expect([tables.post, tables.ytPost, tables.fbPost, tables.ttPost]).toEqual([[], [], [], []]);
+      expect(files.copies).toEqual([]);
+      expect(q.sent).toEqual([]);
+    }
+  });
+
+  it("refuses a Page or a TikTok account that is not connected or belongs to someone else", async () => {
+    for (const [pages, tiktoks, error] of [
+      [[{ ...page, status: "reauth_required" }], [tiktok], "the Facebook Page is not connected and active"],
+      [[page], [{ ...tiktok, ownerId: "user-2" }], "the TikTok account is not connected and active"],
+    ] as const) {
+      const { db, tables } = fakeDb({ projects: [project()], clips: [clip()], accounts: [account], channels: [channel], pages: [...pages], tiktoks: [...tiktoks] });
+      const q = queues();
+      await expect(scheduleEverywhere(db, q, fakeStore().store)).rejects.toThrow(error);
+      expect(tables.post).toEqual([]);
+      expect(q.sent).toEqual([]);
+    }
+  });
+
+  it("says to choose a destination when none is ticked", async () => {
+    const { db } = seeded();
+    await expect(
+      scheduleEverywhere(db, queues(), fakeStore().store, {
+        accountIds: [],
+        youtube: undefined,
+        facebook: { queue: queues().facebook, fbPageIds: [] },
+        tiktok: undefined,
+      }),
+    ).rejects.toThrow("choose at least one Instagram account, YouTube channel, Facebook Page or TikTok account");
+  });
+
+  it("makes all or none: a TikTok post that cannot be saved undoes every post, job and copy", async () => {
+    const { db, tables } = seeded();
+    (db as unknown as { ttPost: { create: () => Promise<never> } }).ttPost.create = async () => {
+      throw new Error("database down");
+    };
+    const files = fakeStore();
+    const q = queues();
+    await expect(scheduleEverywhere(db, q, files.store)).rejects.toThrow("database down");
+    expect([tables.post, tables.ytPost, tables.fbPost, tables.media]).toEqual([[], [], [], []]);
+    expect(q.canceled).toEqual(["ig-job-1", "yt-job-2", "fb-job-3", "tt-job-4"]);
+    expect(files.removed).toHaveLength(4);
   });
 });
 

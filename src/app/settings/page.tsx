@@ -31,6 +31,8 @@ import { EncoderSection } from "./encoder-section";
 import { EngineProgress } from "./engine-progress";
 import { R2Section } from "./r2-section";
 import { YouTubeSection } from "./youtube-section";
+import { FacebookSection } from "./facebook-section";
+import { TikTokSection } from "./tiktok-section";
 import { SlideshowSection } from "./slideshow-section";
 import { MusicSection } from "./music-section";
 import { BackupsSection } from "./backups-section";
@@ -63,7 +65,9 @@ export default async function SettingsPage() {
       <ActionForm action={saveSettingsAction} className={styles.form}>
         <Card>
           <h2>Meta app</h2>
-          <p className={styles.note}>Needed only to connect Instagram accounts. Making clips works without it.</p>
+          <p className={styles.note}>
+            Needed only to connect Instagram accounts and Facebook Pages. Making clips works without it.
+          </p>
           <div className={styles.fields}>
             <Field label="App ID">
               <input name="metaAppId" defaultValue={settings.metaAppId ?? ""} inputMode="numeric" autoComplete="off" />
@@ -184,6 +188,8 @@ export default async function SettingsPage() {
 
       <R2Section />
       <YouTubeSection />
+      <FacebookSection />
+      <TikTokSection />
 
       <h2 id="ai-video">AI video</h2>
       <AiVideoSection />

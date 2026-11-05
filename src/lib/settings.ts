@@ -14,6 +14,9 @@ export type Settings = {
   r2Bucket: string | null;
   googleClientId: string | null;
   googleClientSecret: string | null;
+  fbLoginConfigId: string | null;
+  tiktokClientKey: string | null;
+  tiktokClientSecret: string | null;
 };
 
 // What the settings form sends. An empty secret keeps the saved one, so the page never has to send a secret back.
@@ -63,6 +66,9 @@ export async function getSettings(db: PrismaClient): Promise<Settings> {
       r2Bucket: null,
       googleClientId: null,
       googleClientSecret: null,
+      fbLoginConfigId: null,
+      tiktokClientKey: null,
+      tiktokClientSecret: null,
     };
   }
   return {
@@ -77,6 +83,9 @@ export async function getSettings(db: PrismaClient): Promise<Settings> {
     r2Bucket: row.r2Bucket,
     googleClientId: row.googleClientId,
     googleClientSecret: row.googleClientSecret === null ? null : openSecret(row.googleClientSecret, loadTokenKey()),
+    fbLoginConfigId: row.fbLoginConfigId,
+    tiktokClientKey: row.tiktokClientKey,
+    tiktokClientSecret: row.tiktokClientSecret === null ? null : openSecret(row.tiktokClientSecret, loadTokenKey()),
   };
 }
 
@@ -176,6 +185,42 @@ export async function saveYouTubeSettings(db: PrismaClient, input: YouTubeSettin
   const data = {
     googleClientId,
     ...(googleClientSecret === null ? {} : { googleClientSecret: sealSecret(googleClientSecret, loadTokenKey()) }),
+  };
+  await db.setting.upsert({ where: { id: SETTINGS_ID }, create: { id: SETTINGS_ID, ...data }, update: data });
+}
+
+// The Facebook Login for Business configuration ID, or empty to turn Facebook Pages off. It is not secret.
+export async function saveFacebookSettings(db: PrismaClient, input: { fbLoginConfigId: string }): Promise<void> {
+  const fbLoginConfigId = orNull(input.fbLoginConfigId);
+  if (fbLoginConfigId !== null && !/^\d+$/.test(fbLoginConfigId)) {
+    throw new UserError("a Facebook Login for Business configuration ID is a number, shown under Configurations");
+  }
+  const data = { fbLoginConfigId };
+  await db.setting.upsert({ where: { id: SETTINGS_ID }, create: { id: SETTINGS_ID, ...data }, update: data });
+}
+
+// What the TikTok form sends. An empty client secret keeps the saved one.
+export type TikTokSettingsInput = { tiktokClientKey: string; tiktokClientSecret: string };
+
+// Both values, or none to turn TikTok off.
+export async function saveTikTokSettings(db: PrismaClient, input: TikTokSettingsInput): Promise<void> {
+  const tiktokClientKey = orNull(input.tiktokClientKey);
+  const tiktokClientSecret = orNull(input.tiktokClientSecret);
+
+  if (tiktokClientKey === null && tiktokClientSecret === null) {
+    const data = { tiktokClientKey: null, tiktokClientSecret: null };
+    await db.setting.upsert({ where: { id: SETTINGS_ID }, create: { id: SETTINGS_ID, ...data }, update: data });
+    return;
+  }
+
+  const saved = await db.setting.findUnique({ where: { id: SETTINGS_ID } });
+  const hasSecret = tiktokClientSecret !== null || Boolean(saved?.tiktokClientSecret);
+  if (tiktokClientKey === null || !hasSecret) throw new UserError("TikTok needs both the client key and the client secret");
+  if (!/^\w+$/.test(tiktokClientKey)) throw new UserError("a TikTok client key is letters and digits, shown on the app's page");
+
+  const data = {
+    tiktokClientKey,
+    ...(tiktokClientSecret === null ? {} : { tiktokClientSecret: sealSecret(tiktokClientSecret, loadTokenKey()) }),
   };
   await db.setting.upsert({ where: { id: SETTINGS_ID }, create: { id: SETTINGS_ID, ...data }, update: data });
 }

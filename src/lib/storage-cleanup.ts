@@ -26,9 +26,11 @@ function total(sizes: number[]): Plan {
 // Every storage key a database row points at: posts' videos, projects' sources, clips and their caption-edit copies,
 // AI videos' start pictures and slideshows' photos.
 export async function referencedKeys(db: PrismaClient): Promise<Set<string>> {
-  const [media, ytPosts, projects, clips, videos, shows] = await Promise.all([
+  const [media, ytPosts, fbPosts, ttPosts, projects, clips, videos, shows] = await Promise.all([
     db.media.findMany({ select: { rawKey: true, reelKey: true, coverKey: true } }),
     db.ytPost.findMany({ select: { videoKey: true } }),
+    db.fbPost.findMany({ select: { videoKey: true } }),
+    db.ttPost.findMany({ select: { videoKey: true } }),
     db.clipProject.findMany({ select: { sourceKey: true } }),
     db.clip.findMany({ select: { storageKey: true, baseKey: true } }),
     db.aiVideoJob.findMany({ select: { startImageKey: true } }),
@@ -37,6 +39,8 @@ export async function referencedKeys(db: PrismaClient): Promise<Set<string>> {
   const keys = [
     ...media.flatMap((row) => [row.rawKey, row.reelKey, row.coverKey]),
     ...ytPosts.map((row) => row.videoKey),
+    ...fbPosts.map((row) => row.videoKey),
+    ...ttPosts.map((row) => row.videoKey),
     ...projects.map((row) => row.sourceKey),
     ...clips.flatMap((row) => [row.storageKey, row.baseKey]),
     ...videos.map((row) => row.startImageKey),

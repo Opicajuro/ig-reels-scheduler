@@ -39,8 +39,8 @@ export async function YouTubePost({
           <>
             <StatusBadge status={post.status} label={post.status === "container_created" ? "Uploading" : undefined} />
             {post.aiGenerated ? <AiBadge title="Disclosed to YouTube as altered or synthetic content" /> : null}
-            {post.status === "scheduled" ? <CancelPostForm postId={post.id} youtube /> : null}
-            {post.status === "failed" ? <RetryPostForm postId={post.id} youtube /> : null}
+            {post.status === "scheduled" ? <CancelPostForm postId={post.id} platform="youtube" /> : null}
+            {post.status === "failed" ? <RetryPostForm postId={post.id} platform="youtube" /> : null}
           </>
         }
       />

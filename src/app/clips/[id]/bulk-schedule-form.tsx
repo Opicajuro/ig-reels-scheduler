@@ -8,7 +8,16 @@ import { AiBadge } from "@/components/ai-badge";
 import { Field } from "@/components/field";
 import { LocalTime } from "@/components/local-time";
 import styles from "../clips.module.css";
-import { DestinationFields, YouTubeFields, type AccountChoice, type ChannelChoice, type Destinations } from "./destination-fields";
+import {
+  anyDestination,
+  DestinationFields,
+  NO_DESTINATIONS,
+  OtherPlatformNotes,
+  YouTubeFields,
+  type AccountChoice,
+  type ChannelChoice,
+  type Destinations,
+} from "./destination-fields";
 
 export type SelectedClip = { id: string; name: string; caption: string; youTubeTitle: string; aiGenerated: boolean };
 
@@ -34,10 +43,12 @@ export function BulkScheduleForm({
 }) {
   const [destinations, setDestinations] = useState<Destinations>({
     accountIds: accounts.slice(0, 1).map((account) => account.id),
-    ytAccountIds: [],
+    ...NO_DESTINATIONS,
   });
   const instagram = destinations.accountIds.length > 0;
   const youtube = destinations.ytAccountIds.length > 0;
+  const facebook = destinations.fbPageIds.length > 0;
+  const tiktok = destinations.ttAccountIds.length > 0;
   const [when, setWhen] = useState("");
   const [gapHours, setGapHours] = useState("24");
   const [audioSource, setAudioSource] = useState("unknown");
@@ -104,6 +115,7 @@ export function BulkScheduleForm({
         ))}
       </ol>
       {youtube ? <YouTubeFields /> : null}
+      <OtherPlatformNotes facebook={facebook} tiktok={tiktok} />
       <Field label="Audio source">
         <select name="audioSource" value={audioSource} onChange={(event) => setAudioSource(event.target.value)}>
           <option value="unknown">Unknown</option>
@@ -128,13 +140,14 @@ export function BulkScheduleForm({
           checked={aiGenerated}
           onChange={(event) => setAiGenerated(event.target.checked)}
         />{" "}
-        These videos are AI-generated (Instagram shows an AI info label; YouTube is told they have altered or synthetic content)
+        These videos are AI-generated (Instagram shows an AI info label; YouTube is told they have altered or synthetic
+        content; Facebook is told they were made with AI; on TikTok, turn on the AI-generated label when you post the drafts)
         {clips.some((clip) => clip.aiGenerated) ? ". Clips made with AI always carry it." : null}
       </label>
       <label className={styles.rights}>
         <input type="checkbox" name="rightsConfirmed" required /> I own or hold a license to these clips&apos; video and audio
       </label>
-      <SubmitButton variant="primary" disabled={!scheduledAt || (!instagram && !youtube)} pendingLabel="Scheduling…">
+      <SubmitButton variant="primary" disabled={!scheduledAt || !anyDestination(destinations)} pendingLabel="Scheduling…">
         Schedule {clips.length} {clips.length === 1 ? "clip" : "clips"}
       </SubmitButton>
     </ActionForm>

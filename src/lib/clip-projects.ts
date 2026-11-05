@@ -24,7 +24,15 @@ import { parseHighlightsJson } from "./highlights";
 import type { ClipQueue, PublishQueue, RecaptionQueue } from "./queues";
 import { checkRights, type AudioSourceValue } from "./rights";
 import { publishJobRunAt } from "./scheduling";
-import { buildClipBaseKey, buildClipKey, buildClipSourceKey, buildReelKey, buildYouTubeKey } from "./storage";
+import {
+  buildClipBaseKey,
+  buildClipKey,
+  buildClipSourceKey,
+  buildFacebookKey,
+  buildReelKey,
+  buildTikTokKey,
+  buildYouTubeKey,
+} from "./storage";
 import { checkEditedWords, parseClipWords } from "./caption-words";
 import { DEFAULT_MUSIC_VOLUME, parseMusicChoice, withCredit } from "./music-library";
 import { BASE_CUT_REMOVED, SOURCE_DELETED } from "./storage-messages";
@@ -32,6 +40,9 @@ import { UserError } from "./user-error";
 import { parseCropMode } from "@/clip-engine/crop.js";
 import { checkYouTubePost, shortsDescription } from "./youtube";
 import { youTubeJobRunAt } from "./youtube-posts";
+import { checkFacebookReel } from "./facebook";
+import { facebookJobRunAt } from "./facebook-posts";
+import { tikTokJobRunAt } from "./tiktok-posts";
 
 export const SOURCE_CONTENT_TYPES: Record<string, string> = {
   ".mp4": "video/mp4",
@@ -612,6 +623,8 @@ export async function startRecaption({
   }
 }
 
+const NO_DESTINATION = "choose at least one Instagram account, YouTube channel, Facebook Page or TikTok account";
+
 // Checks one post's time before anything is made.
 function checkTime(scheduledAt: Date, now: Date) {
   if (Number.isNaN(scheduledAt.getTime())) throw new UserError("the publish time is not valid");
@@ -659,6 +672,30 @@ async function checkYouTubeTarget(db: PrismaClient, ownerId: string, youtube: Yo
   return { privacy, madeForKids: youtube.madeForKids === "yes" };
 }
 
+// Where a clip goes on Facebook (Reels on Pages) and TikTok (drafts in the account's inbox). Each post has its own job,
+// run at its publish time.
+export type FacebookTarget = { queue: PublishQueue; fbPageIds: string[] };
+export type TikTokTarget = { queue: PublishQueue; ttAccountIds: string[] };
+
+async function checkFacebookTarget(db: PrismaClient, ownerId: string, facebook: FacebookTarget) {
+  for (const fbPageId of facebook.fbPageIds) {
+    const page = await db.fbPage.findFirst({ where: { id: fbPageId, ownerId, status: "active" } });
+    if (!page) throw new UserError("the Facebook Page is not connected and active");
+  }
+}
+
+async function checkTikTokTarget(db: PrismaClient, ownerId: string, tiktok: TikTokTarget) {
+  for (const ttAccountId of tiktok.ttAccountIds) {
+    const account = await db.ttAccount.findFirst({ where: { id: ttAccountId, ownerId, status: "active" } });
+    if (!account) throw new UserError("the TikTok account is not connected and active");
+  }
+}
+
+function checkFacebookClip(clip: { name: string; length: number }) {
+  const problems = checkFacebookReel({ seconds: clip.length });
+  if (problems.length > 0) throw new UserError(`${clip.name}: ${problems.join("; ")}`);
+}
+
 // A clip's YouTube title and description, checked against YouTube's limits and the Shorts rules.
 function youTubeText(clip: { name: string; length: number }, title: string, caption: string) {
   const description = shortsDescription(caption);
@@ -690,6 +727,32 @@ type YouTubePlan = {
   madeForKids: boolean;
 };
 
+type FacebookPlan = {
+  fbPageId: string;
+  clip: ClipRef;
+  description: string;
+  scheduledAt: Date;
+  aiGenerated: boolean;
+};
+
+type TikTokPlan = {
+  ttAccountId: string;
+  clip: ClipRef;
+  caption: string;
+  scheduledAt: Date;
+  aiGenerated: boolean;
+};
+
+// The other destinations' posts and their queues, for createClipPosts.
+type OtherPlans = {
+  ytQueue: PublishQueue | null;
+  ytPosts: YouTubePlan[];
+  fbQueue: PublishQueue | null;
+  fbPosts: FacebookPlan[];
+  ttQueue: PublishQueue | null;
+  ttPosts: TikTokPlan[];
+};
+
 // Makes checked posts all or none. Each clip is copied to the post's own key (a reel key for Instagram, a YouTube key),
 // so deleting the clip or the account later leaves the other untouched. The jobs are queued with the posts' ids before
 // one transaction creates every media, post and rights record; if anything fails, the jobs are canceled and the copies
@@ -699,28 +762,40 @@ async function createClipPosts({
   store,
   queue,
   ytQueue,
+  fbQueue,
+  ttQueue,
   ownerId,
   audioSource,
   now,
   posts,
   ytPosts,
+  fbPosts,
+  ttPosts,
 }: {
   db: PrismaClient;
   store: ClipStore;
   queue: PublishQueue;
-  ytQueue: PublishQueue | null;
   ownerId: string;
   audioSource: AudioSourceValue;
   now: Date;
   posts: InstagramPlan[];
-  ytPosts: YouTubePlan[];
-}) {
+} & OtherPlans) {
   const planned = posts.map((post) => ({ ...post, mediaId: randomUUID(), postId: randomUUID() }));
   const ytPlanned = ytPosts.map((post) => {
     const postId = randomUUID();
     return { ...post, postId, videoKey: buildYouTubeKey(postId) };
   });
+  const fbPlanned = fbPosts.map((post) => {
+    const postId = randomUUID();
+    return { ...post, postId, videoKey: buildFacebookKey(postId) };
+  });
+  const ttPlanned = ttPosts.map((post) => {
+    const postId = randomUUID();
+    return { ...post, postId, videoKey: buildTikTokKey(postId) };
+  });
   if (ytPlanned.length > 0 && !ytQueue) throw new Error("YouTube posts need the youtube-publish queue");
+  if (fbPlanned.length > 0 && !fbQueue) throw new Error("Facebook posts need the facebook-publish queue");
+  if (ttPlanned.length > 0 && !ttQueue) throw new Error("TikTok posts need the tiktok-publish queue");
   const copied: string[] = [];
   const jobs: Array<{ queue: PublishQueue; id: string }> = [];
   try {
@@ -729,7 +804,7 @@ async function createClipPosts({
       await store.copy(item.clip.storageKey, reelKey);
       copied.push(reelKey);
     }
-    for (const item of ytPlanned) {
+    for (const item of [...ytPlanned, ...fbPlanned, ...ttPlanned]) {
       await store.copy(item.clip.storageKey, item.videoKey);
       copied.push(item.videoKey);
     }
@@ -739,6 +814,20 @@ async function createClipPosts({
     for (const item of ytPlanned) {
       const yt = ytQueue as PublishQueue;
       jobs.push({ queue: yt, id: await yt.send(item.postId, youTubeJobRunAt(item.scheduledAt, now)) });
+    }
+    const fbJobs: string[] = [];
+    for (const item of fbPlanned) {
+      const fb = fbQueue as PublishQueue;
+      const id = await fb.send(item.postId, facebookJobRunAt(item.scheduledAt, now));
+      jobs.push({ queue: fb, id });
+      fbJobs.push(id);
+    }
+    const ttJobs: string[] = [];
+    for (const item of ttPlanned) {
+      const tt = ttQueue as PublishQueue;
+      const id = await tt.send(item.postId, tikTokJobRunAt(item.scheduledAt, now));
+      jobs.push({ queue: tt, id });
+      ttJobs.push(id);
     }
     return await db.$transaction(async (tx) => {
       const created = [];
@@ -819,7 +908,51 @@ async function createClipPosts({
         });
         ytCreated.push(post);
       }
-      return { posts: created, ytPosts: ytCreated };
+      const fbCreated = [];
+      for (const [index, item] of fbPlanned.entries()) {
+        const post = await tx.fbPost.create({
+          data: {
+            id: item.postId,
+            fbPageId: item.fbPageId,
+            videoKey: item.videoKey,
+            durationMs: item.clip.length * 1000,
+            sourceProjectId: item.clip.projectId,
+            sourceClipId: item.clip.id,
+            description: item.description,
+            aiGenerated: item.aiGenerated,
+            scheduledAt: item.scheduledAt,
+            rightsConfirmedAt: now,
+            queueJobId: fbJobs[index],
+          },
+        });
+        await tx.auditLog.create({
+          data: { actorId: ownerId, action: "rights_confirmed", targetType: "FbPost", targetId: post.id, data: { audioSource } },
+        });
+        fbCreated.push(post);
+      }
+      const ttCreated = [];
+      for (const [index, item] of ttPlanned.entries()) {
+        const post = await tx.ttPost.create({
+          data: {
+            id: item.postId,
+            ttAccountId: item.ttAccountId,
+            videoKey: item.videoKey,
+            durationMs: item.clip.length * 1000,
+            sourceProjectId: item.clip.projectId,
+            sourceClipId: item.clip.id,
+            caption: item.caption,
+            aiGenerated: item.aiGenerated,
+            scheduledAt: item.scheduledAt,
+            rightsConfirmedAt: now,
+            queueJobId: ttJobs[index],
+          },
+        });
+        await tx.auditLog.create({
+          data: { actorId: ownerId, action: "rights_confirmed", targetType: "TtPost", targetId: post.id, data: { audioSource } },
+        });
+        ttCreated.push(post);
+      }
+      return { posts: created, ytPosts: ytCreated, fbPosts: fbCreated, ttPosts: ttCreated };
     });
   } catch (err) {
     for (const job of jobs) await job.queue.cancel(job.id);
@@ -828,9 +961,10 @@ async function createClipPosts({
   }
 }
 
-// Posts a clip to Instagram accounts and YouTube channels, at least one of them. A clip made with AI always carries
-// Instagram's AI info label and YouTube's altered or synthetic content disclosure; aiGenerated adds them to any other
-// clip. The caption is the YouTube description too, with #Shorts.
+// Posts a clip to Instagram accounts, YouTube channels, Facebook Pages and TikTok inboxes, at least one of them. A clip
+// made with AI always carries Instagram's AI info label, YouTube's altered or synthetic content disclosure and the
+// Facebook Reel's AI claim; aiGenerated adds them to any other clip. The caption is the YouTube description too, with
+// #Shorts, and the Facebook Reel's description.
 export async function scheduleClip({
   db,
   store,
@@ -839,6 +973,8 @@ export async function scheduleClip({
   clipId,
   accountIds,
   youtube,
+  facebook,
+  tiktok,
   caption,
   scheduledAt,
   aiGenerated,
@@ -853,6 +989,8 @@ export async function scheduleClip({
   clipId: string;
   accountIds: string[];
   youtube?: YouTubeTarget;
+  facebook?: FacebookTarget;
+  tiktok?: TikTokTarget;
   caption: string;
   scheduledAt: string;
   aiGenerated: boolean;
@@ -862,11 +1000,15 @@ export async function scheduleClip({
 }) {
   const igIds = [...new Set(accountIds)];
   const ytIds = [...new Set(youtube?.ytAccountIds ?? [])];
-  if (igIds.length === 0 && ytIds.length === 0) throw new UserError("choose at least one Instagram account or YouTube channel");
+  const fbIds = [...new Set(facebook?.fbPageIds ?? [])];
+  const ttIds = [...new Set(tiktok?.ttAccountIds ?? [])];
+  if (igIds.length + ytIds.length + fbIds.length + ttIds.length === 0) throw new UserError(NO_DESTINATION);
   const clip = await ownedClip(db, ownerId, clipId);
   if (clip.project.status === "rendering") throw new UserError("clips are rendering for this project");
   await activeAccounts(db, ownerId, igIds);
   const ytChoice = youtube && ytIds.length > 0 ? await checkYouTubeTarget(db, ownerId, youtube) : null;
+  if (facebook && fbIds.length > 0) await checkFacebookTarget(db, ownerId, { ...facebook, fbPageIds: fbIds });
+  if (tiktok && ttIds.length > 0) await checkTikTokTarget(db, ownerId, { ...tiktok, ttAccountIds: ttIds });
 
   // Safe-clip gate: nothing is copied or created until the operator confirms the clip's rights.
   const rights = checkRights({ rightsConfirmed, audioSource, siblingAccountCount: 0 });
@@ -887,11 +1029,29 @@ export async function scheduleClip({
     const text = youTubeText(clip, youtube?.title ?? clip.title ?? clip.name, caption);
     for (const ytAccountId of ytIds) ytPosts.push({ ytAccountId, clip, ...text, scheduledAt: at, aiGenerated: ai, ...ytChoice });
   }
+  if (fbIds.length > 0) checkFacebookClip(clip);
+  const fbPosts = fbIds.map((fbPageId) => ({ fbPageId, clip, description: caption, scheduledAt: at, aiGenerated: ai }));
+  const ttPosts = ttIds.map((ttAccountId) => ({ ttAccountId, clip, caption, scheduledAt: at, aiGenerated: ai }));
 
-  return createClipPosts({ db, store, queue, ytQueue: youtube?.queue ?? null, ownerId, audioSource, now, posts, ytPosts });
+  return createClipPosts({
+    db,
+    store,
+    queue,
+    ownerId,
+    audioSource,
+    now,
+    posts,
+    ytQueue: youtube?.queue ?? null,
+    ytPosts,
+    fbQueue: facebook?.queue ?? null,
+    fbPosts,
+    ttQueue: tiktok?.queue ?? null,
+    ttPosts,
+  });
 }
 
-// Posts several clips to Instagram accounts and YouTube channels under one rights confirmation. Every check runs before
+// Posts several clips to Instagram accounts, YouTube channels, Facebook Pages and TikTok inboxes under one rights
+// confirmation. Every check runs before
 // the first post is made, and the posts are made all or none. Clip i is published at the first time plus i gaps, on
 // every destination. Clips made with AI always carry the AI label and disclosure; aiGenerated adds them to the others.
 export async function scheduleClips({
@@ -902,6 +1062,8 @@ export async function scheduleClips({
   clipIds,
   accountIds,
   youtube,
+  facebook,
+  tiktok,
   firstScheduledAt,
   gapHours,
   aiGenerated,
@@ -916,6 +1078,8 @@ export async function scheduleClips({
   clipIds: string[];
   accountIds: string[];
   youtube?: YouTubeTarget;
+  facebook?: FacebookTarget;
+  tiktok?: TikTokTarget;
   firstScheduledAt: string;
   gapHours: number;
   aiGenerated: boolean;
@@ -927,7 +1091,9 @@ export async function scheduleClips({
   if (ids.length === 0) throw new UserError("select at least one clip");
   const igIds = [...new Set(accountIds)];
   const ytIds = [...new Set(youtube?.ytAccountIds ?? [])];
-  if (igIds.length === 0 && ytIds.length === 0) throw new UserError("choose at least one Instagram account or YouTube channel");
+  const fbIds = [...new Set(facebook?.fbPageIds ?? [])];
+  const ttIds = [...new Set(tiktok?.ttAccountIds ?? [])];
+  if (igIds.length + ytIds.length + fbIds.length + ttIds.length === 0) throw new UserError(NO_DESTINATION);
   if (!Number.isInteger(gapHours) || gapHours < 1 || gapHours > 720) {
     throw new UserError("the gap between posts must be a whole number of hours from 1 to 720");
   }
@@ -943,10 +1109,14 @@ export async function scheduleClips({
   if (clips.some((clip) => clip.project.status === "rendering")) throw new UserError("clips are rendering for this project");
   await activeAccounts(db, ownerId, igIds);
   const ytChoice = youtube && ytIds.length > 0 ? await checkYouTubeTarget(db, ownerId, youtube) : null;
+  if (facebook && fbIds.length > 0) await checkFacebookTarget(db, ownerId, { ...facebook, fbPageIds: fbIds });
+  if (tiktok && ttIds.length > 0) await checkTikTokTarget(db, ownerId, { ...tiktok, ttAccountIds: ttIds });
 
   const byId = new Map(clips.map((clip) => [clip.id, clip]));
   const posts: InstagramPlan[] = [];
   const ytPosts: YouTubePlan[] = [];
+  const fbPosts: FacebookPlan[] = [];
+  const ttPosts: TikTokPlan[] = [];
   for (const [index, clipId] of ids.entries()) {
     const clip = byId.get(clipId);
     if (!clip) throw new UserError("clip not found");
@@ -964,9 +1134,26 @@ export async function scheduleClips({
       const text = youTubeText(clip, clip.title || clip.name, caption);
       for (const ytAccountId of ytIds) ytPosts.push({ ytAccountId, clip, ...text, scheduledAt, aiGenerated: ai, ...ytChoice });
     }
+    if (fbIds.length > 0) checkFacebookClip(clip);
+    for (const fbPageId of fbIds) fbPosts.push({ fbPageId, clip, description: caption, scheduledAt, aiGenerated: ai });
+    for (const ttAccountId of ttIds) ttPosts.push({ ttAccountId, clip, caption, scheduledAt, aiGenerated: ai });
   }
 
-  return createClipPosts({ db, store, queue, ytQueue: youtube?.queue ?? null, ownerId, audioSource, now, posts, ytPosts });
+  return createClipPosts({
+    db,
+    store,
+    queue,
+    ownerId,
+    audioSource,
+    now,
+    posts,
+    ytQueue: youtube?.queue ?? null,
+    ytPosts,
+    fbQueue: facebook?.queue ?? null,
+    fbPosts,
+    ttQueue: tiktok?.queue ?? null,
+    ttPosts,
+  });
 }
 
 // Other accounts that already have a live post (scheduled, in progress, or published) made from this clip project.
