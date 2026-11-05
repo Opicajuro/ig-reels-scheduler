@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fillerIndexes, FPS, tightenClip, tightenedTime } from "./pacing.js";
+import { cutTimes, fillerIndexes, FPS, tightenClip, tightenedTime } from "./pacing.js";
 import { CROSSFADE_SECONDS, overlayList, renderClip, tightenFilters } from "./ffmpeg.js";
 
 const word = (text, start, end) => ({ text, startMs: start * 1000, endMs: end * 1000 });
@@ -196,4 +196,14 @@ test("a tightened render shows the source picture at the mapped time", async () 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("cutTimes: the joins between kept pieces, in the tightened clip's time", () => {
+  const keep = [
+    { start: 0, end: 2 },
+    { start: 3, end: 4.5 },
+    { start: 6, end: 7 },
+  ];
+  assert.deepEqual(cutTimes(keep), [2, 3.5]);
+  assert.deepEqual(cutTimes([{ start: 1, end: 5 }]), []);
 });

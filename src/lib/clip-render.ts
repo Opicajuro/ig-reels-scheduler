@@ -32,8 +32,10 @@ import { transcribeWithWhisper } from "./whisper";
 import { mixBackgroundMusic } from "@/clip-engine/music.js";
 import { musicFile } from "./music-files";
 import { parseTranscript, validateHighlights, type Highlight, type Word } from "./highlights";
-import { clipLines, clipWords, parseClipWords } from "./caption-words";
-import { tightenClip } from "@/clip-engine/pacing.js";
+import { clipLines, clipWords, parseClipWords, type ClipWord } from "./caption-words";
+import { cutTimes, tightenClip } from "@/clip-engine/pacing.js";
+import { mixSoundEffects } from "@/clip-engine/sound-effects.js";
+import { automaticSounds, parseClipSounds, type ClipSound } from "./clip-sounds";
 import { SOURCE_DELETED } from "./storage-messages";
 import { parseCropMode, type Crop } from "@/clip-engine/crop.js";
 import { followCrop } from "@/clip-engine/follow.js";
@@ -42,10 +44,11 @@ import { loadDetectors } from "@/clip-engine/subject.js";
 // Thrown by a render's write once the render is cancelled, to stop it.
 class RenderCancelled extends Error {}
 
-type Finish = Pick<ClipProject, "progressBar" | "musicTrack" | "musicVolume">;
+type Finish = Pick<ClipProject, "progressBar" | "musicTrack" | "musicVolume" | "sfxHook" | "sfxCaptions" | "sfxCuts">;
 
-// The music file is looked up before the first clip is made.
+// The music file and the automatic sounds' files are looked up before the first clip is made.
 function finishOptions(project: Finish) {
+  for (const sound of [project.sfxHook, project.sfxCaptions, project.sfxCuts]) if (sound) musicFile(sound);
   return {
     progressColor: project.progressBar ? videoColor(project.progressBar) : null,
     music: project.musicTrack ? musicFile(project.musicTrack) : null,
@@ -54,8 +57,8 @@ function finishOptions(project: Finish) {
 }
 
 // The finishing step of every clip: lays the captions, hook, end card and progress bar over the cut from input, then
-// mixes in the music. A render cuts from the source; drawing a clip's captions again starts from its kept cut. Returns
-// the finished file.
+// mixes in the music and then the sound effects. A render cuts from the source; drawing a clip's captions or sounds
+// again starts from its kept cut. Returns the finished file.
 async function finishClip({
   input,
   output,
@@ -66,6 +69,7 @@ async function finishClip({
   endCard,
   tightened,
   crop,
+  sounds,
   options,
 }: {
   input: string;
@@ -79,13 +83,39 @@ async function finishClip({
   tightened: ReturnType<typeof tightenClip> | null;
   // How the picture is cropped from the source; a kept cut is already cropped, and keeps the centre.
   crop: Crop;
+  // The automatic and the clip's own sound effects, in the finished clip's time.
+  sounds: ClipSound[];
   options: ReturnType<typeof finishOptions>;
 }): Promise<string> {
   await renderClip({ input, output, start, length, overlay, hook, endCard, progressColor: options.progressColor, tightened, crop });
-  if (!options.music) return output;
-  const finished = output.replace(/\.mp4$/, "-music.mp4");
-  await mixBackgroundMusic({ input: output, music: options.music, volume: options.musicVolume, output: finished });
-  return finished;
+  let finished = output;
+  if (options.music) {
+    finished = output.replace(/\.mp4$/, "-music.mp4");
+    await mixBackgroundMusic({ input: output, music: options.music, volume: options.musicVolume, output: finished });
+  }
+  if (sounds.length === 0) return finished;
+  const withSounds = output.replace(/\.mp4$/, "-sounds.mp4");
+  await mixSoundEffects({
+    input: finished,
+    sounds: sounds.map((sound) => ({ file: musicFile(sound.sound), time: sound.time, volume: sound.volume })),
+    output: withSounds,
+  });
+  return withSounds;
+}
+
+// A clip's sounds: its project's automatic ones, by its hook, caption lines and jump cuts, and its own.
+function clipSounds(
+  project: Pick<ClipProject, "sfxHook" | "sfxCaptions" | "sfxCuts">,
+  { hook, words, cuts, own }: { hook: boolean; words: ClipWord[] | null; cuts: number[]; own: ClipSound[] },
+): ClipSound[] {
+  const lineStarts = words ? clipLines(words).map((line) => line.startMs / 1000) : [];
+  return [...automaticSounds({ project, hook, lineStarts, cuts }), ...own];
+}
+
+function storedCuts(value: Prisma.JsonValue | null): number[] {
+  if (value === null) return [];
+  if (!Array.isArray(value) || !value.every((time) => typeof time === "number")) throw new Error("the clip's cuts are not a list of times");
+  return value as number[];
 }
 
 export function clipName(index: number): string {
@@ -279,32 +309,38 @@ export async function renderClipProject({
       const crop: Crop = detectors
         ? await followCrop({ input: sourcePath, start: clip.start, length: clip.length, detectors })
         : { mode: cropMode as "centre" | "fit" };
+      // Tightened, both are the tightened clip's: the words in its time, without the cut fillers.
+      const keptWords = !captionWords
+        ? null
+        : cut
+          ? clipWords(cut.words, 0, cut.length)
+          : clipWords(captionWords, clip.start, clip.length);
+      const cuts = cut ? cutTimes(cut.keep) : null;
+      const hook = titles.hooks.get(clipId) ?? null;
       const finished = await finishClip({
         input: sourcePath,
         output: path.join(workDir, `${clipId}.mp4`),
         start: clip.start,
         length: clip.length,
         overlay: overlays?.get(clipId) ?? null,
-        hook: titles.hooks.get(clipId) ?? null,
+        hook,
         endCard: titles.endCard,
         tightened: cut,
         crop,
+        sounds: clipSounds(project, { hook: hook !== null, words: keptWords, cuts: cuts ?? [], own: [] }),
         options,
       });
 
       // The key comes from the planned clip id, so a clip uploaded just before an interruption is overwritten.
       const storageKey = buildClipKey(projectId, clipId);
       await store.upload(storageKey, finished, "video/mp4");
-      // A captioned clip keeps its words and its cut without captions, so its captions can be edited and drawn again.
-      // Tightened, both are the tightened clip's: the words in its time, without the cut fillers. The cut has the clip's
-      // crop, so captions drawn again over it show the same picture.
-      let baseKey: string | null = null;
-      if (captionWords) {
-        const base = path.join(workDir, `${clipId}-base.mp4`);
-        await renderClip({ input: sourcePath, output: base, start: clip.start, length: clip.length, overlay: null, tightened: cut, crop });
-        baseKey = buildClipBaseKey(projectId, clipId);
-        await store.upload(baseKey, base, "video/mp4");
-      }
+      // Every clip keeps its cut without captions or sounds, and a captioned clip its words, so its captions can be
+      // edited and its sounds changed, then drawn again over the cut. Tightened, the cut is the tightened clip's. It has
+      // the clip's crop, so what is drawn again over it shows the same picture.
+      const base = path.join(workDir, `${clipId}-base.mp4`);
+      await renderClip({ input: sourcePath, output: base, start: clip.start, length: clip.length, overlay: null, tightened: cut, crop });
+      const baseKey = buildClipBaseKey(projectId, clipId);
+      await store.upload(baseKey, base, "video/mp4");
       await db.clip.create({
         data: {
           id: clipId,
@@ -315,11 +351,8 @@ export async function renderClipProject({
           storageKey,
           title: clip.title ?? null,
           musicTrack: project.musicTrack,
-          words: !captionWords
-            ? Prisma.DbNull
-            : cut
-              ? clipWords(cut.words, 0, cut.length)
-              : clipWords(captionWords, clip.start, clip.length),
+          words: keptWords ?? Prisma.DbNull,
+          cuts: cuts ?? Prisma.DbNull,
           baseKey,
         },
       });
@@ -407,9 +440,10 @@ async function drawTitleStills(
   await renderTitleStills({ serveUrl, stills, chromePath: requireEnv("CHROME_PATH"), font: project.captionFont });
 }
 
-// Draws a clip's captions again from the words edited in its Captions tab (recaptionWords), over the cut it kept, with
-// its project's caption look, hook, end card, progress bar and music, then replaces the clip's file with the next
-// version. Cancelling clears the clip's recaption id: from then on its writes do not land and nothing is replaced.
+// Draws a clip again over the cut it kept, with the words edited in its Captions tab (recaptionWords) or the sounds
+// edited in its Sounds tab (recaptionSounds), and otherwise its own words and sounds, with its project's caption look,
+// hook, end card, progress bar, music and automatic sounds, then replaces the clip's file with the next version.
+// Cancelling clears the clip's recaption id: from then on its writes do not land and nothing is replaced.
 export async function recaptionClip({
   db,
   store,
@@ -438,22 +472,31 @@ export async function recaptionClip({
 
   try {
     if (!clip.baseKey) throw new Error(`clip ${clipId} has no cut kept without captions`);
-    if (clip.recaptionWords === null) throw new Error(`clip ${clipId} has no edited words to draw`);
-    const words = parseClipWords(clip.recaptionWords);
+    if (clip.recaptionWords === null && clip.recaptionSounds === null) throw new Error(`clip ${clipId} has no edited words or sounds to draw`);
+    const edited = clip.recaptionWords ?? clip.words;
+    const words = edited === null ? null : parseClipWords(edited);
+    const ownSounds = clip.recaptionSounds ?? clip.sounds;
+    const sounds = ownSounds === null ? [] : parseClipSounds(ownSounds, clip.length);
     const options = finishOptions(project);
 
     await step("Downloading the clip");
     const base = path.join(workDir, "base.mp4");
     await store.downloadTo(clip.baseKey, base);
 
-    await step("Drawing captions");
     const planned: PlannedClip = { clipId, start: 0, length: clip.length, ...(clip.title ? { title: clip.title } : {}) };
     const titles = titleStills(project, [planned], path.join(workDir, "titles"));
-    const overlays = await withCaptionBundle(async (serveUrl: string) => {
-      const lists = await captionOverlays(clipLines(words), [planned], path.join(workDir, "captions"), project, serveUrl);
-      await drawTitleStills(titles.stills, path.join(workDir, "titles"), project, serveUrl);
-      return lists;
-    });
+    const drawing = words !== null || titles.stills.length > 0;
+    if (drawing) await step(words ? "Drawing captions" : "Drawing the hook and end card");
+    const overlays = !drawing
+      ? null
+      : await withCaptionBundle(async (serveUrl: string) => {
+          const lists = words
+            ? await captionOverlays(clipLines(words), [planned], path.join(workDir, "captions"), project, serveUrl)
+            : null;
+          await drawTitleStills(titles.stills, path.join(workDir, "titles"), project, serveUrl);
+          return lists;
+        });
+    const hook = titles.hooks.get(clipId) ?? null;
 
     await step("Making the clip");
     const finished = await finishClip({
@@ -461,11 +504,12 @@ export async function recaptionClip({
       output: path.join(workDir, "clip.mp4"),
       start: 0,
       length: clip.length,
-      overlay: overlays.get(clipId) ?? null,
-      hook: titles.hooks.get(clipId) ?? null,
+      overlay: overlays?.get(clipId) ?? null,
+      hook,
       endCard: titles.endCard,
       tightened: null,
       crop: { mode: "centre" },
+      sounds: clipSounds(project, { hook: hook !== null, words, cuts: storedCuts(clip.cuts), own: sounds }),
       options,
     });
 
@@ -478,11 +522,13 @@ export async function recaptionClip({
       data: {
         storageKey,
         version,
-        words,
+        words: words ?? Prisma.DbNull,
+        sounds: sounds.length > 0 ? sounds : Prisma.DbNull,
         musicTrack: project.musicTrack,
         recaptionId: null,
         recaptionStep: null,
         recaptionWords: Prisma.DbNull,
+        recaptionSounds: Prisma.DbNull,
         recaptionError: null,
       },
     });
@@ -496,7 +542,13 @@ export async function recaptionClip({
     const message = err instanceof Error ? err.message : String(err);
     await db.clip.updateMany({
       where: { id: clipId, recaptionId },
-      data: { recaptionId: null, recaptionStep: null, recaptionWords: Prisma.DbNull, recaptionError: message },
+      data: {
+        recaptionId: null,
+        recaptionStep: null,
+        recaptionWords: Prisma.DbNull,
+        recaptionSounds: Prisma.DbNull,
+        recaptionError: message,
+      },
     });
     throw err;
   }

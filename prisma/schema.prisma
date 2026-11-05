@@ -372,6 +372,11 @@ model ClipProject {
   // fits stretches too wide to crop) or "fit" (the whole frame over a blurred fill). Projects made before it keep
   // "centre".
   crop            String            @default("follow")
+  // Sound effects the clips get by themselves, each a sound effect id from the library or null for off: as the hook
+  // title shows, as each caption line shows, and at each jump cut of a tightened clip.
+  sfxHook         String?
+  sfxCaptions     String?
+  sfxCuts         String?
   // The owner's one "AI videos" project, which holds the AI videos made on the Clips page. It has no source video.
   aiVideos        Boolean           @default(false)
   // The owner's one "Slideshows" project, which holds the slideshows made on the Clips page. It has no source video.
@@ -401,13 +406,20 @@ model Clip {
   words       Json?
   // The clip's cut without captions or extras, kept with its words so the captions can be drawn again without cutting.
   baseKey     String?
+  // The clip's own sound effects, [{ time, sound, volume }]: seconds from the clip's start, a sound effect id from the
+  // library and 0-100. Null for none.
+  sounds      Json?
+  // A tightened clip's jump cuts, in seconds from its start, for the sound on cuts when it is drawn again.
+  cuts        Json?
   // Counts the clip's files: a re-render uploads the next version under a new key.
   version     Int         @default(1)
-  // While its captions are re-rendered: the job's id, its step and the edited words it draws. recaptionError is why
-  // the last one failed.
+  // While its captions or sounds are re-rendered: the job's id, its step and the edited words it draws. recaptionError
+  // is why the last one failed.
   recaptionId    String?
   recaptionStep  String?
   recaptionWords Json?
+  // The edited sounds the re-render mixes in, when it was started from the Sounds tab.
+  recaptionSounds Json?
   recaptionError String?
   // "Write with AI": while the script writer writes the clip's title, description and hashtags, the job's id (shared by
   // the clips of one bulk job) and its step. aiSuggestion is what it wrote, { title, description, hashtags }, kept until

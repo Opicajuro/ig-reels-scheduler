@@ -1,0 +1,42 @@
+.sounds {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.row select {
+  flex: 1;
+  min-width: 8rem;
+}
+
+.toggle {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* A sound's choices only matter while its box is on. Hidden, not removed, so they stay. */
+.auto:has(input[type="checkbox"]:not(:checked)) .row {
+  display: none;
+}
+
+.auto {
+  display: grid;
+  gap: var(--space-1);
+}

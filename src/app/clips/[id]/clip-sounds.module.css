@@ -1,0 +1,67 @@
+.add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.add select {
+  flex: 1;
+  min-width: 8rem;
+}
+
+.list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.item select {
+  flex: 1;
+  min-width: 8rem;
+}
+
+.item > button {
+  padding: 0 var(--space-2);
+  border: 0;
+  color: var(--muted);
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.item > button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.time {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.time input {
+  width: 5.5rem;
+}
+
+.volume {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.volume input {
+  width: 7rem;
+}

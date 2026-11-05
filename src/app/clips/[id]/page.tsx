@@ -28,6 +28,8 @@ import { ProjectTitle } from "./project-title";
 import { VIDEO_COLOR_NAMES, videoColor } from "@/clip-engine/remotion/caption-presets.js";
 import { END_CARD_TEXT_MAX, HOOK_TEXT_MAX } from "@/clip-engine/helpers.js";
 import { parseClipWords } from "@/lib/caption-words";
+import { parseClipSounds } from "@/lib/clip-sounds";
+import { AutoSoundsPicker } from "@/components/sound-effects";
 import { lengthLimits, parseTranscript, validateHighlights, wordsInRange } from "@/lib/highlights";
 import { NoAiGpuNote } from "@/components/no-ai-gpu-note";
 import { getAiEngine } from "@/lib/ai-engine";
@@ -201,6 +203,8 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
       version: clip.version,
       words: clip.recaptionWords !== null ? parseClipWords(clip.recaptionWords) : clip.words === null ? null : parseClipWords(clip.words),
       baseCutRemoved: clip.words !== null && clip.baseKey === null,
+      baseCut: clip.baseKey !== null,
+      sounds: parseClipSounds(clip.recaptionSounds ?? clip.sounds ?? [], clip.length),
       recaption: clip.recaptionId ? { step: clip.recaptionStep } : null,
       recaptionError: clip.recaptionError,
       firstWords: wordsInRange(transcript, clip).split(" ").slice(0, FIRST_WORDS).join(" "),
@@ -446,6 +450,8 @@ export default async function ClipProjectPage({ params }: { params: Promise<{ id
                 <input type="text" name="endCardText" maxLength={END_CARD_TEXT_MAX} defaultValue={project.endCardText ?? ""} />
               </Field>
               <MusicPicker track={project.musicTrack} volume={project.musicVolume} />
+              <span className={styles.label}>Sound effects</span>
+              <AutoSoundsPicker sfxHook={project.sfxHook} sfxCaptions={project.sfxCaptions} sfxCuts={project.sfxCuts} />
             </div>
             <div className={styles.settingsFooter}>
               {review ? (

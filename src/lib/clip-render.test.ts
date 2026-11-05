@@ -1,11 +1,11 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { copyFile, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Prisma, type PrismaClient } from "@/generated/prisma/client";
 import { END_CARD_SECONDS, HOOK_SECONDS, probeDuration } from "@/clip-engine/ffmpeg.js";
-import { tightenClip } from "@/clip-engine/pacing.js";
+import { cutTimes, tightenClip } from "@/clip-engine/pacing.js";
 import { recaptionClip, renderClipProject } from "./clip-render";
 import type { ClipStore } from "./clip-store";
 import { validateHighlights } from "./highlights";
@@ -27,7 +27,19 @@ beforeAll(async () => {
   root = path.join(workRoot, "bucket");
   await mkdir(path.join(root, "clip-sources"), { recursive: true });
   await copyFile(fixture, path.join(root, "clip-sources", "p1.mp4"));
+  // The library's sound effects used here, as short tones of their own pitch, so each can be found in a clip's sound.
+  const music = path.join(workRoot, "music");
+  await mkdir(music);
+  for (const [id, frequency] of Object.entries(SOUND_TONES)) {
+    execFileSync("ffmpeg", [
+      "-v", "error", "-y", "-f", "lavfi", "-i", `sine=frequency=${frequency}:sample_rate=48000:duration=0.3`,
+      "-af", "volume=4", "-c:a", "libvorbis", path.join(music, `${id}.ogg`),
+    ]);
+  }
+  process.env.MUSIC_DIR = music;
 });
+
+const SOUND_TONES = { "kenney-weapon-change": 2000, "kenney-placement": 3000, "kenney-tile-swap": 1500, "kenney-coin": 2500 };
 
 afterAll(async () => {
   await rm(workRoot, { recursive: true, force: true });
@@ -64,7 +76,10 @@ function fakeDb(project: Row, onStep: (step: string, project: Row) => void = () 
         })),
       findUnique: async ({ where }: { where: { id: string } }) => {
         const clip = state.clips.find((row) => row.id === where.id);
-        return clip ? { ...clip, project: { ...state.project } } : null;
+        if (!clip) return null;
+        // As read back: a JSON null is null, and a column never written is null too.
+        const read = Object.fromEntries(Object.entries(clip).map(([key, value]) => [key, value === Prisma.DbNull ? null : value]));
+        return { sounds: null, cuts: null, recaptionWords: null, recaptionSounds: null, ...read, project: { ...state.project } };
       },
       updateMany: async ({ where, data }: { where: Row; data: Row }) => {
         const clip = state.clips.find((row) => Object.entries(where).every(([key, value]) => row[key] === value));
@@ -134,6 +149,9 @@ function renderingProject(overrides: Row = {}): Row {
     hookText: null,
     progressBar: null,
     endCardText: null,
+    sfxHook: null,
+    sfxCaptions: null,
+    sfxCuts: null,
     captionPosition: "bottom",
     captionUppercase: false,
     captionHighlight: "yellow",
@@ -163,7 +181,8 @@ describe("renderClipProject", () => {
       expect(duration).toBeGreaterThan(14);
       expect(duration).toBeLessThan(19);
     }
-    expect(bucket.uploaded).toHaveLength(2);
+    // Each clip and its kept cut.
+    expect(bucket.uploaded).toHaveLength(4);
   });
 
   it("records each step in order and clears it when done", async () => {
@@ -230,7 +249,7 @@ describe("renderClipProject", () => {
     await renderClipProject({ db: deps.db, store: bucket.store, projectId: "p1", renderId: "r1", workDir: work });
 
     expect(bucket.removed).toEqual([]);
-    expect(bucket.uploaded).toEqual(["clips/p1/c2.mp4"]);
+    expect(bucket.uploaded).toEqual(["clips/p1/c2.mp4", "clips/p1/c2.base.mp4"]);
     expect(deps.state.clips.map((clip) => [clip.id, clip.name, clip.start])).toEqual([
       ["c1", "clip-001", 0],
       ["c2", "clip-002", 20],
@@ -708,6 +727,124 @@ describe("recaptionClip", () => {
     expect(String(clip.recaptionError)).not.toBe("");
   });
 });
+
+describe("sound effects", () => {
+  const transcript = [
+    { text: "hello", startMs: 3000, endMs: 3600 },
+    { text: "world", startMs: 3600, endMs: 4200 },
+  ];
+
+  async function render(project: Row) {
+    const deps = fakeDb(renderingProject({ durationSeconds: 40, highlights: [{ start: 2, length: 15 }], ...project }));
+    const bucket = bucketStore(root);
+    await renderClipProject({ db: deps.db, store: bucket.store, projectId: "p1", renderId: "r1", workDir: await mkdtemp(path.join(workRoot, "run-")) });
+    deps.state.steps = [];
+    return { deps, bucket, clip: deps.state.clips[0] };
+  }
+
+  // How much louder the sound's tone is in the clip than in its kept cut, which has no sounds, from seconds on.
+  function louder(clip: Row, sound: keyof typeof SOUND_TONES, seconds: number) {
+    const from = seconds + 0.03;
+    const to = seconds + 0.2;
+    const tone = SOUND_TONES[sound];
+    return bandLevel(path.join(root, String(clip.storageKey)), tone, from, to) - bandLevel(path.join(root, String(clip.baseKey)), tone, from, to);
+  }
+
+  it("whooshes as the hook title shows and pops as each caption line shows, at the same length", async () => {
+    const { clip } = await render({
+      withCaptions: true,
+      captionPreset: "box",
+      transcript,
+      hookMode: "text",
+      hookText: "Wait for it",
+      sfxHook: "kenney-weapon-change",
+      sfxCaptions: "kenney-placement",
+    });
+    // The one caption line starts 1 s in: "hello" at 3 s of a clip from 2 s.
+    const whoosh = louder(clip, "kenney-weapon-change", 0);
+    const pop = louder(clip, "kenney-placement", 1);
+    expect(whoosh).toBeGreaterThan(20);
+    expect(pop).toBeGreaterThan(20);
+    // Not at other times: the pop is not at 0 s (where only the whoosh's edges reach its pitch), the whoosh not at 5 s.
+    expect(pop - louder(clip, "kenney-placement", 0)).toBeGreaterThan(10);
+    expect(whoosh - louder(clip, "kenney-weapon-change", 5)).toBeGreaterThan(10);
+    const length = await probeDuration(path.join(root, String(clip.storageKey)));
+    expect(Math.abs(length - (await probeDuration(path.join(root, String(clip.baseKey)))))).toBeLessThan(0.1);
+  });
+
+  it("ticks at a tightened clip's jump cuts, and keeps them for drawing it again", async () => {
+    const spoken = [
+      { text: "hello", startMs: 3000, endMs: 3600 },
+      { text: "um", startMs: 3600, endMs: 4000 },
+      { text: "world", startMs: 6000, endMs: 6600 },
+    ];
+    const { deps, bucket, clip } = await render({ tightenPacing: true, transcript: spoken, sfxCuts: "kenney-tile-swap" });
+    const cuts = cutTimes(tightenClip(spoken, 2, 15).keep);
+    expect(cuts.length).toBeGreaterThan(0);
+    expect(clip.cuts).toEqual(cuts);
+    expect(louder(clip, "kenney-tile-swap", cuts[0])).toBeGreaterThan(20);
+
+    // Drawn again with a sound of its own, the ticks stay where the cuts are.
+    Object.assign(clip, { version: 1, recaptionId: "x1", recaptionSounds: [{ time: 0.1, sound: "kenney-coin", volume: 100 }] });
+    await recaptionClip({ db: deps.db, store: bucket.store, clipId: String(clip.id), recaptionId: "x1", workDir: await mkdtemp(path.join(workRoot, "run-")) });
+    expect(clip.version).toBe(2);
+    expect(louder(clip, "kenney-tile-swap", cuts[0])).toBeGreaterThan(20);
+    expect(louder(clip, "kenney-coin", 0.1)).toBeGreaterThan(20);
+  });
+
+  it("re-renders a clip without captions with its own sounds over its kept cut", async () => {
+    const { deps, bucket, clip } = await render({});
+    expect(clip.words).toBe(Prisma.DbNull);
+    expect(clip.baseKey).toBe(`clips/p1/${clip.id}.base.mp4`);
+    const sounds = [{ time: 5, sound: "kenney-coin", volume: 100 }];
+    Object.assign(clip, { version: 1, recaptionId: "x1", recaptionSounds: sounds, recaptionStep: null, recaptionError: null });
+    bucket.downloaded.length = 0;
+
+    await recaptionClip({ db: deps.db, store: bucket.store, clipId: String(clip.id), recaptionId: "x1", workDir: await mkdtemp(path.join(workRoot, "run-")) });
+
+    expect(bucket.downloaded).toEqual([`clips/p1/${clip.id}.base.mp4`]);
+    expect(deps.state.steps).toEqual(["Downloading the clip", "Making the clip", "Saving"]);
+    expect(clip).toMatchObject({
+      storageKey: `clips/p1/${clip.id}.v2.mp4`,
+      version: 2,
+      sounds,
+      words: Prisma.DbNull,
+      recaptionId: null,
+      recaptionSounds: Prisma.DbNull,
+      recaptionError: null,
+    });
+    const coin = louder(clip, "kenney-coin", 5);
+    expect(coin).toBeGreaterThan(20);
+    expect(coin - louder(clip, "kenney-coin", 2)).toBeGreaterThan(10);
+    const length = await probeDuration(path.join(root, String(clip.storageKey)));
+    expect(Math.abs(length - (await probeDuration(path.join(root, String(clip.baseKey)))))).toBeLessThan(0.1);
+  });
+
+  it("keeps a clip's own sounds when its captions are drawn again", async () => {
+    const sounds = [{ time: 6, sound: "kenney-coin", volume: 80 }];
+    const { deps, bucket, clip } = await render({ withCaptions: true, captionPreset: "box", transcript });
+    const edited = [{ text: "WWWW", startMs: 1000, endMs: 1600, lineStart: true }];
+    Object.assign(clip, { version: 1, sounds, recaptionId: "x1", recaptionWords: edited });
+
+    await recaptionClip({ db: deps.db, store: bucket.store, clipId: String(clip.id), recaptionId: "x1", workDir: await mkdtemp(path.join(workRoot, "run-")) });
+
+    expect(clip).toMatchObject({ version: 2, words: edited, sounds });
+    expect(louder(clip, "kenney-coin", 6)).toBeGreaterThan(20);
+  });
+});
+
+// The mean level (dB) of one frequency band of file between from and to seconds.
+function bandLevel(file: string, frequency: number, from: number, to: number) {
+  const band = `bandpass=f=${frequency}:width_type=h:w=40`;
+  const result = spawnSync(
+    "ffmpeg",
+    ["-v", "info", "-ss", String(from), "-t", String(to - from), "-i", file, "-af", `${band},${band},${band},volumedetect`, "-f", "null", "-"],
+    { encoding: "utf8" },
+  );
+  const match = /mean_volume: (-?[\d.]+) dB/.exec(result.stderr);
+  if (!match) throw new Error(`no level for ${file}: ${result.stderr.slice(-500)}`);
+  return Number(match[1]);
+}
 
 // The frame at seconds as gray rows y to y + height.
 function grayRows(file: string, seconds: number, y: number, height: number) {

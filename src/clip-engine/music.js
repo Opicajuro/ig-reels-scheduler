@@ -14,7 +14,7 @@ const DUCK_RATIO = 20;
 const ATTACK_MS = 20;
 const RELEASE_MS = 300;
 
-function run(command, args) {
+export function run(command, args) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { windowsHide: true });
     let stdout = "";
@@ -50,7 +50,8 @@ export function musicMixFilter({ length, volume, withSound }) {
   ].join(";");
 }
 
-async function probe(file) {
+// The file's length in seconds, and whether it has sound.
+export async function probe(file) {
   const stdout = await run("ffprobe", ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", file]);
   const info = JSON.parse(stdout);
   const length = Number(info.format?.duration);
