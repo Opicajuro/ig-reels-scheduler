@@ -117,3 +117,8 @@ export function tightenedTime(keep, seconds) {
   }
   return before;
 }
+
+// Where the tightened clip jumps from one kept piece to the next, in seconds of its own time (ms precision).
+export function cutTimes(keep) {
+  return keep.slice(0, -1).map((piece) => Math.round(tightenedTime(keep, piece.end) * 1000) / 1000);
+}

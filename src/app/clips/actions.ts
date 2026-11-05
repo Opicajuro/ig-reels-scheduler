@@ -17,6 +17,11 @@ function text(formData: FormData, name: string): string {
   return String(formData.get(name) ?? "");
 }
 
+// An automatic sound's box and its sound picker: the sound, or null when the box is off.
+function autoSound(formData: FormData, name: string): string | null {
+  return formData.get(name) === "on" ? text(formData, `${name}Sound`) : null;
+}
+
 // The destination boxes: Instagram accounts as accountId, YouTube channels as ytAccountId, with the YouTube choices.
 function destinations(formData: FormData, withTitle: boolean) {
   return {
@@ -85,6 +90,9 @@ export async function startRenderAction(_previous: ActionResult, formData: FormD
       musicTrack: text(formData, "musicTrack"),
       musicVolume: text(formData, "musicVolume"),
       tightenPacing: formData.get("tightenPacing") === "on",
+      sfxHook: autoSound(formData, "sfxHook"),
+      sfxCaptions: autoSound(formData, "sfxCaptions"),
+      sfxCuts: autoSound(formData, "sfxCuts"),
       crop: text(formData, "crop"),
     });
     revalidatePath(`/clips/${projectId}`);

@@ -213,7 +213,7 @@ export async function cancelRecaption({
 
   const { count } = await db.clip.updateMany({
     where: { id: clipId, recaptionId: clip.recaptionId },
-    data: { recaptionId: null, recaptionStep: null, recaptionWords: Prisma.DbNull },
+    data: { recaptionId: null, recaptionStep: null, recaptionWords: Prisma.DbNull, recaptionSounds: Prisma.DbNull },
   });
   if (count === 0) throw new UserError("the captions finished before they could be cancelled");
   const open = await jobs.open(clipId);

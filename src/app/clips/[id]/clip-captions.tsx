@@ -134,9 +134,9 @@ function CaptionEditor({
   );
 }
 
-// While the clip's captions are drawn again: the worker's step, polled from the project's status, and a Cancel. The
-// page is reloaded once the clip is replaced, so the drawer plays the new version.
-function RecaptionProgress({ clipId, projectId, initialStep }: { clipId: string; projectId: string; initialStep: string | null }) {
+// While the clip is drawn again, for its captions or its sounds: the worker's step, polled from the project's status,
+// and a Cancel. The page is reloaded once the clip is replaced, so the drawer plays the new version.
+export function RecaptionProgress({ clipId, projectId, initialStep }: { clipId: string; projectId: string; initialStep: string | null }) {
   const router = useRouter();
   const [step, setStep] = useState(initialStep);
 
@@ -161,7 +161,7 @@ function RecaptionProgress({ clipId, projectId, initialStep }: { clipId: string;
       <span>Re-rendering: {step ?? "waiting for the worker…"}</span>
       <ActionForm
         action={cancelRecaptionAction}
-        confirm={{ message: "Stop re-rendering the captions? The clip stays as it is.", confirmLabel: "Stop re-rendering" }}
+        confirm={{ message: "Stop re-rendering this clip? It stays as it is.", confirmLabel: "Stop re-rendering" }}
       >
         <input type="hidden" name="clipId" value={clipId} />
         <input type="hidden" name="projectId" value={projectId} />

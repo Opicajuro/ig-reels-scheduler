@@ -20,6 +20,7 @@ import {
   scheduleClips,
   setClipDetails,
   startRecaption,
+  startResound,
   startRender,
 } from "./clip-projects";
 import { BASE_CUT_REMOVED, SOURCE_DELETED } from "./storage-messages";
@@ -232,6 +233,19 @@ describe("discardHighlights", () => {
 });
 
 describe("startRender", () => {
+  it("stores the automatic sounds, off unless asked for, and refuses one that is not a sound effect", async () => {
+    const { db, tables } = fakeDb({ projects: [project()] });
+    const queue = { send: async () => "job-1" };
+    const options = { db, queue, ...owned, projectId: "p1", clipSeconds: 30, clipCount: null, withCaptions: false };
+    await startRender(options);
+    expect(tables.clipProject[0]).toMatchObject({ sfxHook: null, sfxCaptions: null, sfxCuts: null });
+    tables.clipProject[0].status = "done";
+    await startRender({ ...options, sfxHook: "kenney-weapon-change", sfxCaptions: "kenney-placement", sfxCuts: null });
+    expect(tables.clipProject[0]).toMatchObject({ sfxHook: "kenney-weapon-change", sfxCaptions: "kenney-placement", sfxCuts: null });
+    tables.clipProject[0].status = "done";
+    await expect(startRender({ ...options, sfxCuts: "km-tyrant" })).rejects.toThrow('unknown sound effect "km-tyrant"');
+  });
+
   it("stores the crop, keeps the project's own when none is sent, and refuses an unknown one", async () => {
     const { db, tables } = fakeDb({ projects: [project({ crop: "centre" })] });
     const queue = { send: async () => "job-1" };
@@ -1304,6 +1318,55 @@ describe("caption words and the kept cut", () => {
 
     const busy = fakeDb({ projects: [captionProject(), project({ id: "p2" })], clips: [captioned({ recaptionId: "x1" })] });
     await expect(deleteClip({ db: busy.db, store: fakeStore().store, ...owned, clipId: "c1" })).rejects.toThrow("re-rendered");
+  });
+});
+
+describe("a clip's own sounds", () => {
+  const sounds = [
+    { time: 2.5, sound: "kenney-coin", volume: 60 },
+    { time: 0.4, sound: "kenney-jump", volume: 30 },
+  ];
+  const kept = (overrides: Partial<Row> = {}) =>
+    clip({ words: null, baseKey: "clips/p1/c1.base.mp4", length: 15, version: 1, recaptionId: null, recaptionError: "earlier", ...overrides });
+
+  it("queues a re-render with the edited sounds, sorted, through the captions' re-render", async () => {
+    const { db, tables } = fakeDb({ projects: [project()], clips: [kept()] });
+    const sent: Array<[string, string]> = [];
+    await startResound({
+      db,
+      queue: { send: async (clipId: string, recaptionId: string) => (sent.push([clipId, recaptionId]), "job-1") },
+      ...owned,
+      clipId: "c1",
+      sounds: JSON.stringify(sounds),
+    });
+    const row = tables.clip[0];
+    expect(sent).toEqual([["c1", row.recaptionId]]);
+    expect(row).toMatchObject({ recaptionSounds: [sounds[1], sounds[0]], recaptionStep: null, recaptionError: null });
+    expect(row.recaptionWords).toBeUndefined();
+  });
+
+  it("refuses clips without a kept cut, a busy clip or project, and sounds outside the clip", async () => {
+    const queue = { send: async () => "job-1" };
+    const body = JSON.stringify(sounds);
+    const old = fakeDb({ projects: [project()], clips: [kept({ baseKey: null })] });
+    await expect(startResound({ db: old.db, queue, ...owned, clipId: "c1", sounds: body })).rejects.toThrow("made after this update");
+    const removed = fakeDb({ projects: [project()], clips: [kept({ baseKey: null, words: [] })] });
+    await expect(startResound({ db: removed.db, queue, ...owned, clipId: "c1", sounds: body })).rejects.toThrow(BASE_CUT_REMOVED);
+    const running = fakeDb({ projects: [project()], clips: [kept({ recaptionId: "x1" })] });
+    await expect(startResound({ db: running.db, queue, ...owned, clipId: "c1", sounds: body })).rejects.toThrow("already");
+    const busy = fakeDb({ projects: [project({ status: "rendering" })], clips: [kept()] });
+    await expect(startResound({ db: busy.db, queue, ...owned, clipId: "c1", sounds: body })).rejects.toThrow("being made");
+    const late = fakeDb({ projects: [project()], clips: [kept()] });
+    const outside = JSON.stringify([{ time: 15, sound: "kenney-coin", volume: 60 }]);
+    await expect(startResound({ db: late.db, queue, ...owned, clipId: "c1", sounds: outside })).rejects.toThrow("inside the clip");
+    expect(late.tables.clip[0].recaptionId).toBeNull();
+  });
+
+  it("keeps the sounds and jump cuts on copies", async () => {
+    const cuts = [1.2, 4.5];
+    const { db, tables } = fakeDb({ projects: [project()], clips: [kept({ sounds, cuts })] });
+    await copyClip({ db, store: fakeStore().store, ...owned, clipId: "c1" });
+    expect(tables.clip[1]).toMatchObject({ sounds, cuts });
   });
 });
 

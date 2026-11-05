@@ -12,6 +12,7 @@ import { PlatformChips } from "@/components/platform-links";
 import { Tabs } from "@/components/tabs";
 import { deleteClipAction, deleteClipsAction } from "../actions";
 import { ClipCaptions } from "./clip-captions";
+import { ClipSounds } from "./clip-sounds";
 import { AiClipForm, type AiClipSetup } from "./ai-clip-form";
 import { ClipDetails } from "./clip-details";
 import { ClipLinks } from "./clip-links";
@@ -23,6 +24,7 @@ import styles from "../clips.module.css";
 import { formatTime } from "@/lib/highlights";
 import { creditLine, withCredit } from "@/lib/music-library";
 import type { ClipWord } from "@/lib/caption-words";
+import type { ClipSound } from "@/lib/clip-sounds";
 import { AI_CLIP_LABELS, type AiClipKind } from "@/lib/ai-clip-options";
 
 export type ClipView = {
@@ -44,6 +46,10 @@ export type ClipView = {
   words: ClipWord[] | null;
   // Its caption words were kept, but the Storage page removed the uncaptioned cut they are drawn over.
   baseCutRemoved: boolean;
+  // Its cut without captions or sounds is kept, so its sounds can be changed.
+  baseCut: boolean;
+  // Its own sound effects, or the edited ones while they are mixed.
+  sounds: ClipSound[];
   recaption: { step: string | null } | null;
   recaptionError: string | null;
   // The start of what is said in the clip, for the AI panels' suggested prompt.
@@ -188,6 +194,7 @@ export function ClipGrid({
   const [openId, setOpenId] = useState<string | null>(null);
   const [openTab, setOpenTab] = useState<DrawerTab>("details");
   const [panel, setPanel] = useState<"export" | "schedule" | "move" | "copy" | null>(null);
+  const player = useRef<HTMLVideoElement>(null);
   const [aiPanel, setAiPanel] = useState<{ clipId: string; kind: AiClipKind } | null>(null);
   const aiClip = clips.find((clip) => clip.id === aiPanel?.clipId) ?? null;
   // Read through the current clips, so a clip deleted or replaced since it was picked or opened drops out.
@@ -279,7 +286,7 @@ export function ClipGrid({
 
       <Drawer open={openClip !== null} title={openClip?.name} onClose={() => setOpenId(null)}>
         {openClip ? (
-          <video key={`${openClip.id}-${openClip.version}`} className={styles.player} src={openClip.downloadUrl} controls playsInline />
+          <video ref={player} key={`${openClip.id}-${openClip.version}`} className={styles.player} src={openClip.downloadUrl} controls playsInline />
         ) : null}
         {openClip ? (
           <Tabs
@@ -303,6 +310,23 @@ export function ClipGrid({
                           clip={openClip}
                           projectId={projectId}
                           busy={busy}
+                        />
+                      ),
+                    },
+                  ]
+                : []),
+              ...(captionsTab
+                ? [
+                    {
+                      id: "sounds",
+                      label: "Sounds",
+                      content: (
+                        <ClipSounds
+                          key={openClip.recaption ? "recaptioning" : "idle"}
+                          clip={openClip}
+                          projectId={projectId}
+                          busy={busy}
+                          currentTime={() => player.current!.currentTime}
                         />
                       ),
                     },

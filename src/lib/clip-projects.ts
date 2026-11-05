@@ -27,6 +27,7 @@ import { publishJobRunAt } from "./scheduling";
 import { buildClipBaseKey, buildClipKey, buildClipSourceKey, buildReelKey, buildYouTubeKey } from "./storage";
 import { checkEditedWords, parseClipWords } from "./caption-words";
 import { DEFAULT_MUSIC_VOLUME, parseMusicChoice, withCredit } from "./music-library";
+import { parseAutoSound, parseClipSounds } from "./clip-sounds";
 import { BASE_CUT_REMOVED, SOURCE_DELETED } from "./storage-messages";
 import { UserError } from "./user-error";
 import { parseCropMode } from "@/clip-engine/crop.js";
@@ -54,17 +55,19 @@ async function ownedClip(db: PrismaClient, ownerId: string, clipId: string) {
 
 const RECAPTIONING = "wait until this clip's captions are re-rendered";
 
-// A clip's caption words and a copy of its kept cut, for its copy with the id copyId in the project projectId.
+// A clip's caption words, sounds and jump cuts and a copy of its kept cut, for its copy with the id copyId in the
+// project projectId.
 async function copyCaptionFiles(
   store: ClipStore,
-  clip: { words: Prisma.JsonValue; baseKey: string | null },
+  clip: { words: Prisma.JsonValue; sounds: Prisma.JsonValue; cuts: Prisma.JsonValue; baseKey: string | null },
   projectId: string,
   copyId: string,
 ) {
-  if (!clip.baseKey) return { words: clip.words ?? Prisma.DbNull, baseKey: null };
+  const kept = { words: clip.words ?? Prisma.DbNull, sounds: clip.sounds ?? Prisma.DbNull, cuts: clip.cuts ?? Prisma.DbNull };
+  if (!clip.baseKey) return { ...kept, baseKey: null };
   const baseKey = buildClipBaseKey(projectId, copyId);
   await store.copy(clip.baseKey, baseKey);
-  return { words: clip.words ?? Prisma.DbNull, baseKey };
+  return { ...kept, baseKey };
 }
 
 // Creates a project for an uploaded file. The browser sends the file to the returned sourceKey, then marks it uploaded.
@@ -142,6 +145,9 @@ export async function startRender({
   musicTrack = "",
   musicVolume = String(DEFAULT_MUSIC_VOLUME),
   tightenPacing = false,
+  sfxHook = null,
+  sfxCaptions = null,
+  sfxCuts = null,
   crop,
 }: {
   db: PrismaClient;
@@ -168,6 +174,10 @@ export async function startRender({
   musicTrack?: string;
   musicVolume?: string;
   tightenPacing?: boolean;
+  // The automatic sounds, each the sound effect asked for or null for off.
+  sfxHook?: string | null;
+  sfxCaptions?: string | null;
+  sfxCuts?: string | null;
   // "centre", "follow" or "fit"; left out, the project keeps its crop.
   crop?: unknown;
 }) {
@@ -196,6 +206,7 @@ export async function startRender({
   const hook = parseHookMode(hookMode);
   const hookTitle = parseHookText(hookText, hook);
   const music = parseMusicChoice(musicTrack, musicVolume);
+  const sounds = { sfxHook: parseAutoSound(sfxHook), sfxCaptions: parseAutoSound(sfxCaptions), sfxCuts: parseAutoSound(sfxCuts) };
   const cropMode = parseCropMode(crop === undefined ? project.crop : crop);
 
   // A new render id: this render starts over, replacing the clips, even if an earlier one was interrupted.
@@ -224,6 +235,7 @@ export async function startRender({
       endCardText: parseEndCardText(endCardText),
       ...music,
       tightenPacing,
+      ...sounds,
       crop: cropMode,
     },
   });
@@ -364,6 +376,9 @@ export async function copyProject({
       musicTrack: original.musicTrack,
       musicVolume: original.musicVolume,
       tightenPacing: original.tightenPacing,
+      sfxHook: original.sfxHook,
+      sfxCaptions: original.sfxCaptions,
+      sfxCuts: original.sfxCuts,
       crop: original.crop,
     },
   });
@@ -607,6 +622,48 @@ export async function startRecaption({
     await db.clip.updateMany({
       where: { id: clipId, recaptionId },
       data: { recaptionId: null, recaptionWords: Prisma.DbNull, recaptionError: message },
+    });
+    throw err;
+  }
+}
+
+// Queues mixing a clip again with the sounds edited in its Sounds tab (a JSON list of { time, sound, volume }), over
+// its kept cut, through the same re-render as its captions.
+export async function startResound({
+  db,
+  queue,
+  ownerId,
+  clipId,
+  sounds,
+}: {
+  db: PrismaClient;
+  queue: RecaptionQueue;
+  ownerId: string;
+  clipId: string;
+  sounds: string;
+}) {
+  const clip = await ownedClip(db, ownerId, clipId);
+  if (clip.project.status === "rendering" || clip.project.status === "picking") {
+    throw new UserError("clips are being made for this project");
+  }
+  if (clip.recaptionId) throw new UserError("this clip is already being re-rendered");
+  if (!clip.baseKey) throw new UserError(clip.words !== null ? BASE_CUT_REMOVED : "Sounds can be added to clips made after this update");
+  if (clip.words !== null && !clip.project.captionPreset) throw new UserError("choose a caption style for this project first");
+  const edited = parseClipSounds(JSON.parse(sounds), clip.length);
+
+  const recaptionId = randomUUID();
+  const { count } = await db.clip.updateMany({
+    where: { id: clipId, recaptionId: null },
+    data: { recaptionId, recaptionStep: null, recaptionSounds: edited, recaptionError: null },
+  });
+  if (count === 0) throw new UserError("this clip is already being re-rendered");
+  try {
+    await queue.send(clipId, recaptionId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await db.clip.updateMany({
+      where: { id: clipId, recaptionId },
+      data: { recaptionId: null, recaptionSounds: Prisma.DbNull, recaptionError: message },
     });
     throw err;
   }
