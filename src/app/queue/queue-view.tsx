@@ -11,7 +11,7 @@ import { AI_CLIP_LABELS } from "@/lib/ai-clip-options";
 import type { QueueListing } from "@/lib/work-queue";
 import { formatElapsed } from "../clips/render-progress";
 import { CancelPostForm } from "../scheduled/post-actions";
-import { cancelAiVideoAction, cancelRecaptionAction, cancelRenderAction, cancelSlideshowAction } from "./actions";
+import { cancelAiVideoAction, cancelClipWritingAction, cancelRecaptionAction, cancelRenderAction, cancelSlideshowAction } from "./actions";
 import styles from "./queue.module.css";
 
 const POLL_MS = 2000;
@@ -21,6 +21,7 @@ function rowKeys(listing: QueueListing): string[] {
   return [
     ...listing.renders.map((row) => `render:${row.id}`),
     ...listing.recaptions.map((row) => `recaption:${row.id}`),
+    ...listing.writers.map((row) => `writer:${row.id}`),
     ...listing.aiVideos.map((row) => `video:${row.id}`),
     ...listing.slideshows.map((row) => `slideshow:${row.id}`),
     ...listing.engines.map((row) => `engine:${row.id}`),
@@ -55,7 +56,7 @@ export function QueueView({ initial }: { initial: QueueListing }) {
     return () => clearInterval(timer);
   }, [router]);
 
-  const { renders, recaptions, aiVideos, slideshows, engines, posts } = listing;
+  const { renders, recaptions, writers, aiVideos, slideshows, engines, posts } = listing;
   return (
     <div className={styles.queue}>
       <Section title="Clips being made" empty="No clips are being made.">
@@ -116,6 +117,33 @@ export function QueueView({ initial }: { initial: QueueListing }) {
                 confirm={{
                   message: `Stop re-rendering the captions of ${clip.name}? The clip stays as it is.`,
                   confirmLabel: "Stop re-rendering",
+                }}
+              >
+                <input type="hidden" name="clipId" value={clip.id} />
+                <input type="hidden" name="projectId" value={clip.projectId} />
+                <SubmitButton variant="danger" size="sm" pendingLabel="Cancelling…">
+                  Cancel
+                </SubmitButton>
+              </ActionForm>
+            }
+          />
+        ))}
+      </Section>
+
+      <Section title="Titles being written" empty="No clip's title is being written with AI.">
+        {writers.map((clip) => (
+          <Row
+            key={clip.id}
+            href={`/clips/${clip.projectId}`}
+            title={`${clip.name} · ${clip.projectName}`}
+            state={<StatusBadge status="writing" label="Writing" />}
+            detail={clip.step ?? "Waiting for the worker"}
+            cancel={
+              <ActionForm
+                action={cancelClipWritingAction}
+                confirm={{
+                  message: `Stop writing the title of ${clip.name}? Its title and description stay as they are.`,
+                  confirmLabel: "Stop writing",
                 }}
               >
                 <input type="hidden" name="clipId" value={clip.id} />

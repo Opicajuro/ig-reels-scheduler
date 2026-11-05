@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState, type MouseEvent } from "react";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { AiBadge } from "@/components/ai-badge";
@@ -15,6 +16,7 @@ import { ClipCaptions } from "./clip-captions";
 import { ClipSounds } from "./clip-sounds";
 import { AiClipForm, type AiClipSetup } from "./ai-clip-form";
 import { ClipDetails } from "./clip-details";
+import { BulkWriter } from "./clip-writer";
 import { ClipLinks } from "./clip-links";
 import { ExportForm } from "./export-form";
 import { ScheduleForm } from "./schedule-form";
@@ -26,6 +28,7 @@ import { creditLine, withCredit } from "@/lib/music-library";
 import type { ClipWord } from "@/lib/caption-words";
 import type { ClipSound } from "@/lib/clip-sounds";
 import { AI_CLIP_LABELS, type AiClipKind } from "@/lib/ai-clip-options";
+import type { ClipSuggestion } from "@/lib/clip-writer";
 
 export type ClipView = {
   id: string;
@@ -54,6 +57,11 @@ export type ClipView = {
   recaptionError: string | null;
   // The start of what is said in the clip, for the AI panels' suggested prompt.
   firstWords: string;
+  // While the script writer writes its title, description and hashtags; what it suggested, until used or discarded;
+  // and why the last writing failed.
+  writer: { step: string | null } | null;
+  suggestion: ClipSuggestion | null;
+  writeError: string | null;
 };
 
 export type AccountView = { id: string; username: string };
@@ -177,6 +185,7 @@ export function ClipGrid({
   bestTimeSamples,
   captionsTab,
   ai,
+  writerInstalled,
 }: {
   projectId: string;
   busy: boolean;
@@ -189,11 +198,13 @@ export function ClipGrid({
   projects: ProjectChoice[];
   bestTimeSamples: BestTimeSample[];
   ai: AiClipSetup;
+  // Whether the slideshows' script writer is installed, to write titles with AI.
+  writerInstalled: boolean;
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [openId, setOpenId] = useState<string | null>(null);
   const [openTab, setOpenTab] = useState<DrawerTab>("details");
-  const [panel, setPanel] = useState<"export" | "schedule" | "move" | "copy" | null>(null);
+  const [panel, setPanel] = useState<"export" | "schedule" | "move" | "copy" | "writer" | null>(null);
   const player = useRef<HTMLVideoElement>(null);
   const [aiPanel, setAiPanel] = useState<{ clipId: string; kind: AiClipKind } | null>(null);
   const aiClip = clips.find((clip) => clip.id === aiPanel?.clipId) ?? null;
@@ -260,6 +271,14 @@ export function ClipGrid({
               <Button type="button" disabled={busy} onClick={() => setPanel("copy")}>
                 Copy to project…
               </Button>
+              <Button type="button" disabled={!writerInstalled} onClick={() => setPanel("writer")}>
+                Write titles with AI…
+              </Button>
+              {writerInstalled ? null : (
+                <Link href="/settings#slideshow-ai" className={styles.muted}>
+                  Install the Script writer
+                </Link>
+              )}
               <ActionForm
                 action={deleteClipsAction}
                 className={styles.dockForm}
@@ -297,7 +316,15 @@ export function ClipGrid({
               {
                 id: "details",
                 label: "Details",
-                content: <ClipDetails clip={openClip} projectId={projectId} busy={busy} />,
+                content: (
+                  <ClipDetails
+                    key={`${openClip.title}\n${openClip.description}`}
+                    clip={openClip}
+                    projectId={projectId}
+                    busy={busy}
+                    writerInstalled={writerInstalled}
+                  />
+                ),
               },
               ...(captionsTab
                 ? [
@@ -390,6 +417,10 @@ export function ClipGrid({
 
       <Drawer open={panel === "copy"} title="Copy to project" onClose={() => setPanel(null)}>
         <MoveForm mode="copy" clips={selected} projectId={projectId} projects={projects} busy={busy} />
+      </Drawer>
+
+      <Drawer open={panel === "writer"} title="Write titles with AI" onClose={() => setPanel(null)}>
+        <BulkWriter clips={selected} projectId={projectId} installed={writerInstalled} busy={busy} />
       </Drawer>
 
       <Drawer open={panel === "schedule"} title="Schedule" onClose={() => setPanel(null)}>

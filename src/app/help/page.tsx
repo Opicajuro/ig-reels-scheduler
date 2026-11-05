@@ -91,7 +91,10 @@ export default async function HelpPage() {
           </li>
           <li>
             Press <strong>Open</strong> on a clip to give it a title and a description (with hashtags). The description
-            is what Instagram shows as the caption.
+            is what Instagram shows as the caption. With the slideshows&apos; Script writer installed,{" "}
+            <strong>Write with AI</strong> suggests a title, a short description and hashtags from what is said in the
+            clip, offline; press <strong>Use</strong> to fill them in. Select several clips and press{" "}
+            <strong>Write titles with AI…</strong> to write them all.
           </li>
           <li>
             To schedule, open a clip and use its <strong>Schedule</strong> tab, or select several clips and press{" "}
